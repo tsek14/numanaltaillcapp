@@ -139,7 +139,7 @@
       if(visible.length > 0 || mrpamTypes.length > 0 || adminLevels.length > 0) html += '<div class="leg-sep">Кадастр</div>';
       html += '<div class="leg-row">';
       html += '  <span class="leg-sw" style="background:'+CADASTRE_COLOR+'33;border-color:'+CADASTRE_COLOR+'"></span>';
-      html += '  <span class="leg-lbl">Нэгж талбар</span>';
+      html += '  <span class="leg-lbl">Нэгж талбар'+(cadastreFileName ? ' — '+escapeXml(cadastreFileName) : '')+'</span>';
       html += '</div>';
     }
 
