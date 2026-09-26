@@ -12,6 +12,7 @@
   var cadastreLoaded = false;
   var cadastreVisible = false;
   var cadastreFeatures = null; // [{bbox:[w,s,e,n], geometry, properties}, ...]
+  var cadastreFileName = null;
   var cadastreLayerGroup = L.layerGroup();
   var cadastreWorker = null;
 
@@ -109,7 +110,7 @@
   var debouncedCadastreUpdate = debounce(updateCadastreOverlay, 250);
   map.on('moveend zoomend', debouncedCadastreUpdate);
 
-  function loadCadastreText(text, silent, sourceLabel){
+  function loadCadastreText(text, silent, sourceLabel, fileName){
     cadastreBtn.classList.add('loading');
     if(!silent) toast('Файл уншиж байна…');
 
@@ -120,11 +121,15 @@
         else { toast('GeoJSON файл уншихад алдаа гарлаа. egazar_parcels.geojson файлыг сонгосон эсэхээ шалгана уу.'); }
         return;
       }
+      // Replaces whatever was loaded before outright — switching to a
+      // different soum/aimag file shouldn't leave the previous area's
+      // parcels mixed in on the map.
       cadastreFeatures = data.features;
       cadastreLoaded = true;
       cadastreVisible = true;
       cadastreLayerGroup.addTo(map);
       cadastreBtn.classList.add('active');
+      setCadastreFileLabel(fileName);
       toast(cadastreFeatures.length + ' нэгж талбар ачааллагдлаа' + (sourceLabel ? ' (' + sourceLabel + ')' : ''));
       idbSet(CADASTRE_ENABLED_KEY, true).catch(function(){});
       updateCadastreOverlay();
@@ -140,9 +145,22 @@
     }
   }
 
+  function setCadastreFileLabel(fileName){
+    cadastreFileName = fileName || null;
+    var row = document.getElementById('cadastreFileInfoRow');
+    var lbl = document.getElementById('cadastreFileNameLbl');
+    if(fileName){
+      lbl.textContent = fileName;
+      lbl.title = fileName;
+      row.style.display = 'flex';
+    } else {
+      row.style.display = 'none';
+    }
+  }
+
   function loadCadastreFile(file, silent){
     file.text().then(function(text){
-      loadCadastreText(text, silent, silent ? 'өмнөх файлаас' : null);
+      loadCadastreText(text, silent, silent ? 'өмнөх файлаас' : null, file.name);
     }).catch(function(){
       cadastreBtn.classList.remove('loading');
       if(silent){ cadastreAutoLoadFailedHint(); }
@@ -159,7 +177,7 @@
       if(!res.ok) throw new Error('http ' + res.status);
       return res.text();
     }).then(function(text){
-      loadCadastreText(text, true, 'дотоод файлаас');
+      loadCadastreText(text, true, 'дотоод файлаас', CADASTRE_BUNDLED_URL);
       return true;
     }).catch(function(){
       return false; // not found / blocked by CORS (e.g. file://) — caller falls back
@@ -244,6 +262,13 @@
   cadastreFileInput.addEventListener('change', function(){
     var file = this.files && this.files[0];
     if(file) loadCadastreFile(file, false);
+  });
+
+  // Lets the person swap in a different soum/aimag's parcel file at any
+  // time — unlike the main toggle button (which, once a file is loaded,
+  // only shows/hides the layer), this always reopens the file picker.
+  document.getElementById('cadastreSwitchFileBtn').addEventListener('click', function(){
+    pickCadastreFile();
   });
 
   // ---- Cadastre settings dropdown (line weight, fill opacity) ----
