@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Талбай хэмжигч</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <div class="brand">
+      <img class="brand-logo" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAZAAAACPCAYAAADUSI02AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAA2RpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMC1jMDYwIDYxLjEzNDc3NywgMjAxMC8wMi8xMi0xNzozMjowMCAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0UmVmPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VSZWYjIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDozMzQyQzc2MThDRjhERjExOEZERTg3REE5OTJGNDY3RCIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDo5MTgwRjIxQTQ4MDkxMUUxQjQ1RkYyRTE3NTI0NjE1OSIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDo5MTgwRjIxOTQ4MDkxMUUxQjQ1RkYyRTE3NTI0NjE1OSIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ1M1IFdpbmRvd3MiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDozNTQyQzc2MThDRjhERjExOEZERTg3REE5OTJGNDY3RCIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDozMzQyQzc2MThDRjhERjExOEZERTg3REE5OTJGNDY3RCIvPiA8L3JkZjpEZXNjcmlwdGlv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" alt="NUMAN">
+      <div class="brand-titles">
+        <h1>Талбай хэмжигч</h1>
+        <div class="sub">ХЭМЖИЛТ · ХАЙЛТ · ЛИЦЕНЗ</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="mapToolbar">
+    <button id="fullscreenBtn" class="toolbtn" title="Дэлгэц дүүргэх">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3"/>
+        <path d="M21 8V5a2 2 0 0 0-2-2h-3"/>
+        <path d="M3 16v3a2 2 0 0 0 2 2h3"/>
+        <path d="M16 21h3a2 2 0 0 0 2-2v-3"/>
+      </svg>
+    </button>
+    <button id="globalUndoBtn" class="toolbtn" title="Буцаах (Ctrl+Z)" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 14 4 9l5-5"/>
+        <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>
+      </svg>
+    </button>
+    <button id="globalRedoBtn" class="toolbtn" title="Дахин хийх (Ctrl+Y)" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M15 14 20 9l-5-5"/>
+        <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>
+      </svg>
+    </button>
+
+    <div id="moreWrap">
+      <button id="moreBtn" class="toolbtn" title="Бусад хэрэгсэл">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none"/>
+          <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+          <circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
+      <div id="morePanel">
+        <div class="more-row" id="moreRowTrack">
+          <span class="more-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="2" y1="12" x2="5" y2="12"/>
+              <line x1="19" y1="12" x2="22" y2="12"/>
+              <line x1="12" y1="2" x2="12" y2="5"/>
+              <line x1="12" y1="19" x2="12" y2="22"/>
+              <circle cx="12" cy="12" r="7"/>
+              <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/>
+            </svg>
+          </span>
+          <span class="more-lbl">Байршил + зам бичиж эхлэх</span>
+          <button id="trackBtn" class="toolbtn more-toolbtn" title="Байршил + зам бичиж эхлэх">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="2" y1="12" x2="5" y2="12"/>
+              <line x1="19" y1="12" x2="22" y2="12"/>
+              <line x1="12" y1="2" x2="12" y2="5"/>
+              <line x1="12" y1="19" x2="12" y2="22"/>
+              <circle cx="12" cy="12" r="7"/>
+              <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="more-row" id="moreRowMeasure">
+          <span class="more-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 17 17 3"/>
+              <path d="M3 17h4v-4"/>
+              <path d="M17 3v4h-4"/>
+              <path d="m8 12 1.5 1.5"/>
+              <path d="m11 9 1.5 1.5"/>
+            </svg>
+          </span>
+          <span class="more-lbl">Зай хэмжих</span>
+          <button id="measureBtn" class="toolbtn more-toolbtn" title="Зай хэмжих">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 17 17 3"/>
+              <path d="M3 17h4v-4"/>
+              <path d="M17 3v4h-4"/>
+              <path d="m8 12 1.5 1.5"/>
+              <path d="m11 9 1.5 1.5"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="more-row" id="moreRowLegend">
+          <span class="more-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="8" y1="6" x2="21" y2="6"/>
+              <line x1="8" y1="12" x2="21" y2="12"/>
+              <line x1="8" y1="18" x2="21" y2="18"/>
+              <circle cx="3.5" cy="6" r="1.6" fill="currentColor" stroke="none"/>
+              <circle cx="3.5" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+              <circle cx="3.5" cy="18" r="1.6" fill="currentColor" stroke="none"/>
+            </svg>
+          </span>
+          <span class="more-lbl">Таних тэмдэг</span>
+          <button id="legendBtn" class="toolbtn more-toolbtn active" title="Таних тэмдэг">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="8" y1="6" x2="21" y2="6"/>
+              <line x1="8" y1="12" x2="21" y2="12"/>
+              <line x1="8" y1="18" x2="21" y2="18"/>
+              <circle cx="3.5" cy="6" r="1.6" fill="currentColor" stroke="none"/>
+              <circle cx="3.5" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+              <circle cx="3.5" cy="18" r="1.6" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="more-row" id="moreRowTheme">
+          <span class="more-icon">
+            <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5"/>
+              <line x1="12" y1="1" x2="12" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="23"/>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+              <line x1="1" y1="12" x2="3" y2="12"/>
+              <line x1="21" y1="12" x2="23" y2="12"/>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            </svg>
+          </span>
+          <span class="more-lbl">Гэрэлтэй горим<br><span style="font-size:9.5px; color:var(--muted); font-weight:400;">Наранд амархан уншигдана</span></span>
+          <button id="themeBtn" class="more-toggle" title="Гэрэлтэй/харанхуй горим сэлгэх">Асаах</button>
+        </div>
+
+        <div class="more-row" id="moreRowPointNum">
+          <span class="more-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/>
+              <text x="12" y="16" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" fill="currentColor" stroke="none">1</text>
+            </svg>
+          </span>
+          <span class="more-lbl">Цэгийн дугаар</span>
+          <button id="pointNumBtn" class="more-toggle" title="Цэгийн дугаар харуулах/нуух">Асаах</button>
+        </div>
+
+        <div class="more-row" id="moreRowBasemap">
+          <span class="more-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 17 12 22 22 17"/>
+              <polyline points="2 12 12 17 22 12"/>
+            </svg>
+          </span>
+          <span class="more-lbl">Давхрага</span>
+          <div id="layerPanelWrap">
+            <button id="basemapToggle" class="more-toggle">
+              <span id="basemapLabel">GOOGLE SAT</span>
+              <span class="car">▾</span>
+            </button>
+            <div id="layerPanel"></div>
+          </div>
+        </div>
+
+        <div class="more-row" id="moreRowMrpam">
+          <span class="more-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 3h18v18H3z"/>
+              <path d="M3 9h18M9 21V9"/>
+            </svg>
+          </span>
+          <span class="more-lbl">MRPAM лиценз</span>
+          <div id="mrpamWrap">
+            <button id="licenseLayerToggle" class="more-toggle" title="Уул уурхайн лицензийн давхарга (CMCS)">Ачаалах</button>
+            <button id="mrpamSettingsBtn" class="more-toggle-sm" title="MRPAM давхаргын тохиргоо">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+            <div id="mrpamSettingsPanel">
+              <div class="gs-row">
+                <label>Сонгож экспортлох</label>
+                <button type="button" id="mrpamSelectModeBtn" class="gs-mini-btn" title="Газрын зураг дээр лиценз дээр товшиж сонгоно">Асаах</button>
+              </div>
+              <div class="gs-row" id="mrpamSelectInfoRow" style="display:none">
+                <label style="flex:1;">Сонгосон: <span id="mrpamSelectedCountLbl">0</span></label>
+                <button type="button" id="mrpamSelectClearBtn" class="gs-mini-btn" title="Сонголтыг цэвэрлэх">Цэвэрлэх</button>
+              </div>
+              <div class="gs-row" id="mrpamSelectExportRow" style="display:none; gap:6px;">
+                <button type="button" id="mrpamExportSelKML" class="export-btn" style="flex:1;">KML</button>
+                <button type="button" id="mrpamExportSelGeoJSON" class="export-btn" style="flex:1;">GeoJSON</button>
+              </div>
+              <div class="gs-row" id="msWeightRow" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
+                <label>Өргөн</label>
+                <input type="range" id="msWeight" min="0.5" max="6" step="0.5" value="1.5">
+                <span class="gs-val" id="msWeightVal">1.5px</span>
+              </div>
+              <div class="gs-row">
+                <label>Тунгалагшил (шугам)</label>
+                <input type="range" id="msLineOpacity" min="10" max="100" step="5" value="100">
+                <span class="gs-val" id="msLineOpacityVal">100%</span>
+              </div>
+              <div class="gs-row">
+                <label>Тунгалагшил (дүүргэлт)</label>
+                <input type="range" id="msFillOpacity" min="0" max="100" step="5" value="12">
+                <span class="gs-val" id="msFillOpacityVal">12%</span>
+              </div>
+              <div class="gs-row" id="msResetRow" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
+                <label>Төрлийн өнгө</label>
+                <button type="button" id="msResetColors" class="gs-mini-btn" title="Бүх төрлийн өнгийг анхны байдалд оруулах">Дахин тохируулах</button>
+              </div>
+              <div class="gs-row gs-empty" id="msTypeColorsEmpty" style="display:none">
+                <label style="flex:1; opacity:0.7;">Лиценз ачаалагдсаны дараа төрөл тус бүрийн өнгө энд гарна</label>
+              </div>
+              <div id="msTypeColorsList"></div>
+            </div>
+          </div>
+        </div>
+        <input type="file" id="mrpamFileInput" accept=".geojson,.json,application/geo+json,application/json" style="display:none">
+
+        <div class="more-row" id="moreRowAdmin">
+          <span class="more-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 3l18 18M3 21L21 3"/>
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+            </svg>
+          </span>
+          <span class="more-lbl">Захиргааны хил</span>
+          <div id="adminWrap">
+            <button id="adminLayerToggle" class="more-toggle" title="Аймаг/сум/багийн хил (administration.geojson)">Ачаалах</button>
+            <button id="adminSettingsBtn" class="more-toggle-sm" title="Захиргааны хилийн тохиргоо">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+            <div id="adminSettingsPanel">
+              <div class="gs-row" id="alAimagRow">
+                <label><span class="al-dot" style="background:#5fb3ff"></span> Аймаг</label>
+                <input type="checkbox" id="alShowAimag" checked>
+              </div>
+              <div class="gs-row" id="alSoumRow">
+                <label><span class="al-dot" style="background:#ffd23f"></span> Сум</label>
+                <input type="checkbox" id="alShowSoum" checked>
+              </div>
+              <div class="gs-row" id="alBagRow">
+                <label><span class="al-dot" style="background:#7ee787"></span> Баг/Хороо</label>
+                <input type="checkbox" id="alShowBag" checked>
+              </div>
+              <div class="gs-row" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
+                <label>Өргөн</label>
+                <input type="range" id="alWeight" min="0.5" max="5" step="0.5" value="1.5">
+                <span class="gs-val" id="alWeightVal">1.5px</span>
+              </div>
+              <div class="gs-row">
+                <label>Тунгалагшил (дүүргэлт)</label>
+                <input type="range" id="alFillOpacity" min="0" max="60" step="5" value="0">
+                <span class="gs-val" id="alFillOpacityVal">0%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <input type="file" id="adminFileInput" accept=".geojson,.json,application/geo+json,application/json" style="display:none">
+
+        <div class="more-row" id="moreRowCadastre">
+          <span class="more-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/>
+              <rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+          </span>
+          <span class="more-lbl">Кадастрын зураг</span>
+          <div id="cadastreWrap">
+            <button id="cadastreLayerToggle" class="more-toggle" title="Кадастрын нэгж талбарууд (egazar_parcels.geojson)">Ачаалах</button>
+            <button id="cadastreSettingsBtn" class="more-toggle-sm" title="Кадастрын давхаргын тохиргоо">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+            <div id="cadastreSettingsPanel">
+              <div class="gs-row">
+                <label>Өргөн</label>
+                <input type="range" id="caWeight" min="0.5" max="5" step="0.5" value="1.5">
+                <span class="gs-val" id="caWeightVal">1.5px</span>
+              </div>
+              <div class="gs-row">
+                <label>Тунгалагшил (дүүргэлт)</label>
+                <input type="range" id="caFillOpacity" min="0" max="60" step="5" value="8">
+                <span class="gs-val" id="caFillOpacityVal">8%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <input type="file" id="cadastreFileInput" accept=".geojson,.json,application/geo+json,application/json" style="display:none">
+
+        <div class="more-row" id="moreRowGraticule">
+          <span class="more-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="9" x2="21" y2="9"/>
+              <line x1="3" y1="15" x2="21" y2="15"/>
+              <line x1="9" y1="3" x2="9" y2="21"/>
+              <line x1="15" y1="3" x2="15" y2="21"/>
+            </svg>
+          </span>
+          <span class="more-lbl">Торлол</span>
+          <div id="gratWrap">
+            <button id="graticuleBtn" class="more-toggle active" title="Солбицлын торлол асаах/унтраах">Асаах</button>
+            <button id="gratSettingsBtn" class="more-toggle-sm" title="Торлолын тохиргоо">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+            <div id="gratSettingsPanel">
+              <div class="gs-row">
+                <label>Нягт</label>
+                <div class="gs-density">
+                  <button type="button" id="gsDensityMinus" title="Шугам цөөрүүлэх">−</button>
+                  <span class="gs-val" id="gsDensityVal">Авто</span>
+                  <button type="button" id="gsDensityPlus" title="Шугам нэмэх">+</button>
+                </div>
+              </div>
+              <div class="gs-row">
+                <label>Өнгө</label>
+                <input type="color" id="gsColor" value="#ffd23f">
+              </div>
+              <div class="gs-row">
+                <label>Өргөн</label>
+                <input type="range" id="gsWeight" min="1" max="5" step="0.5" value="2">
+                <span class="gs-val" id="gsWeightVal">2px</span>
+              </div>
+              <div class="gs-row">
+                <label>Тунгалагшил</label>
+                <input type="range" id="gsOpacity" min="10" max="100" step="5" value="100">
+                <span class="gs-val" id="gsOpacityVal">100%</span>
+              </div>
+              <div class="gs-row" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
+                <label>Шошгын өнгө</label>
+                <input type="color" id="gsLabelColor" value="#cfe3da">
+              </div>
+              <div class="gs-row">
+                <label>Шошгын хэмжээ</label>
+                <input type="range" id="gsLabelSize" min="7" max="16" step="0.5" value="9.5">
+                <span class="gs-val" id="gsLabelSizeVal">9.5px</span>
+              </div>
+              <div class="gs-row" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
+                <label>Интервал гараар</label>
+                <input type="checkbox" id="gsManualToggle">
+              </div>
+              <div class="gs-row gs-dms" id="gsManualRow" style="display:none">
+                <div class="gs-dms-field">
+                  <input type="number" id="gsManualDeg" min="0" max="90" step="1" value="0">
+                  <span>°</span>
+                </div>
+                <div class="gs-dms-field">
+                  <input type="number" id="gsManualMin" min="0" max="59" step="1" value="30">
+                  <span>′</span>
+                </div>
+                <div class="gs-dms-field">
+                  <input type="number" id="gsManualSec" min="0" max="59.9" step="1" value="0">
+                  <span>″</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="northArrow" title="Хойд зүг">
+      <svg viewBox="0 0 32 42" width="30" height="40">
+        <text x="16" y="10" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="11" font-weight="700" fill="#e9f2ec">N</text>
+        <polygon points="16,14 16,36 24,32" fill="#ff7a3d"/>
+        <polygon points="16,14 16,36 8,32" fill="#e9f2ec"/>
+      </svg>
+    </div>
+  </div>
+
+  <div id="mrpamHint"></div>
+  <div id="adminHint"></div>
+  <div id="cadastreHint"></div>
+
+  <div id="searchWrap">
+    <div id="searchBar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="text" id="searchInput" placeholder="Хайх: координат эсвэл газар нэр…" autocomplete="off">
+      <button id="searchClearBtn" title="Цэвэрлэх">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div id="searchResults"></div>
+
+    <div id="sentinelMapDateBar">
+      <button class="sd-navbtn" id="sentinelMapDatePrev" type="button" title="Өмнөх өдөр">‹</button>
+      <input type="date" id="sentinelMapDateInput">
+      <button class="sd-navbtn" id="sentinelMapDateNext" type="button" title="Дараагийн өдөр">›</button>
+      <button class="sd-today" id="sentinelMapDateToday" type="button">Өнөөдөр</button>
+    </div>
+  </div>
+
+  <div id="measurePanel">
+    <div id="measureCard">
+      <div>
+        <div class="m-total" id="measureTotal">0 м</div>
+        <div class="m-sub" id="measureSub">Газрын зураг дээр товшиж цэг нэмнэ үү</div>
+      </div>
+      <div class="m-actions">
+        <button class="m-btn" id="measureUndo">↩︎</button>
+        <button class="m-btn danger" id="measureClear">Цэвэрлэх</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="legendPanel">
+    <div class="leg-title">Таних тэмдэг</div>
+    <div id="legendBody"><div class="leg-empty">Зурсан дүрс алга</div></div>
+  </div>
+
+  <div id="map"></div>
+  <div id="crosshair">
+    <svg viewBox="0 0 34 34">
+      <circle cx="17" cy="17" r="3" fill="#ff7a3d"/>
+      <line x1="17" y1="2" x2="17" y2="12" stroke="#ff7a3d" stroke-width="2"/>
+      <line x1="17" y1="22" x2="17" y2="32" stroke="#ff7a3d" stroke-width="2"/>
+      <line x1="2" y1="17" x2="12" y2="17" stroke="#ff7a3d" stroke-width="2"/>
+      <line x1="22" y1="17" x2="32" y2="17" stroke="#ff7a3d" stroke-width="2"/>
+    </svg>
+  </div>
+  <div id="toast"></div>
+
+  <div id="sentinelSetupModal">
+    <div id="sentinelSetupCard">
+      <h3>Sentinel-2 тохиргоо <span class="close-x" id="sentinelSetupClose">✕</span></h3>
+      <p>Sentinel-2 хиймэл дагуулын зургийг харахын тулд өөрийн үнэгүй Sentinel Hub (Copernicus Data Space Ecosystem) Instance ID хэрэгтэй.</p>
+      <p>1. <a href="https://dataspace.copernicus.eu/" target="_blank" rel="noopener">dataspace.copernicus.eu</a> дээр үнэгүй бүртгүүлнэ<br>
+         2. Sentinel Hub Dashboard → Configuration Utility → шинэ instance үүсгэнэ (Simple WMS template)<br>
+         3. Instance ID-г доор оруулна уу</p>
+      <p style="color:var(--accent);">⚠ Энэ тохиргоо зөвхөн одоо ашиглаж буй браузер/төхөөрөмж дээр хадгалагдана (утас ↔ компьютер хооронд автоматаар шилжихгүй). Өөр төхөөрөмж/браузер дээр нэг л удаа дахин оруулна уу.</p>
+      <label>Instance ID</label>
+      <input type="text" id="sentinelInstanceIdInput" placeholder="жишээ: a1b2c3d4-e5f6-7890-abcd-ef1234567890">
+      <label>Layer ID</label>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <input type="text" id="sentinelLayerIdInput" placeholder="жишээ: TRUE_COLOR" style="flex:1;">
+        <button type="button" id="sentinelFetchLayersBtn" class="sd-today" style="flex-shrink:0; white-space:nowrap;">Жагсаалт татах</button>
+      </div>
+      <select id="sentinelLayerIdSelect" style="display:none; width:100%; margin-top:6px; background:var(--panel-2); border:1px solid var(--line); color:var(--text); border-radius:9px; padding:8px; font-family:'JetBrains Mono',monospace; font-size:12px;"></select>
+      <p id="sentinelLayerIdHint" style="font-size:11px; margin-top:4px;">
+        "TRUE_COLOR" гэдэг нь зөвхөн жишээ нэр — таны Sentinel Hub Configuration дотор яг ямар нэртэй давхарга үүсгэсэн байгаагаас хамаарна. Instance ID-гаа оруулаад "Жагсаалт татах" дарж, өөрийн бодит давхаргуудаас сонгоно уу.
+      </p>
+
+      <div id="sentinelDateSection">
+        <label>Үүлний хамгийн ихдээ хувь</label>
+        <div class="sd-row2">
+          <input type="range" id="sentinelCloudSlider" min="0" max="100" step="5" value="30">
+          <span class="sd-cc-val" id="sentinelCloudVal">30%</span>
+        </div>
+      </div>
+
+      <div id="sentinelDiagPanel" style="display:none;">
+        <p style="color:#ff8a8a; margin-bottom:6px;">⚠ Sentinel-2 зураг ачаалагдсангүй. Доорх холбоос дээр дарж, Sentinel Hub-аас өгсөн бодит алдааны мессежийг шууд харна уу:</p>
+        <a id="sentinelDiagLink" href="#" target="_blank" rel="noopener" style="word-break:break-all; font-size:11px; display:block; margin-bottom:6px;">—</a>
+        <p style="font-size:11px;">Тухайн хуудсанд юу бичигдэнэ (жишээ шалтгаан):<br>
+          • <b>"Instance ID not found"</b> → ID буруу хуулагдсан эсвэл устгагдсан<br>
+          • <b>"not authorized"</b> / домэйн тухай зүйл → Sentinel Hub Dashboard дээрх тухайн Configuration-д домэйн хязгаарлалт тавьсан байна (эсвэл file:// зөвшөөрөгдөөгүй)<br>
+          • Юу ч бичигдэхгүй, хуудас цоо хоосон/ачаалагдахгүй бол → сүлжээ, firewall, эсвэл ad-blocker өргөтгөл <code>sh.dataspace.copernicus.eu</code> домэйныг блоклож байгаа байж болзошгүй (энэ нь desktop дээр илүү элбэг тохиолддог)</p>
+      </div>
+
+      <div class="modal-btnrow">
+        <button id="sentinelSetupClear" type="button">Устгах</button>
+        <button id="sentinelSetupCancel" type="button">Цуцлах</button>
+        <button id="sentinelSetupSave" type="button">Хадгалах</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="sheet">
+    <div id="dragHandle"></div>
+
+    <div class="tabs">
+      <div class="tab active" data-mode="tap">✛ Товших</div>
+      <div class="tab" data-mode="text">⌨ Бичих</div>
+      <div class="tab" data-mode="layers">▤ Давхрага</div>
+      <div class="tab" data-mode="coords">⊕ Солбицол</div>
+    </div>
+
+    <!-- TAP MODE -->
+    <div class="panel active" id="panel-tap">
+      <div id="tapStats">
+        <div class="stat-chip"><div class="k">Цэгүүд</div><div class="v" id="tapCount">0</div></div>
+        <div class="stat-chip"><div class="k">Төрөл</div><div class="v" id="tapType">—</div></div>
+      </div>
+      <div class="btnrow">
+        <button class="btn-secondary" id="btnTapDraw">✛ Товшиж зурах</button>
+        <button class="btn-primary" id="btnAddCenter">+ Төв цэг нэмэх</button>
+        <button class="btn-secondary" id="btnGPS">📍 Миний байршил</button>
+      </div>
+      <div class="btnrow" style="margin-top:8px;">
+        <button class="btn-ghost" id="btnUndo">↩︎ Сүүлийн цэг арилгах</button>
+        <button class="btn-danger" id="btnClearTap">Бүгдийг цэвэрлэх</button>
+      </div>
+      <div class="hint">«Товшиж зурах»-ыг асаагаад газрын зураг дээр шууд товшиж цэг нэмнэ, эсвэл газрын зургийг чирж голлуулаад «Төв цэг нэмэх»-ийг дараарай, эсвэл GPS байршлаа ашиглана уу. 1 цэг → цэг, 2 цэг → шугам, 3+ цэг → полигон ба талбай.</div>
+    </div>
+
+    <!-- TEXT MODE -->
+    <div class="panel" id="panel-text">
+      <div class="order-toggle">
+        <span id="orderLabel">Дараалал (N/S/E/W үсэггүй үед): Өргөрөг, Уртраг</span>
+        <div class="switch" id="orderSwitch"><div class="knob"></div></div>
+      </div>
+      <textarea id="coordInput" placeholder="49°32'00.7&quot;N, 107°20'28.1&quot;E&#10;49°31'39.1&quot;N, 107°20'43.6&quot;E&#10;49°32'12.5&quot;N, 107°22'49.8&quot;E&#10;49°32'34.5&quot;N, 107°22'35.8&quot;E&#10;&#10;49°32'30.5&quot;N, 107°22'39.8&quot;E"></textarea>
+      <details class="format-hint">
+        <summary>Дэмждэг форматууд ба олон дүрсийн тухай</summary>
+        <div class="hint-content">
+          • Аравтын градус: <code>47.9184, 106.9177</code><br>
+          • Градус-минут-секунд (DMS): <code>49 32 10.2, 107 22 03.4</code><br>
+          • ° ′ ″ тэмдэгтэй: <code>49°32'10.2"N, 107°22'03.4"E</code><br>
+          • Градус-минут (DM): <code>49 32.170, 107 22.057</code><br>
+          • UTM (бүс+хагас бөмбөрцөг, Easting/Northing метрээр): <code>48N 675849, 4869493</code><br>
+          • UTM (бүс+өргөргийн зурвасын үсэг): <code>48T 595400 4789778</code><br>
+          N/S/E/W үсэг байвал өргөрөг/уртрагийг автоматаар танина.<br><br>
+          <b>Олон дүрс:</b> хоосон мөрөөр (параграфаар) тусгаарлан хэдэн ч дүрс нэг дор оруулж болно. Тасралтгүй мөрүүдийн бүлэг доторх координатын тоогоор: <b>1 мөр → цэг</b>, <b>2 мөр → шугам</b>, <b>3+ мөр → полигон/талбай</b> болно.
+        </div>
+      </details>
+      <div class="btnrow">
+        <button class="btn-primary" id="btnCalc">Тооцоолох</button>
+        <button class="btn-secondary" id="btnClearText">Цэвэрлэх</button>
+      </div>
+      <div id="textError"></div>
+    </div>
+
+    <!-- LAYERS MODE -->
+    <div class="panel" id="panel-layers">
+      <div id="layersEmpty">Одоогоор зурсан дүрэг алга.<br>«Товшиж зурах» эсвэл «Координат бичих» табаас нэмнэ үү.</div>
+      <div id="layersList"></div>
+    </div>
+
+    <!-- COORDINATES MODE -->
+    <div class="panel" id="panel-coords">
+      <div id="coordsEmpty">Одоогоор цэг алга.<br>«Товшиж зурах» эсвэл «Координат бичих» табаас нэмнэ үү.</div>
+      <div id="coordsBody" style="display:none">
+        <div class="coords-format-row">
+          <label>Формат</label>
+          <select id="coordsFormatSelect">
+            <option value="dd">Аравтын градус (DD)</option>
+            <option value="dm">Градус-минут (DM)</option>
+            <option value="dms">Градус-минут-секунд (DMS)</option>
+            <option value="utm">UTM</option>
+          </select>
+        </div>
+        <div id="coordsList"></div>
+        <div class="btnrow" style="margin-top:8px;">
+          <button class="btn-secondary" id="btnCopyCoords">📋 Бүгдийг хуулах</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPORT -->
+    <div id="exportBar" class="export-bar">
+      <span class="export-label">Экспорт</span>
+      <button class="export-btn" id="btnExportKML" type="button">KML</button>
+      <button class="export-btn" id="btnExportGPX" type="button">GPX</button>
+      <button class="export-btn" id="btnExportSHP" type="button">SHP (zip)</button>
+      <button class="export-btn" id="btnExportGeoJSON" type="button">GeoJSON</button>
+    </div>
+
+    <!-- IMPORT -->
+    <div id="importBar" class="export-bar show">
+      <span class="export-label">Импорт</span>
+      <button class="export-btn" id="btnImportFile" type="button">📂 KML/KMZ/GPX/SHP/GeoJSON сонгох</button>
+      <input type="file" id="importFileInput" accept=".kml,.kmz,.gpx,.geojson,.json,.zip,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,application/gpx+xml,application/geo+json,application/json,application/zip" style="display:none" multiple>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="results"></div>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="js-01-map-basemap.js"></script>
+<script src="js-02-mrpam.js"></script>
+<script src="js-03-admin-graticule-draw.js"></script>
+<script src="js-04-layers-export.js"></script>
+<script src="js-05-import.js"></script>
+<script src="js-06-tools-coords-search.js"></script>
+<script src="js-07-cadastre.js"></script>
+</body>
+</html>
