@@ -1,4 +1,4 @@
-  :root{
+:root{
     --bg: #0b1210;
     --panel: #101a17;
     --panel-2: #14201c;
@@ -89,6 +89,14 @@
   #basemapToggle svg{ width:14px; height:14px; flex-shrink:0; }
   #basemapToggle .car{ display:inline-block; transition:transform .15s; }
   #basemapToggle.open .car{ transform:rotate(180deg); }
+  /* The button shows the full basemap name (e.g. "MICROSOFT BING
+     SATELLITE"), which can be wider than the room left beside the
+     "Давхрага" label. Cap it and ellipsize the name so the label stays
+     whole and the row doesn't wrap onto a second line. */
+  #moreRowBasemap .more-lbl{ flex:0 0 auto; }
+  #moreRowBasemap #layerPanelWrap, #moreRowBasemap #basemapToggle{ min-width:0; }
+  #moreRowBasemap #basemapToggle{ flex:1 1 0; justify-content:space-between; }
+  #moreRowBasemap #basemapLabel{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 
   /* ---- "..." overflow menu for secondary toolbar tools ---- */
   #moreWrap{ position:relative; }
@@ -104,20 +112,36 @@
     transition:max-height .2s ease, opacity .15s ease, transform .15s ease;
   }
   #morePanel.open{
-    pointer-events:auto; max-height:80vh; opacity:1; transform:translateX(0);
-    overflow:visible; /* lets nested dropdowns (basemap picker, graticule settings) escape this panel's own bounds */
+    pointer-events:auto; opacity:1; transform:translateX(0);
+    /* The menu now grows with its content up to the visible screen
+       height and scrolls beyond that. The nested dropdowns (basemap,
+       MRPAM/Admin/Cadastre settings, graticule) used to escape the
+       panel's bounds via position:absolute — they now open in-flow
+       under their own row (see the rules below), so clipping with
+       overflow-y:auto no longer cuts them off. */
+    /* #morePanel starts below the fullscreen/undo/redo buttons (roughly
+       140px from the top of the screen), so leave that plus a little
+       bottom breathing room when capping the height. */
+    max-height:calc(100vh - 170px); max-height:calc(100dvh - 170px);
+    overflow-y:auto; overflow-x:hidden;
+    overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
   }
+  #morePanel.open::-webkit-scrollbar{ width:6px; }
+  #morePanel.open::-webkit-scrollbar-thumb{ background:var(--line); border-radius:3px; }
   .more-row{
     display:flex; align-items:center; gap:10px;
     padding:8px 8px; border-radius:10px;
   }
+  /* Only rows that host an in-flow dropdown need to wrap; every other
+     row keeps its original single-line layout untouched. */
+  #moreRowBasemap, #moreRowMrpam, #moreRowAdmin, #moreRowCadastre, #moreRowGraticule{ flex-wrap:wrap; row-gap:0; }
   .more-row:hover{ background:var(--panel-2); }
   .more-icon{
     width:22px; height:22px; flex-shrink:0; color:var(--muted);
     display:flex; align-items:center; justify-content:center;
   }
   .more-icon svg{ width:18px; height:18px; }
-  .more-lbl{ flex:1; font-size:12.5px; color:var(--text); font-weight:500; }
+  .more-lbl{ flex:1; min-width:0; font-size:12.5px; color:var(--text); font-weight:500; }
   .more-toggle{
     pointer-events:auto;
     font-family:'JetBrains Mono',monospace; font-size:10.5px; font-weight:700;
@@ -147,11 +171,54 @@
   #moreRowBasemap #layerPanelWrap, #moreRowGraticule #gratWrap{
     display:flex; align-items:center; gap:6px; flex-shrink:0;
   }
-  /* Re-anchor the basemap/graticule dropdown panels to open from inside
-     the "more" menu, below their own row, instead of the old toolbar-edge
-     positions they used before being nested here. */
-  #moreRowBasemap #layerPanel{ top:100%; right:0; margin-top:6px; }
-  #moreRowGraticule #gratSettingsPanel{ top:100%; right:0; margin-top:6px; }
+
+  /* ---- Nested dropdowns open IN-FLOW under their own row ----
+     The "more" menu now scrolls (overflow-y:auto), which would clip any
+     dropdown that pops out via position:absolute. So each row's wrapper
+     dissolves (display:contents) — its buttons stay on the row's first
+     line next to the label — and the dropdown panel becomes a full-width
+     block on a second line of the same row, growing the menu (which then
+     scrolls) instead of floating outside it. Behavior/IDs are unchanged;
+     the panels' own open/close classes and transitions still apply. */
+  #moreRowBasemap #layerPanelWrap,
+  #moreRowMrpam #mrpamWrap,
+  #moreRowAdmin #adminWrap,
+  #moreRowCadastre #cadastreWrap,
+  #moreRowGraticule #gratWrap{ display:contents; }
+  #moreRowBasemap #layerPanel,
+  #moreRowMrpam #mrpamSettingsPanel,
+  #moreRowAdmin #adminSettingsPanel,
+  #moreRowCadastre #cadastreSettingsPanel,
+  #moreRowGraticule #gratSettingsPanel{
+    position:static; order:99; flex:0 0 100%; width:auto; box-sizing:border-box;
+    /* min-width:0 stops a flex item's automatic minimum size (its widest
+       unbreakable content, e.g. a slider row) from forcing the panel
+       wider than the row it lives in. */
+    min-width:0; max-width:100%;
+    margin:0; transform:none;
+    box-shadow:none; background:var(--panel-2); backdrop-filter:none;
+  }
+  /* Closed panels take no space (max-height:0 from their base rules);
+     drop the margin/padding they'd otherwise still contribute. */
+  #moreRowBasemap #layerPanel:not(.open),
+  #moreRowMrpam #mrpamSettingsPanel:not(.open),
+  #moreRowAdmin #adminSettingsPanel:not(.open),
+  #moreRowCadastre #cadastreSettingsPanel:not(.open),
+  #moreRowGraticule #gratSettingsPanel:not(.open){
+    padding-top:0; padding-bottom:0; border-width:0; margin-top:0;
+  }
+  #moreRowBasemap #layerPanel.open,
+  #moreRowMrpam #mrpamSettingsPanel.open,
+  #moreRowAdmin #adminSettingsPanel.open,
+  #moreRowCadastre #cadastreSettingsPanel.open,
+  #moreRowGraticule #gratSettingsPanel.open{ margin-top:6px; }
+  /* The menu itself provides the scrolling now, so an open sub-panel
+     should show its full content rather than nesting a second scrollbar. */
+  #moreRowBasemap #layerPanel.open,
+  #moreRowMrpam #mrpamSettingsPanel.open,
+  #moreRowAdmin #adminSettingsPanel.open,
+  #moreRowCadastre #cadastreSettingsPanel.open,
+  #moreRowGraticule #gratSettingsPanel.open{ max-height:none; overflow:visible; }
 
   /* ---- Basemap layer picker panel ---- */
   #layerPanelWrap{ position:relative; pointer-events:none; }
@@ -324,7 +391,7 @@
   }
   #gratSettingsPanel.open{ pointer-events:auto; max-height:420px; opacity:1; transform:translateX(0); }
   .gs-row{ display:flex; align-items:center; gap:8px; padding:5px 0; }
-  .gs-row label{ font-size:11px; color:var(--muted); flex:1; }
+  .gs-row label{ font-size:11px; color:var(--muted); flex:1; min-width:0; }
   .gs-row input[type=color]{
     width:28px; height:24px; padding:1px; border:1px solid var(--line); border-radius:5px;
     background:none; cursor:pointer; flex-shrink:0;
@@ -449,7 +516,23 @@
     background:var(--panel); color:var(--text); border-radius:12px; border:1px solid var(--line);
   }
   .mrpam-popup .leaflet-popup-tip{ background:var(--panel); }
-  .mrpam-popup .leaflet-popup-content{ margin:12px 14px; font-family:'Space Grotesk',sans-serif; }
+  .mrpam-popup .leaflet-popup-content{ font-family:'Space Grotesk',sans-serif; }
+  /* Long popups (many properties, e.g. cadastre parcels) scroll inside
+     the bubble instead of running off the screen. Leaflet measures the
+     content to position the popup, so capping the content height keeps
+     its autoPan/placement calculation accurate. The cap follows the
+     viewport height (minus room for the tip and map chrome), with a
+     vh fallback for browsers without dvh support. */
+  .mrpam-popup .leaflet-popup-content{
+    max-height:60vh; max-height:min(60dvh, 420px);
+    overflow-y:auto; overflow-x:hidden;
+    overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
+    /* Padding (not margin) provides the inner spacing, so it scrolls
+       with the content and the scroll area reaches the bubble's edge. */
+    margin:0; padding:12px 10px 12px 14px;
+  }
+  .mrpam-popup .leaflet-popup-content::-webkit-scrollbar{ width:6px; }
+  .mrpam-popup .leaflet-popup-content::-webkit-scrollbar-thumb{ background:var(--line); border-radius:3px; }
   .mrpam-popup dl{ margin:0; font-size:12px; }
   .mrpam-popup dt{ color:var(--muted); font-size:10px; text-transform:uppercase; font-family:'JetBrains Mono',monospace; letter-spacing:0.3px; margin-top:6px; }
   .mrpam-popup dt:first-child{ margin-top:0; }
