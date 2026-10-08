@@ -20,6 +20,16 @@
   var ADMIN_LEVEL_RANK = { aimag:0, soum:1, bag:2 };
   var ADMIN_STROKE_SCALE = { aimag:1.8, soum:1.35, bag:1 };
 
+  // Name labels: every visible aimag / soum / bag shows its name at the middle
+  // of its own area. Sizes shrink with the level so the hierarchy reads at a glance.
+  var adminLabelsOn = getSetting('adminLabelsOn', true);
+  var ADMIN_LABEL_FONT = { aimag:{ px:15, weight:700 }, soum:{ px:13, weight:700 }, bag:{ px:11.5, weight:700 } };
+  // Placement priority: the smallest unit claims the exact centre first, so a
+  // small bag is never pushed out of its own (tiny) polygon by a big aimag label.
+  var ADMIN_LABEL_ORDER = { bag:0, soum:1, aimag:2 };
+  var adminLabelCtx = null;
+  try{ adminLabelCtx = document.createElement('canvas').getContext('2d'); }catch(e){ adminLabelCtx = null; }
+
   var adminLoaded = false;
   var adminVisible = false;
   var adminFeatures = null; // [{bbox:[w,s,e,n], geometry, properties:{LEVEL,NAME,CODE,...}}, ...]
@@ -94,6 +104,206 @@
     }
   });
 
+  // ---------- Name label placement ----------
+  // Rendered width of a label (canvas measureText, so Cyrillic is exact rather
+  // than guessed from the character count), plus a little padding for the halo.
+  function adminLabelWidth(text, lvl){
+    var f = ADMIN_LABEL_FONT[lvl];
+    if(adminLabelCtx){
+      adminLabelCtx.font = f.weight + ' ' + f.px + 'px "Space Grotesk", sans-serif';
+      return adminLabelCtx.measureText(text).width + 6;
+    }
+    return text.length * f.px * 0.62 + 6;
+  }
+
+  // -- tiny planar geometry helpers (lng/lat treated as x/y) --
+  // Area-weighted centroid of a ring (shoelace). Centroids are affine-invariant,
+  // so no cos(lat) correction is needed here. Coordinates are shifted by the
+  // first vertex first to keep the sums numerically well-behaved.
+  function adminRingAreaCentroid(r){
+    var x0 = r[0][0], y0 = r[0][1], a = 0, cx = 0, cy = 0;
+    for(var i=0, j=r.length-1; i<r.length; j=i++){
+      var xi = r[i][0]-x0, yi = r[i][1]-y0, xj = r[j][0]-x0, yj = r[j][1]-y0;
+      var f = xj*yi - xi*yj;
+      a += f; cx += (xj+xi)*f; cy += (yj+yi)*f;
+    }
+    return { area: a/2, c: Math.abs(a) < 1e-18 ? null : [x0 + cx/(3*a), y0 + cy/(3*a)] };
+  }
+  function adminRingHas(r, x, y){
+    var inside = false;
+    for(var i=0, j=r.length-1; i<r.length; j=i++){
+      var xi = r[i][0], yi = r[i][1], xj = r[j][0], yj = r[j][1];
+      if((yi > y) !== (yj > y) && x < (xj-xi)*(y-yi)/(yj-yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  // Inside the outer ring and not inside any hole (e.g. a city enclave).
+  function adminPolyHas(rings, x, y){
+    if(!adminRingHas(rings[0], x, y)) return false;
+    for(var k=1; k<rings.length; k++){ if(adminRingHas(rings[k], x, y)) return false; }
+    return true;
+  }
+  function adminDistToRings(rings, x, y, kx){
+    var best = Infinity;
+    for(var k=0; k<rings.length; k++){
+      var r = rings[k];
+      for(var i=0, j=r.length-1; i<r.length; j=i++){
+        var ax = r[j][0]*kx, ay = r[j][1], bx = r[i][0]*kx, by = r[i][1];
+        var dx = bx-ax, dy = by-ay, px = x*kx-ax, py = y-ay, t = 0, l2 = dx*dx + dy*dy;
+        if(l2 > 0){ t = (px*dx + py*dy)/l2; t = t < 0 ? 0 : (t > 1 ? 1 : t); }
+        var ex = px - t*dx, ey = py - t*dy, d = ex*ex + ey*ey;
+        if(d < best) best = d;
+      }
+    }
+    return Math.sqrt(best);
+  }
+  // For awkward shapes (C-shaped units, units wrapped around an enclave) whose
+  // centre of mass falls outside the polygon: the interior point that is
+  // furthest from every edge, found with a coarse grid and one refinement pass.
+  function adminPolyInnerPoint(rings){
+    var r = rings[0], minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for(var i=0;i<r.length;i++){
+      if(r[i][0] < minX) minX = r[i][0]; if(r[i][0] > maxX) maxX = r[i][0];
+      if(r[i][1] < minY) minY = r[i][1]; if(r[i][1] > maxY) maxY = r[i][1];
+    }
+    var kx = Math.cos(((minY + maxY)/2) * Math.PI/180), best = null, bestD = -1;
+    function scan(x0, x1, y0, y1, n){
+      for(var a=0; a<n; a++){
+        for(var b=0; b<n; b++){
+          var x = x0 + (x1-x0)*(a+0.5)/n, y = y0 + (y1-y0)*(b+0.5)/n;
+          if(!adminPolyHas(rings, x, y)) continue;
+          var d = adminDistToRings(rings, x, y, kx);
+          if(d > bestD){ bestD = d; best = [x, y]; }
+        }
+      }
+    }
+    var N = 24;
+    scan(minX, maxX, minY, maxY, N);
+    if(best){
+      var cw = (maxX-minX)/N, ch = (maxY-minY)/N, bx = best[0], by = best[1];
+      scan(bx-cw, bx+cw, by-ch, by+ch, 10);
+    }
+    return best;
+  }
+  // The point a label belongs at: centre of mass of the polygon's largest part,
+  // or the inner point when that centre isn't actually inside the unit.
+  function adminGeomLabelPoint(geom){
+    if(!geom) return null;
+    var parts = geom.type === 'Polygon' ? [geom.coordinates] : (geom.type === 'MultiPolygon' ? geom.coordinates : []);
+    var bestPart = null, bestA = 0;
+    parts.forEach(function(rings){
+      if(!rings || !rings.length || !rings[0] || rings[0].length < 3) return;
+      var a = Math.abs(adminRingAreaCentroid(rings[0]).area);
+      if(a > bestA){ bestA = a; bestPart = rings; }
+    });
+    if(!bestPart) return null;
+    var cc = adminRingAreaCentroid(bestPart[0]).c;
+    if(cc && adminPolyHas(bestPart, cc[0], cc[1])) return cc;
+    return adminPolyInnerPoint(bestPart);
+  }
+  // Computed once per feature and remembered on it (a new file brings new objects).
+  function adminFeatureLabelPoint(f){
+    if(f._lp === undefined){
+      var p = null;
+      try{ p = adminGeomLabelPoint(f.geometry); }catch(e){ p = null; }
+      f._lp = p || false;
+    }
+    return f._lp || null;
+  }
+  // Centre of the part of a unit that is currently on screen. Used when the
+  // unit's real centre is off-screen (a big aimag/soum zoomed in on), so its
+  // name still shows in the middle of what the person can actually see.
+  function adminVisiblePartPoint(f, bbox){
+    if(typeof turf === 'undefined' || !turf.bboxClip) return null;
+    try{
+      var clipped = turf.bboxClip({ type:'Feature', properties:{}, geometry:f.geometry }, bbox);
+      return adminGeomLabelPoint(clipped && clipped.geometry);
+    }catch(e){ return null; }
+  }
+
+  // The part of the map the person can actually see: the bottom sheet covers
+  // the lower part of the map and the search box the top, so names are only
+  // placed in between (otherwise they'd be hidden behind those panels).
+  function adminLabelRect(){
+    var size = map.getSize(), R = { x0:0, y0:0, x1:size.x, y1:size.y };
+    var mr = map.getContainer().getBoundingClientRect();
+    var sheet = document.getElementById('sheet');
+    if(sheet){
+      var sr = sheet.getBoundingClientRect();
+      if(sr.height > 0 && sr.width >= mr.width*0.5 && sr.top > mr.top) R.y1 = Math.max(R.y0, Math.min(R.y1, sr.top - mr.top - 4));
+    }
+    var sw = document.getElementById('searchWrap');
+    if(sw){
+      var wr = sw.getBoundingClientRect();
+      if(wr.height > 0 && wr.bottom > mr.top) R.y0 = Math.min(Math.max(R.y0, wr.bottom - mr.top + 4), R.y1);
+    }
+    return R;
+  }
+
+  // Container-pixel anchor for one candidate label, or null.
+  function adminLabelAnchor(c, R){
+    var padX = c.w/2 + 3, padY = c.h/2 + 3;
+    var x0 = R.x0 + padX, x1 = R.x1 - padX, y0 = R.y0 + padY, y1 = R.y1 - padY;
+    if(x1 <= x0 || y1 <= y0) return null;
+    var lp = adminFeatureLabelPoint(c.e.feat);
+    if(lp){
+      var cp = map.latLngToContainerPoint([lp[1], lp[0]]);
+      if(cp.x >= x0 && cp.x <= x1 && cp.y >= y0 && cp.y <= y1) return cp;
+    }
+    var nw = map.containerPointToLatLng([x0, y0]), se = map.containerPointToLatLng([x1, y1]);
+    var p = adminVisiblePartPoint(c.e.feat, [nw.lng, se.lat, se.lng, nw.lat]);
+    return p ? map.latLngToContainerPoint([p[1], p[0]]) : null;
+  }
+
+  function addAdminLabels(visible){
+    if(!adminLabelsOn) return;
+    var R = adminLabelRect();
+    if(R.x1 - R.x0 < 30 || R.y1 - R.y0 < 30) return;
+
+    // 1) Only units big enough on screen to hold their own name get one —
+    //    tiny polygons stay unlabelled until the person zooms in on them.
+    var cands = [];
+    visible.forEach(function(e){
+      var name = e.feat.properties && e.feat.properties.NAME;
+      var font = ADMIN_LABEL_FONT[e.lvl];
+      if(!name || !font || !e.feat.bbox) return;
+      var w = adminLabelWidth(String(name), e.lvl), h = font.px + 4, bb = e.feat.bbox;
+      var tl = map.latLngToContainerPoint([bb[3], bb[0]]), br = map.latLngToContainerPoint([bb[1], bb[2]]);
+      var ext = { x0:Math.max(tl.x, R.x0), x1:Math.min(br.x, R.x1), y0:Math.max(tl.y, R.y0), y1:Math.min(br.y, R.y1) };
+      if(ext.x1 - ext.x0 < w || ext.y1 - ext.y0 < h*1.5) return;
+      cands.push({ e:e, name:String(name), lvl:e.lvl, w:w, h:h, ext:ext, area:(ext.x1-ext.x0)*(ext.y1-ext.y0) });
+    });
+    cands.sort(function(a, b){ return ADMIN_LABEL_ORDER[a.lvl] - ADMIN_LABEL_ORDER[b.lvl] || b.area - a.area; });
+
+    // 2) Place them. When several units share the same middle (e.g. a bag, its
+    //    soum and its aimag all fill the screen) the labels stack vertically
+    //    instead of hiding one another; a shifted label must stay inside its own
+    //    unit's on-screen extent, and a label that still collides is dropped.
+    var placed = [], slots = [0, -1, 1, -2, 2];
+    cands.forEach(function(c){
+      var p = adminLabelAnchor(c, R);
+      if(!p) return;
+      for(var s=0; s<slots.length; s++){
+        var cx = p.x, cy = p.y + slots[s]*(c.h + 1);
+        var rc = { x0:cx - c.w/2, x1:cx + c.w/2, y0:cy - c.h/2, y1:cy + c.h/2 };
+        if(rc.x0 < R.x0 || rc.x1 > R.x1 || rc.y0 < R.y0 || rc.y1 > R.y1) continue;
+        if(slots[s] !== 0 && (rc.x0 < c.ext.x0 || rc.x1 > c.ext.x1 || rc.y0 < c.ext.y0 || rc.y1 > c.ext.y1)) continue;
+        var clash = placed.some(function(q){ return rc.x0 < q.x1 + 2 && rc.x1 > q.x0 - 2 && rc.y0 < q.y1 + 2 && rc.y1 > q.y0 - 2; });
+        if(clash) continue;
+        placed.push(rc);
+        var f = ADMIN_LABEL_FONT[c.lvl], col = ADMIN_LEVEL_COLOR[c.lvl] || '#ffffff';
+        L.marker(map.containerPointToLatLng([cx, cy]), {
+          icon: L.divIcon({
+            className: 'admin-label', iconSize: [0, 0],
+            html: '<span class="admin-label-txt" style="font-size:'+f.px+'px;font-weight:'+f.weight+';color:'+col+'">'+escapeXml(c.name)+'</span>'
+          }),
+          interactive: false, keyboard: false, zIndexOffset: -1000
+        }).addTo(adminLayerGroup);
+        break;
+      }
+    });
+  }
+
   function updateAdminOverlay(){
     adminLayerGroup.clearLayers();
     if(!adminLoaded || !adminVisible){ adminHint(''); renderLegend(); return; }
@@ -166,12 +376,27 @@
       }).addTo(adminLayerGroup);
     });
 
+    addAdminLabels(visible);
+
     renderLegend();
     adminSel.refreshUi();
   }
 
   var debouncedAdminUpdate = debounce(updateAdminOverlay, 250);
   map.on('moveend zoomend', debouncedAdminUpdate);
+
+  // The bottom sheet hides part of the map, and it changes height (collapse,
+  // switching tabs, results appearing) without the map moving — so re-place the
+  // names whenever its size changes, otherwise they could end up behind it.
+  (function watchSheetForLabels(){
+    var sheetEl = document.getElementById('sheet');
+    if(!sheetEl) return;
+    if(typeof ResizeObserver === 'function'){
+      new ResizeObserver(function(){ debouncedAdminUpdate(); }).observe(sheetEl);
+    } else {
+      sheetEl.addEventListener('transitionend', function(ev){ if(ev.target === sheetEl) debouncedAdminUpdate(); });
+    }
+  })();
 
   function loadAdminText(text, silent, sourceLabel){
     adminBtn.classList.add('loading');
@@ -354,6 +579,14 @@
   wireAdminLevelToggle(alShowAimag, 'aimag');
   wireAdminLevelToggle(alShowSoum, 'soum');
   wireAdminLevelToggle(alShowBag, 'bag');
+
+  var alShowLabels = document.getElementById('alShowLabels');
+  alShowLabels.checked = adminLabelsOn;
+  alShowLabels.addEventListener('change', function(){
+    adminLabelsOn = alShowLabels.checked;
+    saveSetting('adminLabelsOn', adminLabelsOn);
+    updateAdminOverlay();
+  });
 
   var alWeight = document.getElementById('alWeight');
   var alWeightVal = document.getElementById('alWeightVal');
