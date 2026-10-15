@@ -1,5 +1,7 @@
   // ---------- Draw / recompute (multi-shape) ----------
-  function redrawAll(){
+  // opts.noFit: redraw without zooming the map to the shapes (used when the
+  // person is looking somewhere on purpose, e.g. right after stopping a GPS track).
+  function redrawAll(opts){
     drawLayer.clearLayers();
     document.getElementById('tapCount').textContent = shapes[tapShapeIndex] ? shapes[tapShapeIndex].points.length : 0;
 
@@ -80,7 +82,7 @@
     if(mode === 'coords') renderCoordsPanel();
     renderLegend();
 
-    if(allLatLngs.length && !trackActive && !tapDrawActive){
+    if(allLatLngs.length && !trackActive && !tapDrawActive && !(opts && opts.noFit)){
       map.fitBounds(L.latLngBounds(allLatLngs), { padding:[60,60], maxZoom:18 });
     }
 
@@ -574,6 +576,11 @@
       html += '</div>';
     }
 
+    // The cards below are measurements only (area, length, perimeter, vertex
+    // count). The coordinates themselves are shown once, in the «Солбицол» tab,
+    // in whichever format is chosen there — repeating them here (and again for
+    // single points) just duplicated that list. A lone point has nothing to
+    // measure, so it gets no card; it still counts in the summary above.
     nonEmpty.forEach(function(entry, idx){
       var pts = entry.shape.points;
       var isTrack = !!entry.shape.isTrack;
@@ -581,17 +588,10 @@
       var shapeName = entry.shape.name;
       var isHidden = entry.shape.visible === false;
       var kind = shapeKind(entry.shape);
+      if(kind === 'point') return;
       var typeLabel, big, small, grid;
 
-      if(kind === 'point'){
-        typeLabel = 'ЦЭГ';
-        big = 'Ганц цэг';
-        small = 'Талбай/урт тооцоологдохгүй';
-        grid = [
-          {k:'ӨРГӨРӨГ', v: fmt(pts[0].lat,6)},
-          {k:'УРТРАГ', v: fmt(pts[0].lng,6)}
-        ];
-      } else if(kind === 'line'){
+      if(kind === 'line'){
         typeLabel = isTrack ? 'GPS ЗАМ' : 'ШУГАМ';
         var d = pathLengthMeters(pts);
         var hl = humanLen(d);
@@ -626,24 +626,10 @@
         html += '<div class="item"><div class="k">'+g.k+'</div><div class="v">'+g.v+'</div></div>';
       });
       html += '</div>';
-      html += '<div class="mini-coords">';
-      if(isTrack && pts.length > 6){
-        [pts[0], pts[1]].forEach(function(p, i){
-          html += '<div class="mini-coord-row"><span class="n">'+(i+1)+'</span>'+fmt(p.lat,6)+', '+fmt(p.lng,6)+'</div>';
-        });
-        html += '<div class="mini-coord-row" style="opacity:0.6">⋯ дунд зэргийн '+(pts.length-4)+' цэг ⋯</div>';
-        [pts[pts.length-2], pts[pts.length-1]].forEach(function(p, i){
-          html += '<div class="mini-coord-row"><span class="n">'+(pts.length-1+i)+'</span>'+fmt(p.lat,6)+', '+fmt(p.lng,6)+'</div>';
-        });
-      } else {
-        pts.forEach(function(p, i){
-          html += '<div class="mini-coord-row"><span class="n">'+(i+1)+'</span>'+fmt(p.lat,6)+', '+fmt(p.lng,6)+'</div>';
-        });
-      }
-      html += '</div>';
       html += '</div>';
     });
 
+    if(!html){ results.classList.remove('show'); results.innerHTML = ''; return; }
     results.innerHTML = html;
   }
 

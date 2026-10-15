@@ -275,32 +275,58 @@
     });
     cands.sort(function(a, b){ return ADMIN_LABEL_ORDER[a.lvl] - ADMIN_LABEL_ORDER[b.lvl] || b.area - a.area; });
 
-    // 2) Place them. When several units share the same middle (e.g. a bag, its
-    //    soum and its aimag all fill the screen) the labels stack vertically
-    //    instead of hiding one another; a shifted label must stay inside its own
-    //    unit's on-screen extent, and a label that still collides is dropped.
-    var placed = [], slots = [0, -1, 1, -2, 2];
+    // 2) Place them. When several units share the same middle (a bag, its soum
+    //    and its aimag all fill the screen) the labels stack so they read
+    //    top to bottom as АЙМАГ, СУМ, БАГ: the bag keeps the exact centre (it is
+    //    the smallest polygon, so it can least afford to move), the soum slides
+    //    up just far enough to clear it, and the aimag slides up above both.
+    //    A label that was moved must stay inside its own unit's on-screen
+    //    extent, and one that still cannot be placed is dropped.
+    var placed = [], GAP = 2;
+    // Preferred slide directions per level: 0 = stay put, -1 = up, +1 = down.
+    var DIRS = { bag:[0, 1, -1], soum:[0, -1, 1], aimag:[0, -1, 1] };
+    function firstClash(rc){
+      for(var i=0; i<placed.length; i++){
+        var q = placed[i];
+        if(rc.x0 < q.x1 + GAP && rc.x1 > q.x0 - GAP && rc.y0 < q.y1 + GAP && rc.y1 > q.y0 - GAP) return q;
+      }
+      return null;
+    }
+    // Slide `base` vertically (dir -1 up / +1 down) just far enough to clear every placed label.
+    function slide(base, dir){
+      var rc = base;
+      for(var it=0; it<12; it++){
+        var q = firstClash(rc);
+        if(!q) return rc;
+        var move = (dir < 0 ? rc.y1 - (q.y0 - GAP) : (q.y1 + GAP) - rc.y0) + 0.5;
+        rc = { x0:rc.x0, x1:rc.x1, y0:rc.y0 + dir*move, y1:rc.y1 + dir*move };
+        if(rc.y1 < R.y0 - 200 || rc.y0 > R.y1 + 200) return null;
+      }
+      return null;
+    }
+    function within(rc, box){ return rc.x0 >= box.x0 && rc.x1 <= box.x1 && rc.y0 >= box.y0 && rc.y1 <= box.y1; }
+
     cands.forEach(function(c){
       var p = adminLabelAnchor(c, R);
       if(!p) return;
-      for(var s=0; s<slots.length; s++){
-        var cx = p.x, cy = p.y + slots[s]*(c.h + 1);
-        var rc = { x0:cx - c.w/2, x1:cx + c.w/2, y0:cy - c.h/2, y1:cy + c.h/2 };
-        if(rc.x0 < R.x0 || rc.x1 > R.x1 || rc.y0 < R.y0 || rc.y1 > R.y1) continue;
-        if(slots[s] !== 0 && (rc.x0 < c.ext.x0 || rc.x1 > c.ext.x1 || rc.y0 < c.ext.y0 || rc.y1 > c.ext.y1)) continue;
-        var clash = placed.some(function(q){ return rc.x0 < q.x1 + 2 && rc.x1 > q.x0 - 2 && rc.y0 < q.y1 + 2 && rc.y1 > q.y0 - 2; });
-        if(clash) continue;
-        placed.push(rc);
-        var f = ADMIN_LABEL_FONT[c.lvl], col = ADMIN_LEVEL_COLOR[c.lvl] || '#ffffff';
-        L.marker(map.containerPointToLatLng([cx, cy]), {
-          icon: L.divIcon({
-            className: 'admin-label', iconSize: [0, 0],
-            html: '<span class="admin-label-txt" style="font-size:'+f.px+'px;font-weight:'+f.weight+';color:'+col+'">'+escapeXml(c.name)+'</span>'
-          }),
-          interactive: false, keyboard: false, zIndexOffset: -1000
-        }).addTo(adminLayerGroup);
-        break;
+      var base = { x0:p.x - c.w/2, x1:p.x + c.w/2, y0:p.y - c.h/2, y1:p.y + c.h/2 };
+      var dirs = DIRS[c.lvl], rc = null;
+      for(var d=0; d<dirs.length && !rc; d++){
+        var cand = dirs[d] === 0 ? (firstClash(base) ? null : base) : slide(base, dirs[d]);
+        if(!cand || !within(cand, R)) continue;
+        if(dirs[d] !== 0 && !within(cand, c.ext)) continue;
+        rc = cand;
       }
+      if(!rc) return;
+      placed.push(rc);
+      var f = ADMIN_LABEL_FONT[c.lvl], col = ADMIN_LEVEL_COLOR[c.lvl] || '#ffffff';
+      L.marker(map.containerPointToLatLng([(rc.x0 + rc.x1)/2, (rc.y0 + rc.y1)/2]), {
+        icon: L.divIcon({
+          className: 'admin-label', iconSize: [0, 0],
+          html: '<span class="admin-label-txt" style="font-size:'+f.px+'px;font-weight:'+f.weight+';color:'+col+'">'+escapeXml(c.name)+'</span>'
+        }),
+        interactive: false, keyboard: false, zIndexOffset: -1000
+      }).addTo(adminLayerGroup);
     });
   }
 
@@ -929,8 +955,12 @@
   // ---------- State ----------
   // shapes = array of { points: [{lat,lng}, ...] }. Tap mode edits shapes[tapShapeIndex].
   // Text mode can produce many shapes (one per blank-line-separated block).
+  // Declared here, before the restore call below. It used to be declared further
+  // down, so at this point it was still undefined and the restore looked up the
+  // key "undefined" — nothing saved was ever found again after a reload.
+  var SHAPES_KEY = 'talbaiHemjigchShapes_v1';
   var shapes = restorePersistedShapes() || [ { points: [] } ];
-  var mode = 'tap'; // 'tap' | 'text'
+  var mode = 'tap'; // 'tap' | 'layers' | 'coords'
   var tapDrawActive = false;
   var tapShapeIndex = 0; // which shapes[] entry tap-draw currently edits
   var lngLatOrder = getSetting('lngLatOrder', false); // false = lat,lng ; true = lng,lat
@@ -1141,7 +1171,6 @@
   // so a refresh, closed tab, or crash never wipes out work someone spent
   // real time on in the field. Debounced since redrawAll() can fire many
   // times a second during active GPS tracking.
-  var SHAPES_KEY = 'talbaiHemjigchShapes_v1';
   var persistShapesDebounced = debounce(function(){
     try{
       // Skip persisting an all-empty single default shape — no point
