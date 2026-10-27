@@ -235,7 +235,8 @@
     var sw = document.getElementById('searchWrap');
     if(sw){
       var wr = sw.getBoundingClientRect();
-      if(wr.height > 0 && wr.bottom > mr.top) R.y0 = Math.min(Math.max(R.y0, wr.bottom - mr.top + 4), R.y1);
+      // (with the side panel the search box sits over the panel, not over the map)
+      if(wr.height > 0 && wr.bottom > mr.top && wr.right > mr.left) R.y0 = Math.min(Math.max(R.y0, wr.bottom - mr.top + 4), R.y1);
     }
     return R;
   }

@@ -543,7 +543,24 @@
     }
   });
 
+  // The single line shown when the panel is folded down to its "peek" state.
+  function renderSheetSummary(totals){
+    var el = document.getElementById('sheetSummaryText');
+    if(!el) return;
+    var n = totals.polyCount + totals.lineCount + totals.pointCount;
+    if(!n){ el.textContent = 'Дүрс алга'; return; }
+    var parts = [n + ' дүрс'];
+    if(totals.polyCount) parts.push(fmt(totals.totalPolyArea / 10000, 2) + ' га');
+    if(totals.lineCount) parts.push(humanLen(totals.totalLineLen).big);
+    el.textContent = parts.join(' · ');
+  }
+
+  // Which result rows are open (by shape index) — kept across redraws, otherwise
+  // every new point would fold them shut again.
+  var resultRowsOpen = {};
+
   function renderResultsPanel(totals){
+    renderSheetSummary(totals);
     var results = document.getElementById('results');
     var exportBar = document.getElementById('exportBar');
     var nonEmpty = [];
@@ -614,24 +631,33 @@
         ];
       }
 
-      html += '<div class="result-card" style="border:1px solid '+color+'55; background:linear-gradient(135deg,'+color+'22, transparent)'+(isHidden?';opacity:0.55':'')+'">';
-      if(nonEmpty.length > 1){
-        html += '<div class="shape-tag"><span class="swatch" style="background:'+color+'"></span>'+escapeXml(shapeName)+(isTrack?' · GPS':'')+(isHidden?' · нуугдсан':'')+'</div>';
-      }
-      html += '<span class="type" style="background:'+color+'; color:#0b1210">'+typeLabel+'</span>';
-      html += '<div class="big">'+big+'</div>';
-      html += '<div class="small">'+small+'</div>';
-      html += '<div class="result-grid">';
+      var isOpen = !!resultRowsOpen[entry.colorIdx];
+      html += '<div class="result-card result-row'+(isOpen?' open':'')+'" data-idx="'+entry.colorIdx+'" style="border:1px solid '+color+'55; background:linear-gradient(135deg,'+color+'18, transparent)'+(isHidden?';opacity:0.55':'')+'">';
+      html += '<button type="button" class="rr-head" aria-expanded="'+(isOpen?'true':'false')+'">';
+      html +=   '<span class="swatch" style="background:'+color+'"></span>';
+      html +=   '<span class="rr-name">'+escapeXml(shapeName)+(isHidden?' · нуугдсан':'')+'</span>';
+      html +=   '<span class="rr-type" style="background:'+color+'">'+typeLabel+'</span>';
+      html +=   '<span class="rr-big">'+big+'</span><span class="rr-chev">▾</span>';
+      html += '</button>';
+      html += '<div class="rr-body"><div class="small">'+small+'</div><div class="result-grid">';
       grid.forEach(function(g){
         html += '<div class="item"><div class="k">'+g.k+'</div><div class="v">'+g.v+'</div></div>';
       });
-      html += '</div>';
+      html += '</div></div>';
       html += '</div>';
     });
 
     if(!html){ results.classList.remove('show'); results.innerHTML = ''; return; }
     results.innerHTML = html;
   }
+
+  document.getElementById('results').addEventListener('click', function(e){
+    var head = e.target.closest ? e.target.closest('.rr-head') : null;
+    if(!head) return;
+    var row = head.parentNode, open = row.classList.toggle('open');
+    head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    resultRowsOpen[row.getAttribute('data-idx')] = open;
+  });
 
   // ---------- Export: KML / GPX / SHP ----------
   function escapeXml(str){

@@ -11,6 +11,7 @@
       document.getElementById('crosshair').style.display = (mode==='tap' && !tapDrawActive) ? 'block' : 'none';
       if(mode === 'layers') renderLayersPanel();
       if(mode === 'coords') renderCoordsPanel();
+      expandSheetIfPeek();
     });
   });
   // ---------- Fullscreen toggle ----------
@@ -56,10 +57,114 @@
 
   document.getElementById('crosshair').style.display = 'block';
 
-  // ---------- Drag handle collapse ----------
-  document.getElementById('dragHandle').addEventListener('click', function(){
-    document.getElementById('sheet').classList.toggle('collapsed');
+  // ---------- The panel: bottom sheet on phones, side panel on wide screens ----------
+  // Same element, same content; CSS picks the layout from the screen shape (see the
+  // PHONE / SIDE blocks in style.css) and this code only mirrors that choice.
+  var sheetEl = document.getElementById('sheet');
+  var SNAP_ORDER = ['peek', 'half', 'full'];     // folded down, half height, tall
+  var sidePanelMQ = window.matchMedia('(min-width: 900px), (min-width: 600px) and (orientation: landscape)');
+  function isSidePanel(){ return sidePanelMQ.matches; }
+  function currentSnap(){ return sheetEl.getAttribute('data-snap') || 'half'; }
+  function setSnap(snap, remember){
+    if(SNAP_ORDER.indexOf(snap) === -1) return;
+    sheetEl.setAttribute('data-snap', snap);
+    if(remember) saveSetting('sheetSnap', snap);        // only the person's own choice is remembered
+  }
+  function stepSnap(dir, remember){
+    var i = Math.max(0, Math.min(SNAP_ORDER.length - 1, SNAP_ORDER.indexOf(currentSnap()) + dir));
+    setSnap(SNAP_ORDER[i], remember);
+  }
+  function expandSheetIfPeek(){ if(!isSidePanel() && currentSnap() === 'peek') setSnap('half', false); }
+  // The map is what the person is working on, so tapping it folds the panel away.
+  function collapseSheetForMap(){ if(!isSidePanel() && currentSnap() !== 'peek') setSnap('peek', false); }
+  setSnap(getSetting('sheetSnap', 'half'), false);
+  map.on('click', collapseSheetForMap);
+
+  // Tap the handle (or the summary line) to fold / unfold; swipe it up or down for a step.
+  function attachSheetGestures(el){
+    var startY = null;
+    el.addEventListener('pointerdown', function(e){
+      if(isSidePanel()) return;
+      if(e.target.closest && e.target.closest('button')) return;   // a button inside is just a button
+      startY = e.clientY;
+      try{ el.setPointerCapture(e.pointerId); }catch(err){}
+    });
+    el.addEventListener('pointerup', function(e){
+      if(startY === null) return;
+      var dy = e.clientY - startY; startY = null;
+      if(dy < -24) stepSnap(1, true);                    // swipe up: taller
+      else if(dy > 24) stepSnap(-1, true);               // swipe down: shorter
+      else setSnap(currentSnap() === 'peek' ? 'half' : (currentSnap() === 'full' ? 'half' : 'peek'), true);
+    });
+    el.addEventListener('pointercancel', function(){ startY = null; });
+  }
+  var dragHandleEl = document.getElementById('dragHandle');
+  dragHandleEl.setAttribute('role', 'button'); dragHandleEl.setAttribute('tabindex', '0');
+  dragHandleEl.setAttribute('aria-label', 'Самбарыг нугалах / дэлгэх');
+  dragHandleEl.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); setSnap(currentSnap() === 'peek' ? 'half' : 'peek', true); }
   });
+  attachSheetGestures(dragHandleEl);
+  attachSheetGestures(document.getElementById('sheetSummary'));
+
+  // Left panel (wide screens): fold it away to give the map the whole width.
+  var panelToggle = document.getElementById('panelToggle');
+  function setPanelCollapsed(on){
+    document.body.classList.toggle('panel-collapsed', on);
+    panelToggle.textContent = on ? '›' : '‹';
+    saveSetting('panelCollapsed', on);
+  }
+  panelToggle.addEventListener('click', function(){ setPanelCollapsed(!document.body.classList.contains('panel-collapsed')); });
+  setPanelCollapsed(!!getSetting('panelCollapsed', false));
+
+  // Keep --sheet-h (used to lift the map controls and the toast above the sheet) in step
+  // with the panel's real height, and keep Leaflet's idea of the map size in step with
+  // the map element (it shrinks beside the side panel).
+  (function followLayout(){
+    var root = document.documentElement;
+    function applySheetHeight(){
+      var sideOrHidden = isSidePanel() || document.body.classList.contains('fs-active');
+      root.style.setProperty('--sheet-h', sideOrHidden ? '0px' : Math.round(sheetEl.getBoundingClientRect().height) + 'px');
+    }
+    if(typeof ResizeObserver === 'function'){
+      new ResizeObserver(applySheetHeight).observe(sheetEl);
+      new ResizeObserver(debounce(function(){ map.invalidateSize({ animate:false }); }, 60)).observe(document.getElementById('map'));
+    }
+    if(sidePanelMQ.addEventListener) sidePanelMQ.addEventListener('change', applySheetHeight);
+    window.addEventListener('resize', applySheetHeight);
+    applySheetHeight();
+  })();
+
+  // Small helpers on the compact tap tab and the tabs row
+  var btnTapHelp = document.getElementById('btnTapHelp'), tapHintEl = document.getElementById('tapHint');
+  btnTapHelp.addEventListener('click', function(){
+    var show = tapHintEl.hidden;
+    tapHintEl.hidden = !show;
+    btnTapHelp.setAttribute('aria-expanded', show ? 'true' : 'false');
+  });
+  var fileBtn = document.getElementById('fileBtn'), fileBarEl = document.getElementById('fileBar');
+  fileBtn.addEventListener('click', function(){
+    var open = !fileBarEl.classList.contains('open');
+    fileBarEl.classList.toggle('open', open);
+    fileBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    expandSheetIfPeek();
+  });
+  function setTapDrawLabel(on){
+    btnTapDraw.querySelector('.ti').textContent = on ? '✓' : '✛';
+    btnTapDraw.querySelector('.tt').textContent = on ? 'Дуусгах' : 'Зурах';
+    // While drawing the panel is folded away to free the map, so the way to finish
+    // has to be on the folded line too.
+    document.getElementById('btnPeekDone').hidden = !on;
+  }
+  document.getElementById('btnPeekDone').addEventListener('click', function(){ btnTapDraw.click(); });
+
+  // About dialog (opened from the ⋮ menu)
+  var aboutModal = document.getElementById('aboutModal');
+  function closeAbout(){ aboutModal.classList.remove('show'); }
+  document.getElementById('aboutBtn').addEventListener('click', function(){ aboutModal.classList.add('show'); closeMorePanel(); });
+  document.getElementById('aboutClose').addEventListener('click', closeAbout);
+  aboutModal.addEventListener('click', function(e){ if(e.target === aboutModal) closeAbout(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && aboutModal.classList.contains('show')) closeAbout(); });
 
   // ---------- Tap mode buttons ----------
   var btnTapDraw = document.getElementById('btnTapDraw');
@@ -80,7 +185,8 @@
     }
     tapDrawActive = true;
     btnTapDraw.classList.add('active');
-    btnTapDraw.textContent = '✓ Дуусгах';
+    setTapDrawLabel(true);
+    collapseSheetForMap();
     map.getContainer().style.cursor = 'crosshair';
     crosshairEl.style.display = 'none'; // drag-to-center crosshair not needed in click-to-add mode
     // Exclusive with the distance-measure tool, which also listens for map clicks.
@@ -93,7 +199,7 @@
   function stopTapDraw(){
     tapDrawActive = false;
     btnTapDraw.classList.remove('active');
-    btnTapDraw.textContent = '✛ Товшиж зурах';
+    setTapDrawLabel(false);
     map.getContainer().style.cursor = '';
     if(mode === 'tap') crosshairEl.style.display = 'block';
     map.off('click', mapTapDrawClick);
@@ -1061,7 +1167,7 @@
     var text = this.value;
     searchWrap.classList.toggle('has-text', text.length > 0);
     clearTimeout(searchDebounceTimer);
-    if(!text.trim()){ closeSearchResults(); return; }
+    if(!text.trim()){ showSearchExamples(); return; }
 
     // A parseable coordinate pair takes priority and shows instantly —
     // no need to wait on a network round trip for something we can already
@@ -1121,12 +1227,40 @@
   searchClearBtn.addEventListener('click', function(){
     searchInput.value = '';
     searchWrap.classList.remove('has-text');
-    closeSearchResults();
     searchInput.focus();
+    showSearchExamples();
   });
 
+  // What can be typed here: shown under the empty box, each line fills the box when tapped.
+  var SEARCH_EXAMPLES = [
+    { text:'Улаанбаатар',          sub:'газрын нэр' },
+    { text:'47.9184, 106.9177',    sub:'өргөрөг, уртраг' },
+    { text:'48N 636589 5303082',   sub:'UTM: бүс, Easting, Northing' }
+  ];
+  function showSearchExamples(){
+    var rows = SEARCH_EXAMPLES.slice();
+    // A real license number from the loaded MRPAM file, when there is one.
+    var lic = (typeof mrpamFeatures !== 'undefined' && mrpamFeatures) ? mrpamFeatures.filter(function(f){ return f.properties && (f.properties.code || f.properties.name); })[0] : null;
+    if(lic) rows.push({ text:String(lic.properties.code || lic.properties.name), sub:'лицензийн дугаар (MRPAM)' });
+    var html = '<div class="search-ex-head">Жишээ</div>';
+    rows.forEach(function(r, i){
+      html += '<div class="search-ex-row" data-ex="'+i+'"><div class="ex-main">'+escapeXml(r.text)+'</div><div class="ex-sub">'+escapeXml(r.sub)+'</div></div>';
+    });
+    if(!lic) html += '<div class="search-ex-row" style="cursor:default"><div class="ex-main">Лицензийн дугаар</div><div class="ex-sub">MRPAM-ийн файлыг ачаалсан үед хайна</div></div>';
+    searchResultsEl.innerHTML = html;
+    openSearchResults();
+    Array.prototype.forEach.call(searchResultsEl.querySelectorAll('.search-ex-row[data-ex]'), function(el){
+      el.addEventListener('click', function(){
+        searchInput.value = rows[parseInt(el.getAttribute('data-ex'), 10)].text;
+        searchWrap.classList.add('has-text');
+        searchInput.dispatchEvent(new Event('input'));
+        searchInput.focus();
+      });
+    });
+  }
   searchInput.addEventListener('focus', function(){
-    if(this.value.trim() && searchResultsEl.innerHTML) openSearchResults();
+    if(!this.value.trim()) showSearchExamples();
+    else if(searchResultsEl.innerHTML) openSearchResults();
   });
 
   document.addEventListener('click', function(e){

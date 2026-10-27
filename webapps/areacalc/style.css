@@ -624,26 +624,33 @@
   #crosshair svg{ width:100%; height:100%; filter:drop-shadow(0 0 4px rgba(0,0,0,0.6)); }
 
   /* ---- Bottom sheet ---- */
+  /* ---- The panel (#sheet) ----
+     Phone / portrait: a bottom sheet with three snap states — peek (tabs and one
+     summary line), half and full — chosen with data-snap, see the PHONE block at the
+     end of this file. Wide / landscape screens turn it into a left side panel
+     (SIDE block at the end). Both are the same element with the same content. */
   #sheet{
-    position:relative; z-index:600;
+    position:absolute; left:0; right:0; bottom:0; z-index:600;
     background:var(--panel);
     border-top-left-radius:20px; border-top-right-radius:20px;
-    box-shadow: 0 -8px 30px rgba(0,0,0,0.45);
-    padding: 10px 16px max(14px, env(safe-area-inset-bottom)) 16px;
-    max-height:62vh; overflow-y:auto;
-    transition: max-height 0.25s ease;
+    box-shadow:0 -8px 30px rgba(0,0,0,0.45);
+    padding:8px 14px max(12px, env(safe-area-inset-bottom)) 14px;
+    height:clamp(240px, 40vh, 420px); max-height:none;
+    overflow-y:auto; overscroll-behavior:contain;
+    transition:height 0.25s ease;
     border-top:1px solid var(--line);
   }
-  #sheet.collapsed{ max-height:96px; overflow:hidden; }
   #dragHandle{
-    width:40px; height:4px; border-radius:2px; background:var(--line);
-    margin:2px auto 12px auto; cursor:pointer;
+    position:relative; width:44px; height:5px; border-radius:3px; background:var(--line);
+    margin:2px auto 10px auto; cursor:pointer; touch-action:none;
   }
+  /* a much bigger grab area than the 5px bar itself */
+  #dragHandle::before{ content:''; position:absolute; left:-44px; right:-44px; top:-10px; bottom:-12px; }
 
   /* Mode tabs */
-  .tabs{ display:flex; gap:4px; background:var(--panel-2); padding:4px; border-radius:12px; margin-bottom:12px;}
+  .tabs{ display:flex; gap:4px; background:var(--panel-2); padding:3px; border-radius:12px; margin-bottom:8px;}
   .tab{
-    flex:1; text-align:center; padding:9px 4px; border-radius:9px; font-size:11.5px; font-weight:600;
+    flex:1; text-align:center; padding:8px 4px; border-radius:9px; font-size:11.5px; font-weight:600;
     color:var(--muted); cursor:pointer; user-select:none; transition:all .15s;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
@@ -652,16 +659,7 @@
   .panel{ display:none; }
   .panel.active{ display:block; }
 
-  /* Tap mode */
-  #tapStats{
-    display:flex; gap:10px; margin-bottom:12px;
-  }
-  .stat-chip{
-    flex:1; background:var(--panel-2); border:1px solid var(--line); border-radius:12px;
-    padding:10px 12px;
-  }
-  .stat-chip .k{ font-size:10px; color:var(--muted); font-family:'JetBrains Mono',monospace; text-transform:uppercase; letter-spacing:0.5px;}
-  .stat-chip .v{ font-size:17px; font-weight:700; font-family:'JetBrains Mono',monospace; color:var(--teal); margin-top:2px;}
+  /* Tap mode: see the compact controls at the end of this file */
 
   .btnrow{ display:flex; gap:8px; flex-wrap:wrap; }
   button{
@@ -723,7 +721,7 @@
   .switch.on .knob{ left:18px; background:var(--accent); }
 
   /* Results */
-  #results{ margin-top:14px; display:none; }
+  #results{ margin-top:8px; display:none; }
   #results.show{ display:block; }
   .result-card{
     background:var(--panel-2);
@@ -950,7 +948,7 @@
 
   /* toast for GPS */
   #toast{
-    position:absolute; bottom:calc(62vh + 10px); left:50%; transform:translateX(-50%);
+    position:absolute; bottom:calc(var(--sheet-h, 0px) + 10px); left:50%; transform:translateX(-50%);
     background:var(--panel-2); border:1px solid var(--line); color:var(--text);
     padding:9px 16px; border-radius:16px; font-size:12px; z-index:700; opacity:0; pointer-events:none;
     transition:opacity .2s; max-width:min(86vw, 360px); width:max-content; text-align:center; line-height:1.5;
@@ -1111,3 +1109,137 @@
   .st-actions{ display:flex; flex-direction:column; gap:5px; flex-shrink:0; }
   .st-del.confirm{ background:#ff5c5c22; border-color:#ff5c5c88; color:#ff8a8a; }
   .more-count{ color:var(--muted); font-size:11px; font-weight:400; }
+
+  /* ======================================================================
+     Panel layout: size variables, compact controls, snap states
+     ====================================================================== */
+  :root{ --sheet-h:0px; --panel-full:0px; --panel-w:0px; }
+
+  /* Map controls sit just above the bottom sheet (--sheet-h follows the panel frame by frame). */
+  .leaflet-bottom{ bottom:var(--sheet-h, 0px); }
+
+  .tab-icon{
+    flex:0 0 38px; padding:0; border-radius:9px; background:transparent; color:var(--muted);
+    font-size:16px; font-weight:700;
+  }
+  .tab-icon[aria-expanded="true"]{ background:var(--teal); color:#062b22; }
+  #fileBar{
+    display:none; margin-bottom:10px; padding:8px 10px;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:12px;
+  }
+  #fileBar.open{ display:block; }
+  #fileBar .export-bar{ margin-bottom:6px; }
+  #fileBar .export-bar:last-child{ margin-bottom:0; }
+
+  /* One line shown when the panel is folded down to its "peek" state */
+  #sheetSummary{
+    display:none; align-items:center; gap:10px; padding:2px 6px 0; touch-action:none;
+    font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--muted);
+  }
+  #sheetSummaryText{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .peek-done{ flex-shrink:0; padding:5px 12px; border-radius:8px; background:var(--teal); border:none; color:#062b22; font-size:11.5px; font-weight:700; }
+  .peek-done[hidden]{ display:none; }
+
+  /* ---- Tap tab: status line + one row of four buttons ---- */
+  .tap-line{ display:flex; align-items:center; gap:6px; font-size:12.5px; margin:0 2px 8px; }
+  .tap-line b{ color:var(--teal); font-family:'JetBrains Mono',monospace; font-size:14px; }
+  .tl-sep{ color:var(--muted); }
+  .tl-spacer{ flex:1; }
+  .icon-mini{
+    width:30px; height:30px; padding:0; border-radius:9px;
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text); font-size:13px;
+  }
+  .icon-mini.danger{ color:var(--danger); border-color:#ff5c5c44; }
+  .icon-mini[aria-expanded="true"]{ background:var(--teal); border-color:var(--teal); color:#062b22; }
+  .tap-actions{ display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; }
+  .tbtn{
+    flex-direction:column; gap:2px; padding:7px 2px; min-height:52px;
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line); border-radius:12px;
+  }
+  .tbtn .ti{ font-size:17px; line-height:1; }
+  .tbtn .tt{ font-size:10.5px; font-weight:600; line-height:1.1; text-align:center; }
+  .tbtn-primary{ background:var(--accent); border-color:var(--accent); color:#1a0f08; }
+  .tbtn.active{ background:var(--teal); border-color:var(--teal); color:#062b22; }
+  #tapHint{ margin:8px 2px 2px; }
+  .hint[hidden]{ display:none; }
+
+  /* ---- Results: one line per shape, tap to open the details ---- */
+  .summary-card{ padding:8px 12px; margin-bottom:6px; border-radius:12px; }
+  .summary-title{ font-size:12.5px; margin-bottom:3px; }
+  .summary-line{ font-size:11.5px; }
+  .result-row{ padding:0; margin-bottom:6px; border-radius:12px; overflow:hidden; }
+  .rr-head{
+    width:100%; justify-content:flex-start; gap:8px; padding:9px 10px;
+    background:transparent; color:var(--text); border-radius:0; text-align:left; font-weight:600;
+  }
+  .rr-head .swatch{ width:9px; height:9px; border-radius:3px; flex-shrink:0; }
+  .rr-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:700; }
+  .rr-type{ flex-shrink:0; font-size:9px; font-family:'JetBrains Mono',monospace; font-weight:700; letter-spacing:0.4px; padding:2px 6px; border-radius:5px; color:#0b1210; }
+  .rr-big{ flex-shrink:0; font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; white-space:nowrap; }
+  .rr-chev{ flex-shrink:0; color:var(--muted); font-size:10px; transition:transform 0.15s; }
+  .result-row.open .rr-chev{ transform:rotate(180deg); }
+  .rr-body{ display:none; padding:0 10px 10px; }
+  .result-row.open .rr-body{ display:block; }
+  .rr-body .small{ margin-top:0; }
+  .rr-body .result-grid{ margin-top:8px; }
+
+  /* ---- Search: the examples shown when the empty box is focused ---- */
+  .search-ex-head{
+    padding:9px 12px 3px; font-size:10px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:0.5px; font-family:'JetBrains Mono',monospace;
+  }
+  .search-ex-row{ cursor:pointer; padding:8px 12px; border-top:1px solid var(--line); }
+  .search-ex-row:hover{ background:var(--panel-2); }
+  .search-ex-row .ex-main{ font-size:12.5px; font-weight:600; }
+  .search-ex-row .ex-sub{ font-size:10.5px; color:var(--muted); margin-top:2px; }
+
+  .about-lead{ font-size:13px; line-height:1.6; margin:4px 0 10px; }
+  .about-list{ margin:0 0 4px; padding-left:18px; font-size:12.5px; line-height:1.7; }
+
+  #panelToggle{
+    display:none; position:absolute; z-index:650; top:50%; left:var(--panel-w); transform:translateY(-50%);
+    width:20px; height:56px; padding:0; border-radius:0 10px 10px 0;
+    background:var(--panel); color:var(--muted); border:1px solid var(--line); border-left:none; font-size:18px;
+  }
+  #panelToggle:hover{ color:var(--text); }
+
+  /* ======================================================================
+     PHONE (portrait, or narrower than 600px): bottom sheet with 3 snap states
+     ====================================================================== */
+  @media (max-width: 899.98px) and (orientation: portrait), (max-width: 599.98px){
+    #sheet[data-snap="peek"]{ height:calc(100px + env(safe-area-inset-bottom)); overflow:hidden; }
+    #sheet[data-snap="half"]{ height:clamp(240px, 40vh, 420px); }
+    #sheet[data-snap="full"]{ height:min(72vh, calc(100vh - 80px)); }
+    #sheet[data-snap="peek"] .panel,
+    #sheet[data-snap="peek"] #results,
+    #sheet[data-snap="peek"] #fileBar{ display:none !important; }
+    #sheet[data-snap="peek"] #sheetSummary{ display:flex; }
+  }
+
+  /* ======================================================================
+     SIDE (wide, or landscape from 600px): a left panel, the map takes the rest
+     ====================================================================== */
+  @media (min-width: 900px), (min-width: 600px) and (orientation: landscape){
+    :root{ --panel-full:clamp(330px, 30vw, 400px); --panel-w:var(--panel-full); }
+    body.panel-collapsed, body.fs-active{ --panel-w:0px; }
+    #map{ left:var(--panel-w); }
+    #sheet{
+      left:0; right:auto; top:0; bottom:0; width:var(--panel-full); height:auto;
+      border-radius:0; border-top:none; border-right:1px solid var(--line);
+      box-shadow:6px 0 24px rgba(0,0,0,0.35);
+      padding:calc(112px + env(safe-area-inset-top)) 14px 16px 14px;
+      transition:transform 0.22s ease;
+    }
+    body.panel-collapsed #sheet{ transform:translateX(-100%); box-shadow:none; }
+    #dragHandle, #sheetSummary{ display:none !important; }
+    #topbar{ z-index:700; }
+    #searchWrap{ width:calc(var(--panel-full) - 28px); }
+    body:has(#sentinelMapDateBar.show) #sheet{ padding-top:calc(160px + env(safe-area-inset-top)); }
+    #panelToggle{ display:block; }
+    body.fs-active #panelToggle{ display:none; }
+    .leaflet-bottom{ bottom:0; }
+    #crosshair{ left:calc(50% + var(--panel-w) / 2); }
+    #legendPanel, #legendPanel.below-sentinel-bar{ left:calc(var(--panel-w) + 14px); top:max(14px, env(safe-area-inset-top)); }
+    #measurePanel{ left:calc(var(--panel-w) + 14px); top:max(14px, env(safe-area-inset-top)); }
+    #mrpamHint, #adminHint, #cadastreHint, #toast{ left:calc(50% + var(--panel-w) / 2); }
+  }
