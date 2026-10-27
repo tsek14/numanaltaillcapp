@@ -1,0 +1,3 @@
+/* Өнгөний токенууд: light (анхдагч) / dark */
+:root{--bg:#f3f5f9;--card:#fff;--tx:#0f172a;--mu:#64748b;--bd:#e2e8f0;--ac:#2563eb;--map:#e8edf4;--grid:#b9c3d3;--dk:0;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+:root[data-theme="dark"]{--bg:#0a0f1d;--card:#131a2b;--tx:#e6ebf5;--mu:#8b97ad;--bd:#243049;--ac:#5b8cff;--map:#0f1626;--grid:#2c3a57;--dk:1;color-scheme:dark}
