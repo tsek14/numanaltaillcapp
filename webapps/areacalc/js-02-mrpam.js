@@ -413,7 +413,7 @@
       renderMrpamTypeColorList();
       mrpamLayerGroup.addTo(map);
       mrpamBtn.classList.add('active');
-      toast(mrpamFeatures.length + ' лиценз ачааллагдлаа' + (sourceLabel ? ' (' + sourceLabel + ')' : ''));
+      toast(mrpamFeatures.length + ' лиценз ачаалагдлаа' + (sourceLabel ? ' (' + sourceLabel + ')' : ''));
       idbSet(MRPAM_ENABLED_KEY, true).catch(function(){});
       updateMrpamOverlay();
     }

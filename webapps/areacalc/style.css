@@ -134,7 +134,7 @@
   }
   /* Only rows that host an in-flow dropdown need to wrap; every other
      row keeps its original single-line layout untouched. */
-  #moreRowBasemap, #moreRowMrpam, #moreRowAdmin, #moreRowCadastre, #moreRowGraticule{ flex-wrap:wrap; row-gap:0; }
+  #moreRowBasemap, #moreRowMrpam, #moreRowAdmin, #moreRowCadastre, #moreRowUserGj, #moreRowGraticule{ flex-wrap:wrap; row-gap:0; }
   .more-row:hover{ background:var(--panel-2); }
   .more-icon{
     width:22px; height:22px; flex-shrink:0; color:var(--muted);
@@ -157,7 +157,10 @@
     background:var(--panel-2); border:1px solid var(--line); color:var(--muted);
     display:flex; align-items:center; justify-content:center; cursor:pointer;
   }
-  .more-toggle-sm svg{ width:14px; height:14px; }
+  /* padding:0 — the generic button rule's 11px/14px padding left no room
+     inside the 28px square, so the gear icons collapsed to zero width. */
+  .more-toggle-sm{ padding:0; }
+  .more-toggle-sm svg{ width:14px; height:14px; flex-shrink:0; }
   .more-toggle-sm:hover{ background:var(--panel-3, var(--panel-2)); color:var(--text); }
   /* Track/Measure/Legend keep their original #id-based styling (including
      #trackBtn.active's pulse animation) — this just sizes/positions them
@@ -184,11 +187,13 @@
   #moreRowMrpam #mrpamWrap,
   #moreRowAdmin #adminWrap,
   #moreRowCadastre #cadastreWrap,
+  #moreRowUserGj #userGjWrap,
   #moreRowGraticule #gratWrap{ display:contents; }
   #moreRowBasemap #layerPanel,
   #moreRowMrpam #mrpamSettingsPanel,
   #moreRowAdmin #adminSettingsPanel,
   #moreRowCadastre #cadastreSettingsPanel,
+  #moreRowUserGj #userGjSettingsPanel,
   #moreRowGraticule #gratSettingsPanel{
     position:static; order:99; flex:0 0 100%; width:auto; box-sizing:border-box;
     /* min-width:0 stops a flex item's automatic minimum size (its widest
@@ -204,6 +209,7 @@
   #moreRowMrpam #mrpamSettingsPanel:not(.open),
   #moreRowAdmin #adminSettingsPanel:not(.open),
   #moreRowCadastre #cadastreSettingsPanel:not(.open),
+  #moreRowUserGj #userGjSettingsPanel:not(.open),
   #moreRowGraticule #gratSettingsPanel:not(.open){
     padding-top:0; padding-bottom:0; border-width:0; margin-top:0;
   }
@@ -211,6 +217,7 @@
   #moreRowMrpam #mrpamSettingsPanel.open,
   #moreRowAdmin #adminSettingsPanel.open,
   #moreRowCadastre #cadastreSettingsPanel.open,
+  #moreRowUserGj #userGjSettingsPanel.open,
   #moreRowGraticule #gratSettingsPanel.open{ margin-top:6px; }
   /* The menu itself provides the scrolling now, so an open sub-panel
      should show its full content rather than nesting a second scrollbar. */
@@ -218,6 +225,7 @@
   #moreRowMrpam #mrpamSettingsPanel.open,
   #moreRowAdmin #adminSettingsPanel.open,
   #moreRowCadastre #cadastreSettingsPanel.open,
+  #moreRowUserGj #userGjSettingsPanel.open,
   #moreRowGraticule #gratSettingsPanel.open{ max-height:none; overflow:visible; }
 
   /* ---- Basemap layer picker panel ---- */
@@ -373,6 +381,19 @@
     z-index:20;
   }
   #cadastreSettingsPanel.open{ pointer-events:auto; max-height:70vh; opacity:1; transform:translateX(0); overflow-y:auto; }
+  /* ---- Any-GeoJSON overlay layer settings (same pattern as the cadastre layer) ---- */
+  #userGjWrap{ position:relative; display:flex; flex-direction:row; align-items:center; gap:6px; flex-shrink:0; }
+  #userGjSettingsBtn svg{ width:16px; height:16px; }
+  #userGjSettingsPanel{
+    position:absolute; top:100%; right:0; margin-top:6px;
+    background:var(--glass-97); border:1px solid var(--line); border-radius:12px;
+    backdrop-filter:blur(8px); box-shadow:0 8px 24px rgba(0,0,0,0.5);
+    padding:12px; width:220px; max-height:0; overflow:hidden;
+    opacity:0; transform:translateX(6px); pointer-events:none;
+    transition:max-height .2s ease, opacity .15s ease, transform .15s ease;
+    z-index:20;
+  }
+  #userGjSettingsPanel.open{ pointer-events:auto; max-height:70vh; opacity:1; transform:translateX(0); overflow-y:auto; }
   .gs-mini-btn{
     pointer-events:auto; font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700;
     padding:5px 9px; border-radius:7px; background:var(--panel-2); border:1px solid var(--line);
@@ -529,6 +550,22 @@
     transition:opacity .2s;
   }
   #cadastreHint.show{ opacity:1; }
+
+  #userGjLayerToggle.active{
+    background:var(--teal); border-color:var(--teal); color:#062b22;
+  }
+  #userGjLayerToggle.loading{
+    background:var(--panel-2); border-color:var(--accent); color:var(--accent);
+  }
+  #userGjHint{
+    position:absolute; top:max(158px, calc(env(safe-area-inset-top) + 158px));
+    left:50%; transform:translateX(-50%);
+    background:var(--glass-90); border:1px solid var(--line); color:var(--text);
+    font-size:11px; padding:7px 14px; border-radius:20px; z-index:478;
+    backdrop-filter:blur(6px); white-space:nowrap; opacity:0; pointer-events:none;
+    transition:opacity .2s;
+  }
+  #userGjHint.show{ opacity:1; pointer-events:auto; }
 
   .mrpam-popup .leaflet-popup-content-wrapper{
     background:var(--panel); color:var(--text); border-radius:12px; border:1px solid var(--line);
@@ -1241,5 +1278,5 @@
     #crosshair{ left:calc(50% + var(--panel-w) / 2); }
     #legendPanel, #legendPanel.below-sentinel-bar{ left:calc(var(--panel-w) + 14px); top:max(14px, env(safe-area-inset-top)); }
     #measurePanel{ left:calc(var(--panel-w) + 14px); top:max(14px, env(safe-area-inset-top)); }
-    #mrpamHint, #adminHint, #cadastreHint, #toast{ left:calc(50% + var(--panel-w) / 2); }
+    #mrpamHint, #adminHint, #cadastreHint, #userGjHint, #toast{ left:calc(50% + var(--panel-w) / 2); }
   }

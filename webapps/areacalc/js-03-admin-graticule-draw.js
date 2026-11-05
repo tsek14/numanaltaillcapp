@@ -456,7 +456,7 @@
       adminSel.reset(); // indexes belong to the previous file's features
       adminLayerGroup.addTo(map);
       adminBtn.classList.add('active');
-      toast(adminFeatures.length + ' захиргааны хил ачааллагдлаа' + (sourceLabel ? ' (' + sourceLabel + ')' : ''));
+      toast(adminFeatures.length + ' захиргааны хил ачаалагдлаа' + (sourceLabel ? ' (' + sourceLabel + ')' : ''));
       idbSet(ADMIN_ENABLED_KEY, true).catch(function(){});
       updateAdminOverlay();
     }
@@ -1051,7 +1051,7 @@
   // alone hides the real cause (insecure context, permission, signal, timeout).
   function geoErrorMessage(err){
     if(location.protocol === 'file:'){
-      return 'Байршил ажиллахгүй байна: энэ файлыг шууд (file://) нээсэн байна. Байршлын үйлчилгээ зөвхөн https:// эсвэл localhost хаягаар нээсэн үед л ажилладаг тул файлыг вэб сервэрт байршуулж нээнэ үү.';
+      return 'Байршил ажиллахгүй байна: энэ файлыг шууд (file://) нээсэн байна. Байршлын үйлчилгээ зөвхөн https:// эсвэл localhost хаягаар нээсэн үед л ажилладаг тул файлыг вэб серверт байршуулж нээнэ үү.';
     }
     if(!window.isSecureContext){
       return 'Байршил ажиллахгүй байна: энэ хуудас "аюулгүй" (https://) орчинд нээгдээгүй байна.';

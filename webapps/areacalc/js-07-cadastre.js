@@ -306,7 +306,7 @@
       cadastreLayerGroup.addTo(map);
       cadastreBtn.classList.add('active');
       setCadastreFileLabel(fileName);
-      toast(cadastreFeatures.length + ' нэгж талбар ачааллагдлаа' + (sourceLabel ? ' (' + sourceLabel + ')' : ''));
+      toast(cadastreFeatures.length + ' нэгж талбар ачаалагдлаа' + (sourceLabel ? ' (' + sourceLabel + ')' : ''));
       idbSet(CADASTRE_ENABLED_KEY, true).catch(function(){});
       updateCadastreOverlay();
     }

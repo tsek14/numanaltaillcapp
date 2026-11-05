@@ -1,8 +1,74 @@
   // ---------- Draw / recompute (multi-shape) ----------
   // opts.noFit: redraw without zooming the map to the shapes (used when the
   // person is looking somewhere on purpose, e.g. right after stopping a GPS track).
+  // Polygons default to "fill only" (corner points and outline hidden) —
+  // undefined means hidden for them. Lines keep both shown by default, since
+  // a line with nothing drawn would simply vanish.
+  function shapeShowsVertices(s){
+    return shapeKind(s) === 'polygon' ? s.showVertices === true : s.showVertices !== false;
+  }
+  function shapeShowsOutline(s){
+    return shapeKind(s) === 'polygon' ? s.showOutline === true : s.showOutline !== false;
+  }
+
+  // ---- "Knock out" overlaps between polygons ----
+  // When on, any area covered by two or more visible polygons gets no fill
+  // from any of them, so the base map shows straight through. Each polygon's
+  // fill becomes "itself minus every other polygon it overlaps" (turf
+  // difference); outlines, vertices, areas and exports are unchanged. The
+  // result is cached on the polygons' coordinates, so moving a slider or
+  // renaming doesn't recompute it.
+  var polyKnockoutOn = getSetting('polyKnockout', false);
+  var knockoutCache = { sig:null, fills:null };
+
+  function knockoutPolygonIdxs(){
+    var out = [];
+    shapes.forEach(function(s, i){
+      if(s.visible !== false && !s.isTrack && s.points.length >= 3 && shapeKind(s) === 'polygon') out.push(i);
+    });
+    return out;
+  }
+
+  // Returns { <shapeIndex>: geometry | 'empty' } for polygons that overlap
+  // another one; polygons missing from the map are drawn normally.
+  function computeKnockoutFills(){
+    var idxs = knockoutPolygonIdxs();
+    if(idxs.length < 2) return null;
+    var sig = idxs.map(function(i){
+      return i + ':' + shapes[i].points.map(function(p){ return p.lat.toFixed(7) + ',' + p.lng.toFixed(7); }).join(';');
+    }).join('|');
+    if(sig === knockoutCache.sig) return knockoutCache.fills;
+
+    var items = idxs.map(function(i){
+      var ring = shapes[i].points.map(function(p){ return [p.lng, p.lat]; });
+      ring.push(ring[0]);
+      var w = Infinity, so = Infinity, e = -Infinity, n = -Infinity;
+      ring.forEach(function(c){ if(c[0]<w) w=c[0]; if(c[0]>e) e=c[0]; if(c[1]<so) so=c[1]; if(c[1]>n) n=c[1]; });
+      return { idx:i, feat:turf.polygon([ring]), bbox:[w, so, e, n] };
+    });
+    var fills = {};
+    items.forEach(function(a){
+      var diff = a.feat, touched = false;
+      try{
+        for(var k=0;k<items.length;k++){
+          var b = items[k];
+          if(b === a || !bboxIntersects(a.bbox, b.bbox)) continue;
+          touched = true;
+          diff = turf.difference(diff, b.feat);
+          if(!diff) break; // completely covered by others
+        }
+        if(touched) fills[a.idx] = diff ? diff.geometry : 'empty';
+      } catch(err){
+        // e.g. a self-intersecting polygon turf can't process — draw that one normally
+      }
+    });
+    knockoutCache = { sig:sig, fills:fills };
+    return fills;
+  }
+
   function redrawAll(opts){
     drawLayer.clearLayers();
+    var knockoutFills = polyKnockoutOn ? computeKnockoutFills() : null;
     document.getElementById('tapCount').textContent = shapes[tapShapeIndex] ? shapes[tapShapeIndex].points.length : 0;
 
     var totals = { totalPolyArea:0, totalLineLen:0, polyCount:0, lineCount:0, pointCount:0 };
@@ -28,7 +94,7 @@
         var draggableHere = tapDrawActive && sIdx === tapShapeIndex;
         // Vertices stay visible while actively being drawn/dragged even if
         // the layer's "show points" toggle is off, so editing never breaks.
-        var showPts = shape.showVertices !== false || draggableHere;
+        var showPts = shapeShowsVertices(shape) || draggableHere;
         pts.forEach(function(p, i){
           allLatLngs.push([p.lat, p.lng]);
           if(!showPts) return;
@@ -50,7 +116,8 @@
         });
       }
 
-      var showLine = shape.showOutline !== false;
+      // The shape being tap-drawn keeps its outline too, so the edges being placed stay visible.
+      var showLine = shapeShowsOutline(shape) || (tapDrawActive && sIdx === tapShapeIndex && !shape.isTrack);
       if(kind === 'point'){
         totals.pointCount++;
         if(sIdx === 0) tapTypeLabel = 'Цэг';
@@ -64,11 +131,26 @@
         totals.totalLineLen += pathLengthMeters(pts);
         if(sIdx === 0) tapTypeLabel = 'Шугам';
       } else {
-        if(showLine){
+        // The fill is always drawn; the outline (stroke) only when switched on.
+        // Without an outline the fill gets a stronger base so the area stays
+        // readable; the ТУНГАЛАГ slider scales it either way.
+        var op = (shape.opacity===undefined ? 1 : shape.opacity);
+        var fillOp = op * (showLine ? 0.22 : 0.45);
+        var kFill = knockoutFills ? knockoutFills[sIdx] : undefined;
+        if(kFill === undefined){
           L.polygon(pts.map(function(p){return [p.lat,p.lng];}), {
-            color:color, weight:3, fillColor:color,
-            fillOpacity: (shape.opacity===undefined?0.22:shape.opacity*0.22)
+            stroke: showLine, color:color, weight:3, fillColor:color, fillOpacity: fillOp
           }).addTo(drawLayer);
+        } else {
+          // Overlap knocked out: fill = only the part no other polygon covers.
+          if(kFill !== 'empty'){
+            L.geoJSON(kFill, { style:{ stroke:false, fillColor:color, fillOpacity:fillOp } }).addTo(drawLayer);
+          }
+          if(showLine){
+            L.polygon(pts.map(function(p){return [p.lat,p.lng];}), {
+              color:color, weight:3, fill:false
+            }).addTo(drawLayer);
+          }
         }
         totals.polyCount++;
         totals.totalPolyArea += areaSqMeters(pts);
@@ -100,8 +182,9 @@
     var mrpamTypes = (mrpamLoaded && mrpamVisible) ? Object.keys(mrpamTypeColors).filter(function(t){ return !mrpamTypesHidden[t]; }) : [];
     var adminLevels = (adminLoaded && adminVisible) ? ['aimag','soum','bag'].filter(function(l){ return adminLevelsOn[l]; }) : [];
     var showCadastre = (typeof cadastreLoaded !== 'undefined' && cadastreLoaded && cadastreVisible);
+    var showUserGj = (typeof userGjLoaded !== 'undefined' && userGjLoaded && userGjVisible);
 
-    if(visible.length === 0 && mrpamTypes.length === 0 && adminLevels.length === 0 && !showCadastre){
+    if(visible.length === 0 && mrpamTypes.length === 0 && adminLevels.length === 0 && !showCadastre && !showUserGj){
       legendBody.innerHTML = '<div class="leg-empty">Зурсан дүрс алга</div>';
       return;
     }
@@ -160,6 +243,27 @@
       }
     }
 
+    if(showUserGj){
+      var hasPrevG = html !== '';
+      var gEntries = userGjLegendEntries(); // null = one color
+      var gHead = 'GeoJSON' + (userGjFileName ? ' — ' + escapeXml(userGjFileName) : '');
+      if(gEntries){
+        html += '<div class="leg-sep"' + (hasPrevG ? '' : ' style="border-top:none; margin-top:0; padding-top:0;"') + '>' + gHead + '</div>';
+        gEntries.forEach(function(en){
+          html += '<div class="leg-row">';
+          html += '  <span class="leg-sw" style="background:'+en.color+'33;border-color:'+en.color+'"></span>';
+          html += '  <span class="leg-lbl">'+escapeXml(en.label)+'</span>';
+          html += '</div>';
+        });
+      } else {
+        if(hasPrevG) html += '<div class="leg-sep">GeoJSON</div>';
+        html += '<div class="leg-row">';
+        html += '  <span class="leg-sw" style="background:'+userGjColor+'33;border-color:'+userGjColor+'"></span>';
+        html += '  <span class="leg-lbl">'+(userGjFileName ? escapeXml(userGjFileName) : 'GeoJSON файл')+'</span>';
+        html += '</div>';
+      }
+    }
+
     legendBody.innerHTML = html;
   }
 
@@ -195,6 +299,14 @@
     saveSetting('pointNumbersOn', pointNumbersOn);
   });
 
+  document.getElementById('knockoutSwitch').addEventListener('click', function(){
+    polyKnockoutOn = !polyKnockoutOn;
+    saveSetting('polyKnockout', polyKnockoutOn);
+    this.classList.toggle('on', polyKnockoutOn);
+    redrawAll({ noFit:true });
+    toast(polyKnockoutOn ? 'Давхцсан хэсгүүд нэвт харагдана' : 'Давхцсан хэсгүүд энгийнээр будагдана');
+  });
+
   // ---------- Layers panel (visibility / color / opacity / rename) ----------
   function renderLayersPanel(){
     var empty = document.getElementById('layersEmpty');
@@ -205,6 +317,10 @@
       ensureLayerProps(s, i);
       nonEmpty.push({ shape:s, idx:i });
     });
+
+    var koRow = document.getElementById('knockoutRow');
+    koRow.style.display = knockoutPolygonIdxs().length >= 2 ? 'flex' : 'none';
+    document.getElementById('knockoutSwitch').classList.toggle('on', polyKnockoutOn);
 
     if(nonEmpty.length === 0){
       empty.style.display = '';
@@ -230,8 +346,8 @@
       var meta = kind === 'polygon' ? humanArea(areaSqMeters(s.points)).big
                : kind === 'line' ? humanLen(pathLengthMeters(s.points)).big
                : s.points.length + ' цэг';
-      var showVertices = s.showVertices !== false;
-      var showOutline = s.showOutline !== false;
+      var showVertices = shapeShowsVertices(s);
+      var showOutline = shapeShowsOutline(s);
       var hasOutline = (kind === 'line' || kind === 'polygon') && !s.isTrack;
       var isPolygon = kind === 'polygon';
 
@@ -298,18 +414,19 @@
       var outlineBtn = card.querySelector('[data-act="outline"]');
       if(vertBtn){
         vertBtn.addEventListener('click', function(){
-          var turningOff = shape.showVertices !== false;
-          shape.showVertices = !turningOff;
-          // Points and outline can't both be hidden — hiding one guarantees the other stays visible.
-          if(!shape.showVertices) shape.showOutline = true;
+          shape.showVertices = !shapeShowsVertices(shape);
+          shape.showOutline = shapeShowsOutline(shape); // pin the current state explicitly
+          // A line with neither points nor line would vanish, so hiding one shows the other.
+          // Polygons may hide both — the fill alone stays on the map.
+          if(shapeKind(shape) === 'line' && !shape.showVertices) shape.showOutline = true;
           redrawAll();
         });
       }
       if(outlineBtn){
         outlineBtn.addEventListener('click', function(){
-          var turningOff = shape.showOutline !== false;
-          shape.showOutline = !turningOff;
-          if(!shape.showOutline) shape.showVertices = true;
+          shape.showOutline = !shapeShowsOutline(shape);
+          shape.showVertices = shapeShowsVertices(shape);
+          if(shapeKind(shape) === 'line' && !shape.showOutline) shape.showVertices = true;
           redrawAll();
         });
       }
@@ -812,7 +929,7 @@
   // ASCII, no spaces); `downloadName` is the zip file's own name on disk
   // (can be anything, including Cyrillic/spaces).
   function exportShpZip(geojson, shpName, downloadName, successMsg){
-    toast('SHP сан ачааллаж байна…');
+    toast('SHP сан ачаалж байна…');
     return loadScriptWithFallback([
       'https://unpkg.com/@mapbox/shp-write@0.4.3/shpwrite.js',
       'https://cdn.jsdelivr.net/npm/@mapbox/shp-write@0.4.3/shpwrite.js'

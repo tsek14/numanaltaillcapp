@@ -304,7 +304,7 @@
       // from a file:// origin where CORS behavior is inconsistent across
       // browsers. Give a manual fallback either way rather than a dead end.
       var msg = (err && err.message) ? err.message : 'алдаа гарлаа';
-      sentinelLayerIdHint.innerHTML = 'Автоматаар татаж чадсангүй (' + escapeXml(msg) + '). Дараах холбоосыг шинэ tab дээр нээгээд, гарч ирэх XML доtorh <b>&lt;Layer&gt;&lt;Name&gt;...&lt;/Name&gt;&lt;/Layer&gt;</b> хэсгүүдээс өөрийн давхаргын нэрийг олж, дээрх талбарт гараар бичнэ үү: <a href="'+url+'" target="_blank" rel="noopener" style="word-break:break-all;">'+url+'</a>';
+      sentinelLayerIdHint.innerHTML = 'Автоматаар татаж чадсангүй (' + escapeXml(msg) + '). Дараах холбоосыг шинэ tab дээр нээгээд, гарч ирэх XML доторх <b>&lt;Layer&gt;&lt;Name&gt;...&lt;/Name&gt;&lt;/Layer&gt;</b> хэсгүүдээс өөрийн давхаргын нэрийг олж, дээрх талбарт гараар бичнэ үү: <a href="'+url+'" target="_blank" rel="noopener" style="word-break:break-all;">'+url+'</a>';
       toast('Автоматаар татаж чадсангүй — доорх зааврыг үзнэ үү');
     }).finally(function(){
       sentinelFetchLayersBtn.disabled = false;

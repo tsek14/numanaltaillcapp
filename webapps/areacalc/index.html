@@ -170,7 +170,7 @@
               <polyline points="2 12 12 17 22 12"/>
             </svg>
           </span>
-          <span class="more-lbl">Давхрага</span>
+          <span class="more-lbl">Давхарга</span>
           <div id="layerPanelWrap">
             <button id="basemapToggle" class="more-toggle">
               <span id="basemapLabel">GOOGLE SAT</span>
@@ -337,6 +337,66 @@
         </div>
         <input type="file" id="cadastreFileInput" accept=".geojson,.json,application/geo+json,application/json" style="display:none">
 
+        <div class="more-row" id="moreRowUserGj">
+          <span class="more-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <path d="M10 12.5c-1 0-1.3.5-1.3 1.2v.6c0 .5-.3.8-.9.8.6 0 .9.3.9.8v.6c0 .7.3 1.2 1.3 1.2"/>
+              <path d="M14 12.5c1 0 1.3.5 1.3 1.2v.6c0 .5.3.8.9.8-.6 0-.9.3-.9.8v.6c0 .7-.3 1.2-1.3 1.2"/>
+            </svg>
+          </span>
+          <span class="more-lbl">GeoJSON файл</span>
+          <div id="userGjWrap">
+            <button id="userGjLayerToggle" class="more-toggle" title="Дурын GeoJSON файлыг газрын зураг дээр давхарлан харах">Ачаалах</button>
+            <button id="userGjSettingsBtn" class="more-toggle-sm" title="GeoJSON давхаргын тохиргоо">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+            <div id="userGjSettingsPanel">
+              <div class="gs-row" id="userGjFileInfoRow" style="display:none;">
+                <label style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="userGjFileNameLbl">—</label>
+                <button type="button" id="userGjSwitchFileBtn" class="gs-mini-btn" title="Өөр GeoJSON файл сонгох">Файл солих</button>
+              </div>
+              <div class="gs-row" id="userGjActionsRow" style="display:none; gap:6px;">
+                <label style="flex:1; opacity:0.75; white-space:nowrap;" id="userGjCountLbl"></label>
+                <button type="button" id="userGjFitBtn" class="gs-mini-btn" title="Файлын бүх дүрсийг харагдахаар томруулах">Бүгдийг харах</button>
+                <button type="button" id="userGjRemoveBtn" class="gs-mini-btn" title="Файлыг газрын зургаас хасах">Хасах</button>
+              </div>
+              <div id="userGjSelectSlot"></div>
+              <div class="gs-row" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
+                <label>Төрлөөр ялгах</label>
+                <select id="gjTypeKeySelect" class="gs-select" title="Аль талбараар нь өөр өөр өнгөөр харуулахыг сонгоно"></select>
+              </div>
+              <div class="gs-row" id="gjColorRow">
+                <label>Өнгө</label>
+                <input type="color" id="gjColor" value="#4fc3f7">
+              </div>
+              <div class="gs-row">
+                <label>Өргөн</label>
+                <input type="range" id="gjWeight" min="0.5" max="6" step="0.5" value="2">
+                <span class="gs-val" id="gjWeightVal">2px</span>
+              </div>
+              <div class="gs-row">
+                <label>Тунгалагшил (дүүргэлт)</label>
+                <input type="range" id="gjFillOpacity" min="0" max="80" step="5" value="15">
+                <span class="gs-val" id="gjFillOpacityVal">15%</span>
+              </div>
+              <div class="gs-row" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
+                <label>Төрлийн өнгө</label>
+                <button type="button" id="gjResetColors" class="gs-mini-btn" title="Төрлийн өнгийг анхны байдалд оруулах">Дахин тохируулах</button>
+              </div>
+              <div class="gs-row gs-empty" id="gjTypeEmpty">
+                <label style="flex:1; opacity:0.7;">Файл ачаалагдсаны дараа төрөл тус бүрийн өнгө энд гарна</label>
+              </div>
+              <div id="gjTypeList"></div>
+            </div>
+          </div>
+        </div>
+        <input type="file" id="userGjFileInput" accept=".geojson,.json,application/geo+json,application/json" style="display:none">
+
         <div class="more-row" id="moreRowGraticule">
           <span class="more-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -379,11 +439,11 @@
                 <span class="gs-val" id="gsOpacityVal">100%</span>
               </div>
               <div class="gs-row" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
-                <label>Шошгын өнгө</label>
+                <label>Шошгоны өнгө</label>
                 <input type="color" id="gsLabelColor" value="#cfe3da">
               </div>
               <div class="gs-row">
-                <label>Шошгын хэмжээ</label>
+                <label>Шошгоны хэмжээ</label>
                 <input type="range" id="gsLabelSize" min="7" max="16" step="0.5" value="9.5">
                 <span class="gs-val" id="gsLabelSizeVal">9.5px</span>
               </div>
@@ -433,6 +493,7 @@
   <div id="mrpamHint"></div>
   <div id="adminHint"></div>
   <div id="cadastreHint"></div>
+  <div id="userGjHint"></div>
 
   <div id="searchWrap">
     <div id="searchBar">
@@ -510,7 +571,7 @@
       <ul class="about-list">
         <li>Талбай, периметр, зай хэмжинэ; GPS-ээр зам бичиж хадгална</li>
         <li>Солбицлыг DD, DM, DMS, UTM форматаар бичиж оруулах, хөрвүүлэх, хуулах</li>
-        <li>MRPAM-ийн лиценз, кадастрын нэгж талбар, аймаг/сум/багийн хилийг зурагт давхарлан харуулна</li>
+        <li>MRPAM-ийн лиценз, кадастрын нэгж талбар, аймаг/сум/багийн хил болон дурын GeoJSON файлыг зурагт давхарлан харуулна</li>
         <li>Хиймэл дагуулын болон ердийн зургийн давхарга</li>
         <li>KML, GPX, SHP, GeoJSON-оор оруулах, гаргах</li>
       </ul>
@@ -579,7 +640,7 @@
 
     <div class="tabs">
       <div class="tab active" data-mode="tap">✛ Товших</div>
-      <div class="tab" data-mode="layers">▤ Давхрага</div>
+      <div class="tab" data-mode="layers">▤ Давхарга</div>
       <div class="tab" data-mode="coords">⊕ Солбицол</div>
       <button type="button" id="fileBtn" class="tab-icon" title="Импорт / Экспорт" aria-expanded="false" aria-controls="fileBar">⇅</button>
     </div>
@@ -628,7 +689,11 @@
 
     <!-- LAYERS MODE -->
     <div class="panel" id="panel-layers">
-      <div id="layersEmpty">Одоогоор зурсан дүрэг алга.<br>«Товших» эсвэл «Солбицол» табаас нэмнэ үү.</div>
+      <div class="order-toggle" id="knockoutRow" style="display:none" title="Хоёр ба түүнээс олон полигон давхцсан хэсэгт аль ч полигоны өнгө харагдахгүй, суурь зураг шууд харагдана">
+        <span>Давхцсан хэсгийг нэвт цоолох</span>
+        <div class="switch" id="knockoutSwitch"><div class="knob"></div></div>
+      </div>
+      <div id="layersEmpty">Одоогоор зурсан дүрс алга.<br>«Товших» эсвэл «Солбицол» табаас нэмнэ үү.</div>
       <div id="layersList"></div>
     </div>
 
@@ -702,5 +767,6 @@
 <script src="js-05-import.js"></script>
 <script src="js-06-tools-coords-search.js"></script>
 <script src="js-07-cadastre.js"></script>
+<script src="js-08-geojson.js"></script>
 </body>
 </html>
