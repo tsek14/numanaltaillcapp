@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="mn"><head><meta charset="utf-8"><title>Түймрийн симулэшн · Sentinel-2</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{color-scheme:dark;--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--ac:#ff7b2e;--pn:#161b22}
+*{box-sizing:border-box}
+body{margin:0;font:13px system-ui,sans-serif;background:var(--bg);color:var(--fg);display:flex;height:100vh;height:100dvh;overflow:hidden}
+#side{width:300px;padding:12px;overflow:auto;background:var(--pn);border-right:1px solid #30363d}
+h1{font-size:15px;margin:0 0 4px}
+label{display:block;margin:7px 0 2px;color:var(--mut);font-size:11px}
+input,select{width:100%;padding:5px;background:var(--bg);color:var(--fg);border:1px solid #30363d;border-radius:4px}
+.r{display:grid;grid-template-columns:1fr 1fr;gap:6px}[hidden]{display:none!important}
+button{margin-top:10px;width:100%;padding:8px;background:var(--ac);color:#111;border:0;border-radius:5px;font-weight:600;cursor:pointer}
+button:disabled{opacity:.5}
+#log{font:11px monospace;white-space:pre-wrap;color:var(--mut);margin-top:8px}
+#main{flex:1;position:relative;min-width:0}canvas{display:block}
+#hud{position:absolute;left:14px;top:10px;pointer-events:none;text-shadow:0 1px 3px #000}
+#hud b{font-size:22px}#hud div{color:var(--mut)}#km{color:var(--ac);font-size:20px;font-weight:600}
+#bar{position:absolute;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;align-items:center;z-index:20;padding:6px 8px;background:rgba(13,17,23,.75);border-radius:8px}
+#bar button,#bar select{width:auto;min-width:42px;height:34px;margin:0;padding:0 10px;flex:none}#sl{padding:0;min-width:80px;flex:1;width:auto}
+small{color:var(--mut);display:block;margin-top:4px;line-height:1.4}
+.b2{background:#30363d;color:var(--fg)}input[type=file]{display:none}
+#side.h{width:0;padding:0;border:0;overflow:hidden}
+#bar #tg{background:#30363d;color:var(--fg)}
+#go{position:sticky;bottom:0;z-index:2}
+@media(max-width:720px){#side{position:absolute;z-index:10;height:100%;width:min(300px,86vw);padding-bottom:76px}#side.h{width:0;padding:0}#go{bottom:64px}}
+#mp{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:50;display:flex;align-items:center;justify-content:center}#mp[hidden]{display:none}
+#mbox{max-width:94vw}#mi{max-width:94vw;max-height:76vh;border-radius:6px;display:block;margin:0 auto}
+#mb{display:flex;gap:8px;justify-content:center;margin-top:10px}#mb button{width:auto;padding:8px 18px;margin:0}
+input[type=range]{accent-color:var(--ac)}input:invalid{border-color:#f85149}
+details{margin-top:8px;border:1px solid #30363d;border-radius:5px;padding:4px 8px}summary{cursor:pointer;color:var(--mut);font-size:12px;padding:2px 0}
+details[open]{padding-bottom:8px}
+#bar #pl{background:var(--ac);color:#111;font-size:15px}
+#log .er{color:#f85149}
+</style></head><body>
+<div id="side">
+<div class="r" style="grid-template-columns:1fr auto;align-items:center"><h1 data-en="🔥 Wildfire spread simulation">🔥 Түймрийн тархалтын симулэшн</h1><select id="lang" style="width:auto"><option value="mn">Монгол</option><option value="en">English</option></select></div>
+<small>Sentinel-2 L2A · Sentinel Hub (Copernicus Data Space)</small>
+<details id="cfg"><summary data-en="⚙ Sentinel Hub settings">⚙ Sentinel Hub тохиргоо</summary>
+<label data-en="Instance ID (Copernicus Data Space → Configuration)">Instance ID (Copernicus Data Space → Configuration)</label><input id="iid" autocomplete="off" spellcheck="false" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+<label data-en="Layer">Давхарга</label><select id="lay"></select>
+<div class="r"><button id="lst" type="button" class="b2" data-en="Load layers">Давхарга татах</button><button id="rst" type="button" class="b2" data-en="Reset inputs">Анхны утга</button></div>
+</details>
+<div class="r"><div><label data-en="North latitude">Хойд өргөрөг</label><div class="r" style="grid-template-columns:1fr 62px"><input id="n" type="number" step="any" min="0" value="48.3"><select id="hn"><option value="N" data-en="N">Хойд</option><option value="S" data-en="S">Урд</option></select></div></div><div><label data-en="South latitude">Урд өргөрөг</label><div class="r" style="grid-template-columns:1fr 62px"><input id="s" type="number" step="any" min="0" value="47.3"><select id="hs"><option value="N" data-en="N">Хойд</option><option value="S" data-en="S">Урд</option></select></div></div><div><label data-en="West longitude">Баруун уртраг</label><div class="r" style="grid-template-columns:1fr 62px"><input id="w" type="number" step="any" min="0" value="119.2"><select id="hw"><option value="E" data-en="E">Зүүн</option><option value="W" data-en="W">Баруун</option></select></div></div><div><label data-en="East longitude">Зүүн уртраг</label><div class="r" style="grid-template-columns:1fr 62px"><input id="e" type="number" step="any" min="0" value="120.6"><select id="he"><option value="E" data-en="E">Зүүн</option><option value="W" data-en="W">Баруун</option></select></div></div></div>
+<label data-en="Pre-fire imagery start · Verification imagery end">Гал гарахаас өмнөх зургийн эхлэл · Баталгаажуулах зургийн төгсгөл</label>
+<div class="r"><input id="start" type="date" value="2026-09-28"><input id="end" type="date" value="2026-10-24"></div>
+<label data-en="Ignition time (Ulaanbaatar, UTC+8)">Гал гарсан цаг (Улаанбаатар, UTC+8)</label><input id="ign" type="datetime-local" value="2026-10-08T11:55">
+<label data-en="Fire out time (later passes only verify)">Түймэр унтарсан цаг (дараах давалтууд зөвхөн баталгаажуулна)</label><input id="fend" type="datetime-local" value="2026-10-16T23:59">
+<div class="r"><div><label data-en="Max cloud cover %">Үүлний дээд хязгаар %</label><input id="cc" type="number" value="70"></div><div><label data-en="Threshold">Босго</label><input id="thr" type="number" step="0.01" value="0.15"></div></div>
+<label data-en="Burned-area index">Шатсан талбайг тодорхойлох индекс</label><select id="idx"><option value="nbr" data-en="dNBR (forest fire)">dNBR (ойн түймэр)</option><option value="bri" data-en="NIR+SWIR brightness drop (steppe)">NIR+SWIR гэрэлтүүлгийн бууралт (хээр)</option></select>
+<label><input id="one" type="checkbox" checked style="width:auto"> <span data-en="Keep only the main (unbroken) area — drop any other burned patches outside it or inside its holes">Зөвхөн үндсэн (тасралтгүй) талбайг үлдээх — түүний гадна болон цоорхой доторх бусад түймрийн талбайг хасна</span></label>
+<div class="r"><div><label data-en="Resolution (m/pixel)">Нягтрал (м/пиксел)</label><input id="res" type="number" value="150"></div><div><label data-en="Height exaggeration ×">Өндрийн ихэсгэлт ×</label><input id="ex" type="number" value="3" step="0.5"></div></div>
+<label data-en="Image brightness">Зургийн тод байдал</label><input id="br" type="range" min=".6" max="1.8" step=".05" value="1" style="padding:0">
+<button id="go" data-en="Download & compute">Татаж авч тооцоолох</button>
+<button id="gjb" class="b2" data-en="📂 Load border / city GeoJSON">📂 Хил / хотын GeoJSON ачаалах</button><input id="gj" type="file" accept=".geojson,.json">
+<label data-en="Export burned area">Шатсан талбайг экспортлох</label>
+<select id="xm"><option value="total" data-en="Total (single object)">Нийт (нэг объект)</option><option value="pass" data-en="Per pass (new area only)">Давалт тус бүрээр (зөвхөн шинэ талбай)</option><option value="cum" data-en="Per pass (cumulative, full shape)">Давалт тус бүрээр (хуримтлагдсан бүтэн хэлбэр)</option></select>
+<label><input id="bridge" type="checkbox" checked style="width:auto"> <span data-en="Connect each hole to the outline with a cut line (single ring — for software that ignores holes)">Цоорхой бүрийг гадна контурт шугамаар холбож нэг контур болгох (цоорхойг харуулдаггүй программд)</span></label>
+<div class="r" style="grid-template-columns:1fr 1fr 1fr"><button id="xg" class="b2">GeoJSON</button><button id="xk" class="b2">KML</button><button id="xs" class="b2">SHP (zip)</button></div>
+<label data-en="Title">Гарчиг</label><input id="ttl" value="Нөмрөг түймэр">
+<div id="log"></div>
+</div>
+<div id="main">
+<div id="hud"><b data-en="Fire">Түймэр</b><div id="dt">—</div><span id="km"></span><div id="km2" style="color:#c9d1d9"></div></div>
+<div id="bar"><button id="tg" title="Самбар нуух / харуулах" data-en-title="Hide / show panel">☰</button><button id="pl" title="Тоглуулах / зогсоох (Space)" data-en-title="Play / pause (Space)" disabled>▶</button><button id="mp0" title="Түймрийн зураг гаргах" data-en-title="Make fire map image">🖼</button><select id="un" style="width:72px" title="Талбайн нэгж" data-en-title="Area unit"><option value="ha" data-en="ha">га</option><option value="km" data-en="km²">км²</option><option value="m" data-en="m²">м²</option><option value="ac" data-en="ac">акр</option></select><input id="sl" type="range" min="0" max="1000" step="any" value="1000" disabled title="Цаг хугацаа" data-en-title="Time"></div>
+</div>
+<div id="mp" hidden><div id="mbox"><img id="mi" alt="Шатсан талбайн зураг"><div id="mb"><button id="mdl" data-en="⬇ Download PNG">⬇ PNG татах</button><button id="mcl" class="b2" data-en="Close">Хаах</button></div></div></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const $=id=>document.getElementById(id),log=(m,er)=>{const s=document.createElement('span');s.textContent=m+'\n';if(er)s.className='er';$('log').append(s);return s};
+let lang='mn';const L=(m,e)=>lang=='en'?e:m;
+const OGC='https://sh.dataspace.copernicus.eu/ogc/wms/';
+const ES={
+rgb:`//VERSION=3
+function setup(){return{input:[{bands:["B02","B03","B04","SCL","dataMask"]}],mosaicking:"TILE",output:{bands:3,sampleType:"UINT8"}}}
+function preProcessScenes(c){c.scenes.tiles=c.scenes.tiles.sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);return c}
+function evaluatePixel(a){const f=s=>[s.B04,s.B03,s.B02].map(v=>Math.round(255*Math.min(1,2.8*v)));for(const s of a){if(s.dataMask&&![0,1,3,8,9,10].includes(s.SCL))return f(s)}return a.length?f(a[0]):[0,0,0]}`,
+nbr:`//VERSION=3
+function setup(){return{input:[{bands:["B08","B12","SCL","dataMask"]}],mosaicking:"TILE",output:{bands:3,sampleType:"UINT8"}}}
+function preProcessScenes(c){c.scenes.tiles=c.scenes.tiles.sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);return c}
+function evaluatePixel(a){for(const s of a){if(s.dataMask&&![0,1,6,8,9,10,11].includes(s.SCL))return[Math.round((s.B08-s.B12)/(s.B08+s.B12+1e-6)*127.5+127.5),255,Math.min(255,Math.round((s.B08+s.B12)*255))]}return[0,0,0]}`};
+let S={},R,scene,cam,ctl,playing=false,mesh,cum=[],tmax=1,ign0=0,pa=0,C,cumM=[],cumC=[],GJ=[],geoG;
+
+async function proc(from,to,w,h,es){
+ let e2=es;
+ if(S.noscl)e2=es.replace('"SCL",',es.includes('"B02"')?'':'"B02",').replace(/!\[[\d,]+\]\.includes\(s\.SCL\)/,'s.B02<.25');
+ let r;for(let k=0;k<4;k++){
+ r=await fetch(OGC+S.iid+'?'+new URLSearchParams({SERVICE:'WMS',VERSION:'1.1.1',REQUEST:'GetMap',LAYERS:S.lay,SRS:'EPSG:4326',BBOX:S.bb.join(','),
+  WIDTH:w,HEIGHT:h,FORMAT:'image/png',TIME:(from+'/'+to).replace(/\.\d+Z/g,'Z'),MAXCC:S.cc,EVALSCRIPT:btoa(e2),SHOWLOGO:'false',TRANSPARENT:'false'}));
+ if(r.status<500&&r.status!=429||k==3)break;await new Promise(z=>setTimeout(z,1500*(k+1)));log(L('  дахин оролдож байна (','  retrying (')+r.status+')...')}
+ if(!r.ok){
+  const tx=(await r.text()).replace(/<!\[CDATA\[|\]\]>/g,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+  if(!S.noscl&&/SCL/.test(tx)){S.noscl=true;log(L('Давхарга SCL-гүй (L1C) байна — үүл/цасыг спектрийн босгоор масклана.','Layer has no SCL (L1C) — clouds/snow are masked by spectral thresholds.'));return proc(from,to,w,h,es)}
+  throw Error('WMS '+r.status+' ['+S.lay+'] '+(tx||L('(хариу хоосон)','(empty response)')).slice(0,300));
+ }
+ const bm=await createImageBitmap(await r.blob(),{colorSpaceConversion:'none',premultiplyAlpha:'none'});
+ const c=document.createElement('canvas');c.width=w;c.height=h;
+ const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(bm,0,0);
+ return{c,d:x.getImageData(0,0,w,h).data};
+}
+function days(ign,end){
+ const o=[];
+ for(let t=Date.UTC(ign.getUTCFullYear(),ign.getUTCMonth(),ign.getUTCDate());t<=Date.parse(end+'T00:00:00Z');t+=864e5){
+  const d=new Date(t).toISOString().slice(0,10),pt=Date.parse(d+'T02:40:00Z');if(pt>ign)o.push({d,t:pt})}
+ return o;
+}
+async function lst(){
+ const id=$('iid').value.trim();if(!id){$('cfg').open=true;$('iid').focus();return log(L('Instance ID оруулна уу.','Enter the Instance ID.'),1)}
+ try{
+  const r=await fetch(OGC+id+'?SERVICE=WMS&REQUEST=GetCapabilities');if(!r.ok)throw Error('HTTP '+r.status);
+  const x=new DOMParser().parseFromString(await r.text(),'text/xml'),sel=$('lay');sel.innerHTML='';
+  x.querySelectorAll('Layer>Layer').forEach(l=>{const n=l.querySelector('Name');if(n){const o=document.createElement('option');o.value=o.textContent=n.textContent;sel.add(o)}});
+  if(!sel.options.length)throw Error(L('давхарга олдсонгүй','no layers found'));
+  let w='';try{w=localStorage.lay||''}catch(e){}
+  sel.value=[...sel.options].some(o=>o.value==w)?w:([...sel.options].find(o=>/L2A/i.test(o.value))||sel.options[0]).value;
+  return true;
+  }catch(e){log(L('Жагсаалт татаж чадсангүй: ','Could not load list: ')+e.message+L(' — Instance ID-гаа шалгана уу.',' — check the Instance ID.'),1);$('cfg').open=true}
+}
+async function terrain(dw,dh){
+ const[w,s,e,n]=S.bb,mx=l=>(l+180)/360,my=l=>{const r=l*Math.PI/180;return(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2};
+ let z=10,t;for(;;z--){const q=2**z;t=[Math.floor(mx(w)*q),Math.floor(mx(e)*q),Math.floor(my(n)*q),Math.floor(my(s)*q)];if((t[1]-t[0]+1)*(t[3]-t[2]+1)<=36)break}
+ const q=2**z,cv=document.createElement('canvas');cv.width=(t[1]-t[0]+1)*256;cv.height=(t[3]-t[2]+1)*256;
+ const x=cv.getContext('2d',{willReadFrequently:true}),jobs=[];
+ for(let i=t[0];i<=t[1];i++)for(let j=t[2];j<=t[3];j++)jobs.push((async()=>{
+  const r=await fetch(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${i}/${j}.png`);if(!r.ok)throw Error('terrain '+r.status);
+  x.drawImage(await createImageBitmap(await r.blob(),{colorSpaceConversion:'none',premultiplyAlpha:'none'}),(i-t[0])*256,(j-t[2])*256)})());
+ await Promise.all(jobs);
+ const id=x.getImageData(0,0,cv.width,cv.height).data,o=new Uint8ClampedArray(dw*dh*4);
+ for(let r=0;r<dh;r++)for(let c=0;c<dw;c++){
+  const px=Math.min(cv.width-1,Math.max(0,Math.round((mx(w+(e-w)*c/(dw-1))*q-t[0])*256))),py=Math.min(cv.height-1,Math.max(0,Math.round((my(n-(n-s)*r/(dh-1))*q-t[2])*256))),
+  k=(py*cv.width+px)*4,v=Math.max(0,Math.min(65535,Math.round(id[k]*256+id[k+1]+id[k+2]/256-32768+500))),u=(r*dw+c)*4;o[u]=v>>8;o[u+1]=v&255}
+ return{d:o};
+}
+function enhance(c){
+ const x=c.getContext('2d',{willReadFrequently:true}),im=x.getImageData(0,0,c.width,c.height),d=im.data,hist=new Uint32Array(256);
+ let n=0,sr=0,sg=0,sb=0;
+ for(let i=0;i<d.length;i+=4)if(d[i]|d[i+1]|d[i+2]){hist[Math.round(.3*d[i]+.59*d[i+1]+.11*d[i+2])]++;n++;sr+=d[i];sg+=d[i+1];sb+=d[i+2]}
+ if(!n)return;
+ let a=0,lo=0,hi=255;for(let i=0;i<256;i++){a+=hist[i];if(a<n*.02)lo=i;if(a<n*.985)hi=i}
+ hi=Math.max(hi,lo+20);
+ const mr=sr/n,mg=sg/n,mb=sb/n,f=v=>Math.pow(Math.max(0,Math.min(1,(v-lo)/(hi-lo))),.85)*255;
+ for(let i=0;i<d.length;i+=4){
+  let r=d[i],g=d[i+1],b=d[i+2];if(!(r|g|b)){r=mr;g=mg;b=mb}
+  const L=.3*r+.59*g+.11*b;
+  d[i]=f(L+(r-L)*1.3);d[i+1]=f(L+(g-L)*1.3);d[i+2]=f(L+(b-L)*1.3);d[i+3]=255}
+ x.putImageData(im,0,0);
+}
+function clean(M,N,W){
+ // strict: keep only the single largest 4-connected component of M
+ const lab=new Int32Array(N),st=[],cnt=[0];let nl=0,best=0;
+ for(let i=0;i<N;i++)if(M[i]&&!lab[i]){nl++;lab[i]=nl;let n=0;st.push(i);
+  while(st.length){const j=st.pop(),c=j%W;n++;
+   if(c>0&&M[j-1]&&!lab[j-1]){lab[j-1]=nl;st.push(j-1)}
+   if(c<W-1&&M[j+1]&&!lab[j+1]){lab[j+1]=nl;st.push(j+1)}
+   if(j>=W&&M[j-W]&&!lab[j-W]){lab[j-W]=nl;st.push(j-W)}
+   if(j+W<N&&M[j+W]&&!lab[j+W]){lab[j+W]=nl;st.push(j+W)}}
+  cnt[nl]=n;if(n>cnt[best])best=nl}
+ const R=new Uint8Array(N);if(best)for(let i=0;i<N;i++)R[i]=lab[i]==best?1:0;
+ return R;
+}
+function sidesOf(){
+ if(C.sd!==undefined)return C.sd;
+ const{W,Ht,N}=C,[w,s,e,n]=S.bb,wall=new Uint8Array(N);let any=0;
+ const seg=(a,b)=>{const x0=(a[0]-w)/(e-w)*W,y0=(n-a[1])/(n-s)*Ht,x1=(b[0]-w)/(e-w)*W,y1=(n-b[1])/(n-s)*Ht;
+  if(Math.max(x0,x1)<0||Math.min(x0,x1)>W||Math.max(y0,y1)<0||Math.min(y0,y1)>Ht)return;
+  const k=Math.ceil(Math.max(Math.abs(x1-x0),Math.abs(y1-y0))*2)||1;
+  for(let j=0;j<=k;j++){const x=Math.floor(x0+(x1-x0)*j/k),y=Math.floor(y0+(y1-y0)*j/k);if(x>=0&&x<W&&y>=0&&y<Ht){wall[y*W+x]=1;any=1}}},
+ ring=r=>{for(let i=1;i<r.length;i++)seg(r[i-1],r[i])};
+ for(const g of GJ){const t=g.type,c=g.coordinates;if(t=='LineString')ring(c);else if(t=='MultiLineString'||t=='Polygon')c.forEach(ring);else if(t=='MultiPolygon')c.forEach(q=>q.forEach(ring))}
+ if(!any)return C.sd=null;
+ const lab=new Int32Array(N),sz=[0],st=[];let nl=0;
+ for(let i=0;i<N;i++)if(!wall[i]&&!lab[i]){nl++;lab[i]=nl;let c0=0;st.push(i);
+  while(st.length){const j=st.pop(),c=j%W;c0++;
+   if(c>0&&!wall[j-1]&&!lab[j-1]){lab[j-1]=nl;st.push(j-1)}
+   if(c<W-1&&!wall[j+1]&&!lab[j+1]){lab[j+1]=nl;st.push(j+1)}
+   if(j>=W&&!wall[j-W]&&!lab[j-W]){lab[j-W]=nl;st.push(j-W)}
+   if(j+W<N&&!wall[j+W]&&!lab[j+W]){lab[j+W]=nl;st.push(j+W)}}
+  sz[nl]=c0}
+ let b1=0,b2=0;for(let l=1;l<=nl;l++){if(sz[l]>sz[b1]){b2=b1;b1=l}else if(sz[l]>sz[b2])b2=l}
+ if(!b2)return C.sd=null;
+ const rk=l=>!l?0:l==b1?1:l==b2?2:0,sd=new Uint8Array(N);
+ for(let i=0;i<N;i++){if(!wall[i])sd[i]=rk(lab[i]);else{const c=i%W;let l=0;
+  if(c>0&&!wall[i-1])l=lab[i-1];else if(c<W-1&&!wall[i+1])l=lab[i+1];else if(i>=W&&!wall[i-W])l=lab[i-W];else if(i+W<N&&!wall[i+W])l=lab[i+W];sd[i]=rk(l)}}
+ return C.sd=sd;
+}
+function dist(b,N,W){
+ const d=new Float32Array(N),sr=new Int32Array(N);for(let i=0;i<N;i++){d[i]=b[i]?0:1e9;sr[i]=i}
+ const f=(i,j,c)=>{if(j>=0&&j<N&&d[j]+c<d[i]){d[i]=d[j]+c;sr[i]=sr[j]}};
+ // column guards stop neighbours from wrapping to the opposite edge of the previous/next row
+ for(let i=0;i<N;i++){const c=i%W;f(i,i-W,1);if(c>0){f(i,i-1,1);f(i,i-W-1,1.414)}if(c<W-1)f(i,i-W+1,1.414)}
+ for(let i=N-1;i>=0;i--){const c=i%W;f(i,i+W,1);if(c<W-1){f(i,i+1,1);f(i,i+W+1,1.414)}if(c>0)f(i,i+W-1,1.414)}
+ return{d,sr};
+}
+// run fn over items with at most n requests in flight; results keep input order
+async function pool(items,n,fn){const out=[];let k=0;
+ await Promise.all(Array.from({length:Math.min(n,items.length)},async()=>{while(k<items.length){const i=k++;out[i]=await fn(items[i],i)}}));return out}
+function busy(t){const g=$('go');g.disabled=!!t;g.textContent=t?L('Тооцоолж байна… ','Working… ')+(t===true?'':t):(lang=='en'?g.dataset.en:g.dataset.mn);
+ ['xg','xk','xs','mp0','lst'].forEach(i=>$(i).disabled=!!t)}
+function check(bb,ign){
+ const bad=(id,mn,en)=>{const el=$(id);if(el.closest('details'))el.closest('details').open=true;el.focus();throw Error(L(mn,en))},v=id=>$(id).value;
+ if(bb.some(x=>!isFinite(x)))bad('n','Солбицлыг бүрэн оруулна уу.','Enter all coordinates.');
+ if(Math.abs(bb[1])>85||Math.abs(bb[3])>85)bad('n','Өргөрөг ±85°-аас хэтрэхгүй.','Latitude must be within ±85°.');
+ if(Math.abs(bb[0])>180||Math.abs(bb[2])>180)bad('w','Уртраг ±180°-аас хэтрэхгүй.','Longitude must be within ±180°.');
+ if(!(bb[1]<bb[3]))bad('s','Урд өргөрөг хойд өргөрөгөөс бага байх ёстой.','South latitude must be less than north latitude.');
+ if(!(bb[0]<bb[2]))bad('w','Баруун уртраг зүүн уртрагаас бага байх ёстой.','West longitude must be less than east longitude.');
+ if(isNaN(ign))bad('ign','Гал гарсан цагийг оруулна уу.','Enter the ignition time.');
+ if(!v('start')||Date.parse(v('start')+'T00:00:00Z')>=+ign)bad('start','Өмнөх зургийн эхлэл гал гарахаас өмнө байх ёстой.','Pre-fire start must be before ignition.');
+ if(!v('end')||Date.parse(v('end')+'T23:59:59Z')<=+ign)bad('end','Баталгаажуулах төгсгөл гал гарснаас хойш байх ёстой.','Verification end must be after ignition.');
+ if(v('fend')&&new Date(v('fend')+':00+08:00')<=ign)bad('fend','Унтарсан цаг гал гарснаас хойш байх ёстой.','Fire-out time must be after ignition.');
+ if(!(+v('res')>=10))bad('res','Нягтрал 10 м-ээс багагүй байна.','Resolution must be at least 10 m.');
+ if(!(+v('cc')>=0&&+v('cc')<=100))bad('cc','Үүлний хязгаар 0–100 байна.','Cloud cover must be 0–100.');
+}
+async function run(){
+ if($('go').disabled)return;
+ $('log').textContent='';busy(true);play(false);
+ const S0=S,C0=C,g0=ign0;
+ try{
+  const v=id=>+$(id).value,sg=(a,b)=>($(a).value===''?NaN:v(a))*(($(b).value=='S'||$(b).value=='W')?-1:1),bb=[sg('w','hw'),sg('s','hs'),sg('e','he'),sg('n','hn')],ign=new Date($('ign').value+':00+08:00');
+  check(bb,ign);
+  const dxk=(bb[2]-bb[0])*111.32*Math.cos((bb[1]+bb[3])/2*Math.PI/180),dyk=(bb[3]-bb[1])*111.2;
+  let res=v('res');while(Math.max(dxk,dyk)*1000/res>2500)res+=10;
+  const W=Math.round(dxk*1000/res),Ht=Math.round(dyk*1000/res),N=W*Ht,rowA=new Float32Array(Ht);
+  for(let r=0;r<Ht;r++)rowA[r]=(bb[2]-bb[0])/W*111.32*Math.cos((bb[3]-(bb[3]-bb[1])*(r+.5)/Ht)*Math.PI/180)*(bb[3]-bb[1])/Ht*111.2;
+  if(!$('iid').value.trim()){$('cfg').open=true;$('iid').focus();throw Error(L('Sentinel Hub тохиргоонд Instance ID оруулна уу.','Enter the Instance ID in Sentinel Hub settings.'))}
+  if(!$('lay').value)await lst();
+  S={bb,cc:v('cc'),iid:$('iid').value.trim(),lay:$('lay').value};
+  if(!S.lay)throw Error(L('Давхарга олдсонгүй.','Layer not found.'));
+  try{localStorage.iid=S.iid;localStorage.lay=S.lay}catch(e){}
+  const ps=days(ign,$('end').value),t0=$('start').value+'T00:00:00Z';
+  log(L('Гал гарахаас өмнөх зураг татаж байна...','Downloading pre-fire imagery...'));busy(L('өмнөх зураг','pre-fire'));
+  const[pre,rgb]=await Promise.all([proc(t0,ign.toISOString(),W,Ht,ES.nbr),proc(t0,ign.toISOString(),W,Ht,ES.rgb)]);
+  const Cn={W,Ht,N,ign,rowA,pre:pre.d,ps:[],pxm:dxk*1000/W,hEnd:$('fend').value?(new Date($('fend').value+':00+08:00')-ign)/36e5:1e9};
+  let done=0;const pg=log(''),tick=()=>{pg.textContent=L('Давалтууд татаж байна: ','Downloading passes: ')+done+'/'+ps.length+'\n';busy(done+'/'+ps.length)};tick();
+  const got=await pool(ps,3,async p=>{
+   try{const im=await proc(p.d+'T00:00:00Z',p.d+'T23:59:59Z',W,Ht,ES.nbr);let nv=0;for(let i=1;i<im.d.length;i+=4)if(im.d[i])nv++;
+    return{nv,d:nv<N*.03?null:im.d}}catch(e){return{err:e}}finally{done++;tick()}});
+  ps.forEach((p,j)=>{const g=got[j];
+   if(g.err)return log(p.d+L(' алгассан: ',' skipped: ')+g.err.message.slice(0,90));
+   log(p.d+L(' цэвэр зургийн хамрах: ',' clear-pixel coverage: ')+Math.round(g.nv/N*100)+'%'+(g.d?'':L(' — хэт бага, алгассан',' — too low, skipped')));
+   if(g.d)Cn.ps.push({t:p.t,im:g.d})});
+  C=Cn;ign0=+ign;
+  if(!C.ps.length)throw Error(L('Дагуулын давалт олдсонгүй. Үүлний хязгаар, огноо, давхаргыг шалгана уу.','No satellite passes found. Check the cloud limit, dates and layer.'));
+  let dem=null;const dw=Math.min(W,400),dh=Math.round(dw*Ht/W);
+  try{log(L('Өндрийн загвар татаж байна...','Downloading elevation model...'));busy('DEM');dem=await terrain(dw,dh)}catch(e){log(L('DEM алдаа, хавтгай гадаргуу: ','DEM error, flat surface: ')+e.message)}
+  const a8=compute();enhance(rgb.c);C.rgb=rgb.c;C.dxk=dxk;build(rgb.c,a8,W,Ht,dem,dw,dh,dxk,dyk);log(L('Бэлэн. Босго/индексийг өөрчилбөл дахин татахгүйгээр шинэчлэгдэнэ. ▶ товчоор тархалтыг тоглуулна.','Done. Changing the threshold/index updates without re-downloading. Press ▶ to play the spread.'));
+  if(innerWidth<=720)side(true);
+  showMap();
+ }catch(e){S=S0;C=C0;ign0=g0;log(L('АЛДАА: ','ERROR: ')+e.message+(/fetch|network/i.test(e.message)?L(' (сүлжээ эсвэл Instance ID-г шалгана уу)',' (check the network or Instance ID)'):''),1)}
+ busy(false);
+}
+function compute(){
+ const{W,Ht,N,ign,pre,ps,rowA}=C,bri=$('idx').value=='bri',thr=+$('thr').value;
+ const dv=(Q,k)=>{if(bri){const p=pre[k+2]/255;return(p-Q[k+2]/255)/Math.max(p,.05)}return(pre[k]-Q[k])/127.5};
+ const arr=new Float32Array(N).fill(Infinity),burned=new Uint8Array(N),mx=new Float32Array(N).fill(-9),obs=new Uint8Array(N);
+ let tp=+ign,had=false,pj=0;const pid=new Uint8Array(N),lc=new Float32Array(N),hE=C.hEnd,one=$("one").checked;
+ for(const p of ps){
+  const Q=p.im,cand=new Uint8Array(N);let keep=[];pj++;
+  for(let i=0;i<N;i++){const k=i*4;if(pre[k+1]&&Q[k+1]){obs[i]=1;const d=dv(Q,k);if(d>mx[i])mx[i]=d;if(!burned[i]&&d>thr)cand[i]=1}}
+  for(let i=0;i<N;i++)if(cand[i]){const c=i%W;let n=0;for(let a=-1;a<=1;a++){const r=i+a*W;if(r<0||r>=N)continue;for(let b=-1;b<=1;b++){if(!(a||b)||c+b<0||c+b>=W)continue;if(cand[r+b]||burned[r+b])n++}}if(n>=3)keep.push(i)}
+  if(one&&keep.length){const M=new Uint8Array(burned);for(const i of keep)M[i]=1;const Fm=clean(M,N,W);keep=[];for(let i=0;i<N;i++)if(Fm[i]&&!burned[i])keep.push(i)}
+  const{d,sr}=dist(burned,N,W);let m=1;for(const i of keep)m=Math.max(m,d[i]);
+  const th=(p.t-ign)/36e5,hi=Math.min(th,hE);
+  for(const i of keep){const lo=Math.min(had?Math.max(lc[i],arr[sr[i]]):lc[i],hi);arr[i]=lo+(had?Math.min(1,d[i]/m):1)*(hi-lo)}
+  for(const i of keep){burned[i]=1;pid[i]=pj}
+  for(let i=0;i<N;i++)if(!burned[i]&&pre[i*4+1]&&Q[i*4+1])lc[i]=th;
+  if(keep.length)had=true;tp=p.t;
+ }
+ let rmA=0;
+ if(one){const Fm=clean(burned,N,W);for(let i=0;i<N;i++)if(burned[i]&&!Fm[i]){burned[i]=0;pid[i]=0;arr[i]=Infinity;rmA+=rowA[(i/W)|0]}}
+ for(let i=0;i<N;i++)if(burned[i]&&!isFinite(arr[i]))arr[i]=0;
+ tmax=Math.max(.01,Math.min((tp-ign)/36e5,hE));
+ const sd=sidesOf();let a1=0,a2=0;
+ if(sd)for(let i=0;i<N;i++)if(isFinite(arr[i])){if(sd[i]==1)a1+=rowA[(i/W)|0];else if(sd[i]==2)a2+=rowA[(i/W)|0]}
+ const mon=((a1>=a2))?1:2,cty=new Uint8Array(N),a8=new Uint8Array(N),LL=Math.ceil(tmax)+2;
+ cum=new Float32Array(LL);cumM=new Float32Array(LL);cumC=new Float32Array(LL);let edge=0;
+ for(let r=0;r<Ht;r++)for(let c=0;c<W;c++){const i=r*W+c,x=arr[i],o=(Ht-1-r)*W+c;
+  if(isFinite(x)){const q=Math.floor(x);a8[o]=Math.min(254,Math.round(x/tmax*254));cum[q]+=rowA[r];
+   if(sd&&sd[i]){if(sd[i]==mon){cumM[q]+=rowA[r];cty[i]=1}else{cumC[q]+=rowA[r];cty[i]=2}}
+   if(r<2||c<2||r>=Ht-2||c>=W-2)edge++}else a8[o]=255}
+ for(let i=1;i<LL;i++){cum[i]+=cum[i-1];cumM[i]+=cumM[i-1];cumC[i]+=cumC[i-1]}
+ C.sdOK=!!sd;C.cty=cty;
+ let tot=0,ob=0;for(let r=0;r<Ht;r++){tot+=rowA[r]*W;for(let c=0;c<W;c++)if(obs[r*W+c])ob+=rowA[r]}
+ log(L('— Нийт шатсан: ','— Total burned: ')+fa(cum[cum.length-1])+' ('+ps.length+L(' давалт, босго ',' pass(es), threshold ')+thr+')');
+ {const un=new Uint8Array(N),st=[];const push=i=>{if(!pid[i]&&!un[i]){un[i]=1;st.push(i)}};
+  for(let c=0;c<W;c++){push(c);push((Ht-1)*W+c)}for(let r=0;r<Ht;r++){push(r*W);push(r*W+W-1)}
+  while(st.length){const j=st.pop(),c=j%W;if(c>0)push(j-1);if(c<W-1)push(j+1);if(j>=W)push(j-W);if(j+W<N)push(j+W)}
+  let hn=0,ha=0;const seen=new Uint8Array(N);
+  for(let i=0;i<N;i++)if(!pid[i]&&!un[i]&&!seen[i]){hn++;seen[i]=1;st.push(i);while(st.length){const j=st.pop(),c=j%W;ha+=rowA[(j/W)|0];
+   const nb=[];if(c>0)nb.push(j-1);if(c<W-1)nb.push(j+1);if(j>=W)nb.push(j-W);if(j+W<N)nb.push(j+W);for(const q of nb)if(!pid[q]&&!un[q]&&!seen[q]){seen[q]=1;st.push(q)}}}
+  C.holeN=hn;log(L('   Шатаагүй цоорхой (дотор нь): ','   Unburned holes (enclosed): ')+hn+(hn?' ('+fa(ha)+')':''))}
+ if(one&&rmA>0)log(L('   Үндсэн талбайгаас тусдаа тул хасагдсан: ','   Removed (not connected to main area): ')+fa(rmA));
+ if(sd)log(L('   Монгол: ','   Mongolia: ')+fa(cumM[LL-1])+L(' · Хятад: ',' · China: ')+fa(cumC[LL-1]));else if(GJ.length)log(L('   Хилийн шугам bbox-ийг хоёр тал болгон хуваасангүй.','   The border line does not split the bbox into two sides.'));
+ const LV=bri?[.15,.25,.35,.45]:[.05,.1,.15,.2,.27];
+ log(L('Босгын мэдрэмж (шүүлтүүргүй): ','Threshold sensitivity (unfiltered): ')+LV.map(x=>{let s=0;for(let r=0;r<Ht;r++)for(let c=0;c<W;c++)if(mx[r*W+c]>x)s+=rowA[r];return x+'→'+fa(s)}).join(' · '));
+ log(L('Ажиглагдсан: ','Observed: ')+Math.round(ob/tot*100)+L('% (үлдсэн хэсэг үүл/цас/зураггүй тул шатсан эсэх тодорхойгүй)','% (the rest is cloud/snow/no imagery, so burn status is unknown)'));
+ if(edge>15)log(L('⚠ Шатсан талбай bbox-ийн ирмэгт хүрсэн — дүн дутуу байж болно, bbox-оо томруулна уу.','⚠ The burned area reaches the bbox edge — the total may be incomplete, enlarge the bbox.'));
+ C.arr=arr;C.pid=pid;C.pct=Math.round(ob/tot*100);C.tot=cum[cum.length-1];C.bri=bri;C.thr=thr;return a8;
+}
+const DX=[1,0,-1,0],DY=[0,1,0,-1];
+function vec(mask,bridge){
+ const{W,Ht,N}=C,W1=W+1,lab=new Int32Array(N),stk=[];let nl=0;
+ for(let i=0;i<N;i++)if(mask[i]&&!lab[i]){lab[i]=++nl;stk.push(i);
+  while(stk.length){const j=stk.pop(),c=j%W;
+   if(c>0&&mask[j-1]&&!lab[j-1]){lab[j-1]=nl;stk.push(j-1)}
+   if(c<W-1&&mask[j+1]&&!lab[j+1]){lab[j+1]=nl;stk.push(j+1)}
+   if(j>=W&&mask[j-W]&&!lab[j-W]){lab[j-W]=nl;stk.push(j-W)}
+   if(j+W<N&&mask[j+W]&&!lab[j+W]){lab[j+W]=nl;stk.push(j+W)}}}
+ const Ev=[],Ed=[],o1=new Int32Array(W1*(Ht+1)).fill(-1),o2=new Int32Array(W1*(Ht+1)).fill(-1);
+ const add=(v,d)=>{const k=Ev.length;Ev.push(v);Ed.push(d);if(o1[v]<0)o1[v]=k;else o2[v]=k},B=(c,r)=>c>=0&&c<W&&r>=0&&r<Ht&&mask[r*W+c];
+ for(let r=0;r<Ht;r++)for(let c=0;c<W;c++)if(mask[r*W+c]){
+  if(!B(c,r-1))add(r*W1+c,0);if(!B(c+1,r))add(r*W1+c+1,1);
+  if(!B(c,r+1))add((r+1)*W1+c+1,2);if(!B(c-1,r))add((r+1)*W1+c,3)}
+ const used=new Uint8Array(Ev.length),G={};
+ for(let s=0;s<Ev.length;s++){if(used[s])continue;
+  const pts=[];let e=s;
+  do{used[e]=1;const v=Ev[e],d=Ed[e];pts.push([v%W1,(v/W1)|0,d]);
+   const end=v+(d==0?1:d==1?W1:d==2?-1:-W1),a=o1[end],b=o2[end];
+   e=b<0?a:(Ed[a]==((d+1)&3)?a:b)}while(e!=s&&e>=0);
+  const m=pts.length,cor=[];
+  for(let i=0;i<m;i++)if(pts[i][2]!=pts[(i+m-1)%m][2])cor.push([pts[i][0],pts[i][1]]);
+  // split the ring at repeated (pinch) vertices -> simple loops, so every ring is valid (no self-touching)
+  const loops=[],st2=[],pos=new Map();
+  for(const q of cor){const k=q[0]+','+q[1],i=pos.get(k);
+   if(i!==undefined){loops.push(st2.slice(i));for(let z=i+1;z<st2.length;z++)pos.delete(st2[z][0]+','+st2[z][1]);st2.length=i+1}
+   else{pos.set(k,st2.length);st2.push(q)}}
+  loops.push(st2);
+  const[x,y,d]=pts[0],rd=(d+1)&3,l=lab[Math.floor(y+.5*DY[d]+.5*DY[rd])*W+Math.floor(x+.5*DX[d]+.5*DX[rd])];
+  const g=G[l]||(G[l]={os:[],hs:[]});
+  for(const lp of loops){if(lp.length<3)continue;let ar=0;
+   for(let i=0;i<lp.length;i++){const p=lp[i],q=lp[(i+1)%lp.length];ar+=p[0]*q[1]-q[0]*p[1]}
+   if(ar>0)g.os.push(lp);else if(ar<0)g.hs.push(lp)}}
+ const pip=(x,y,r)=>{let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>y)!=(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c},out=[];
+ for(const g of Object.values(G))for(const o of g.os){
+  const hs=g.os.length==1?g.hs:g.hs.filter(h=>pip((h[0][0]+h[1][0])/2,(h[0][1]+h[1][1])/2,o));
+  out.push({o,h:hs})}
+ return bridge?bridgeAll(out,mask,W,Ht):out;
+}
+function bridgeAll(polys,mask,W,Ht){
+ // Connect every hole to the outline (or to another hole) by a straight zero-width cut through burned pixels only,
+ // so each polygon becomes one ring:  A -> B -> (hole) -> B -> A ;  chained holes:  A -> B -> (hole1) -> C -> D -> (hole2) -> D -> C -> (hole1) -> B -> A
+ const rings=[],own=[],base=[];
+ polys.forEach((P,pi)=>{base.push(rings.length);rings.push(P.o);own.push(pi);P.h.forEach(h=>{rings.push(h);own.push(pi)})});
+ const VR=new Int32Array((W+1)*Ht).fill(-1),HR=new Int32Array(W*(Ht+1)).fill(-1);
+ rings.forEach((R,ri)=>{for(let i=0;i<R.length;i++){const a=R[i],b=R[(i+1)%R.length];
+  if(a[0]==b[0]){const y0=Math.min(a[1],b[1]),y1=Math.max(a[1],b[1]);for(let y=y0;y<y1;y++)VR[y*(W+1)+a[0]]=ri}
+  else{const x0=Math.min(a[0],b[0]),x1=Math.max(a[0],b[0]);for(let x=x0;x<x1;x++)HR[a[1]*W+x]=ri}}});
+ const mk=(c,r)=>c>=0&&c<W&&r>=0&&r<Ht&&mask[r*W+c],cand=[];
+ polys.forEach((P,pi)=>{P.h.forEach((_,hi)=>{const ri=base[pi]+1+hi,R=rings[ri];
+  let per=0;for(let i=0;i<R.length;i++){const a=R[i],b=R[(i+1)%R.length];per+=Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1])}
+  const step=Math.max(1,Math.floor(per/80));let cnt=0;
+  for(let i=0;i<R.length;i++){const a=R[i],b=R[(i+1)%R.length];
+   if(a[0]==b[0]){const x=a[0],y0=Math.min(a[1],b[1]),y1=Math.max(a[1],b[1]);
+    for(let r=y0;r<y1;r++,cnt++){if(cnt%step)continue;
+     const d=mk(x,r)?1:mk(x-1,r)?-1:0;if(!d)continue;
+     let c=d>0?x:x-1;while(mk(c,r))c+=d;const x1=d>0?c:c+1,t=VR[r*(W+1)+x1];
+     if(t>=0&&t!=ri)cand.push({a:ri,b:t,len:Math.abs(x1-x),v:1,r,u0:x,u1:x1})}}
+   else{const y=a[1],x0=Math.min(a[0],b[0]),x1=Math.max(a[0],b[0]);
+    for(let c=x0;c<x1;c++,cnt++){if(cnt%step)continue;
+     const d=mk(c,y)?1:mk(c,y-1)?-1:0;if(!d)continue;
+     let r=d>0?y:y-1;while(mk(c,r))r+=d;const y1=d>0?r:r+1,t=HR[y1*W+c];
+     if(t>=0&&t!=ri)cand.push({a:ri,b:t,len:Math.abs(y1-y),v:0,r:c,u0:y,u1:y1})}}}})});
+ cand.sort((p,q)=>p.len-q.len);
+ const uf=Int32Array.from(rings.map((_,i)=>i)),fd=i=>{while(uf[i]!=i){uf[i]=uf[uf[i]];i=uf[i]}return i},used=new Uint8Array(W*Ht),br=[];
+ const cells=c=>{const o=[];if(c.v){const d=c.u1>c.u0?1:-1;for(let x=c.u0;x!=c.u1;x+=d)o.push(c.r*W+(d>0?x:x-1))}else{const d=c.u1>c.u0?1:-1;for(let y=c.u0;y!=c.u1;y+=d)o.push((d>0?y:y-1)*W+c.r)}return o};
+ for(const c of cand){const fa=fd(c.a),fb=fd(c.b);if(fa==fb)continue;const cs=cells(c);if(cs.some(i=>used[i]))continue;
+  cs.forEach(i=>used[i]=1);uf[fa]=fb;
+  const pa=c.v?[c.u0,c.r+.5]:[c.r+.5,c.u0],pb=c.v?[c.u1,c.r+.5]:[c.r+.5,c.u1];
+  br.push({a:c.a,b:c.b,pa,pb})}
+ return polys.map((P,pi)=>{
+  const b0=base[pi],root=fd(b0),mine=br.filter(b=>own[b.a]==pi&&fd(b.a)==root);
+  const holesAll=P.h.slice();
+  if(!mine.length)return{o:P.o,h:P.h,holesAll};
+  const ids=new Set([b0]);mine.forEach(b=>{ids.add(b.a);ids.add(b.b)});
+  const ins=new Map();ids.forEach(r=>ins.set(r,[]));
+  mine.forEach((b,k)=>{ins.get(b.a).push({pt:b.pa,k,e:0});ins.get(b.b).push({pt:b.pb,k,e:1})});
+  const nr=new Map(),ends=mine.map(()=>[null,null]);
+  for(const r of ids){const R=rings[r],L=ins.get(r),vx=new Map(),hy=new Map();
+   L.forEach(q=>{if(q.pt[0]%1==0){(vx.get(q.pt[0])||vx.set(q.pt[0],[]).get(q.pt[0])).push(q)}else{(hy.get(q.pt[1])||hy.set(q.pt[1],[]).get(q.pt[1])).push(q)}});
+   const seg=R.map(()=>[]);
+   for(let i=0;i<R.length;i++){const a=R[i],b=R[(i+1)%R.length];
+    if(a[0]==b[0]){const l=vx.get(a[0]);if(l)for(const q of l)if(q.pt[1]>Math.min(a[1],b[1])&&q.pt[1]<Math.max(a[1],b[1]))seg[i].push(q)}
+    else{const l=hy.get(a[1]);if(l)for(const q of l)if(q.pt[0]>Math.min(a[0],b[0])&&q.pt[0]<Math.max(a[0],b[0]))seg[i].push(q)}}
+   const pts=[];
+   for(let i=0;i<R.length;i++){const a=R[i];pts.push({pt:a,br:-1});
+    seg[i].sort((p,q)=>Math.abs(p.pt[0]-a[0])+Math.abs(p.pt[1]-a[1])-Math.abs(q.pt[0]-a[0])-Math.abs(q.pt[1]-a[1]));
+    for(const q of seg[i]){ends[q.k][q.e]={r,i:pts.length};pts.push({pt:q.pt,br:q.k})}}
+   nr.set(r,pts)}
+  const out=[],usedB=new Set(),st=[{r:b0,i:0,k:0,from:-1,en:null,sp:null}];
+  while(st.length){const f=st[st.length-1],R=nr.get(f.r),n=R.length;
+   if(f.k>=n){st.pop();if(f.en){out.push(f.sp);out.push(f.en)}continue}
+   const q=R[(f.i+f.k)%n];f.k++;out.push(q.pt);
+   if(q.br>=0&&q.br!=f.from&&!usedB.has(q.br)){usedB.add(q.br);const e=ends[q.br][0].r==f.r?ends[q.br][1]:ends[q.br][0];
+    st.push({r:e.r,i:e.i,k:0,from:q.br,en:q.pt,sp:nr.get(e.r)[e.i].pt})}}
+  const left=P.h.filter((_,hi)=>!ids.has(b0+1+hi));
+  return{o:out,h:left,holesAll}});
+}
+function feats0(mode){
+ const{W,Ht,N,pid,ps,rowA,cty,sdOK}=C,[w,s,e,n]=S.bb,ll=r=>r.map(([x,y])=>[+(w+(e-w)*x/W).toFixed(6),+(n-(n-s)*y/Ht).toFixed(6)]),
+ iso=ms=>new Date(ms).toISOString().slice(0,10),CT=['Other','Mongolia','China'],
+ mk=(name,date,m,ct)=>{let a=0;for(let i=0;i<N;i++)if(m[i])a+=rowA[(i/W)|0];const V=vec(m,$('bridge').checked),holes=[];
+  for(const p of V)for(const h of (p.holesAll||p.h)){let ar=0,ym=0;for(let i=0;i<h.length;i++){const u=h[i],v=h[(i+1)%h.length];ar+=u[0]*v[1]-v[0]*u[1];ym+=u[1]}
+   holes.push({ring:ll(h),km2:Math.abs(ar)/2*rowA[Math.min(Ht-1,Math.max(0,Math.floor(ym/h.length)))]})}
+  return{name,date,ct,km2:a,ha:a*100,cum:0,holes,polys:V.map(p=>({o:ll(p.o),h:p.h.map(ll)}))}},
+ split=(name,date,m)=>{
+  if(!sdOK)return[mk(name,date,m,'')];
+  const o=[];for(const k of[1,2,0]){const mm=new Uint8Array(N);let c=0;for(let i=0;i<N;i++)if(m[i]&&cty[i]==k){mm[i]=1;c++}if(c)o.push(mk(name,date,mm,CT[k]))}
+  return o};
+ if(mode=='total'){const m=new Uint8Array(N);for(let i=0;i<N;i++)m[i]=pid[i]>0?1:0;
+  const o=split('Burned_total',iso(ign0)+'/'+iso(ps[ps.length-1].t),m);o.forEach(f=>f.cum=f.ha);return o}
+ if(mode=='cum'){const out=[];
+  for(let j=1;j<=ps.length;j++){const m=new Uint8Array(N);let c=0;for(let i=0;i<N;i++)if(pid[i]>0&&pid[i]<=j){m[i]=1;c++}
+   if(!c)continue;if(!pid.some((v,i)=>v==j))continue;split('Cumulative_'+iso(ps[j-1].t),iso(ps[j-1].t),m).forEach(f=>{f.cum=f.ha;out.push(f)})}
+  return out}
+ const out=[],cu={};
+ for(let j=1;j<=ps.length;j++){const m=new Uint8Array(N);let c=0;for(let i=0;i<N;i++)if(pid[i]==j){m[i]=1;c++}
+  if(!c)continue;split('Pass_'+iso(ps[j-1].t),iso(ps[j-1].t),m).forEach(f=>{cu[f.ct]=(cu[f.ct]||0)+f.ha;f.cum=cu[f.ct];out.push(f)})}
+ return out;
+}
+function feats(mode){const F=feats0(mode);F.forEach(f=>f.type='burned');return F}
+const rv=r=>r.slice().reverse(),cl=r=>r.concat([r[0]]),esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+function toKML(FS){
+ const co=r=>cl(rv(r)).map(p=>p[0]+','+p[1]+',0').join(' ');
+ return'<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>'+esc($('ttl').value)+'</name><Style id="b"><LineStyle><color>ff2e7bff</color><width>1.5</width></LineStyle><PolyStyle><color>882e7bff</color></PolyStyle></Style><Style id="u"><LineStyle><color>ffffffff</color><width>1.5</width></LineStyle><PolyStyle><color>66ffffff</color></PolyStyle></Style>'+
+ FS.map(f=>'<Placemark><name>'+esc(f.name+(f.ct?' · '+f.ct:''))+'</name><description>'+esc(f.date+' · '+fa(f.km2))+'</description><styleUrl>#'+(f.type=='unburned'?'u':'b')+'</styleUrl><ExtendedData><Data name="type"><value>'+(f.type||'burned')+'</value></Data><Data name="country"><value>'+f.ct+'</value></Data><Data name="date"><value>'+f.date+'</value></Data><Data name="area_ha"><value>'+f.ha.toFixed(2)+'</value></Data><Data name="area_km2"><value>'+f.km2.toFixed(3)+'</value></Data><Data name="cum_ha"><value>'+f.cum.toFixed(2)+'</value></Data></ExtendedData><MultiGeometry>'+
+  f.polys.map(p=>'<Polygon><outerBoundaryIs><LinearRing><coordinates>'+co(p.o)+'</coordinates></LinearRing></outerBoundaryIs>'+p.h.map(h=>'<innerBoundaryIs><LinearRing><coordinates>'+co(h)+'</coordinates></LinearRing></innerBoundaryIs>').join('')+'</Polygon>').join('')+'</MultiGeometry></Placemark>').join('')+'</Document></kml>';
+}
+function toGJ(FS){
+ return JSON.stringify({type:'FeatureCollection',features:FS.map(f=>({type:'Feature',properties:{name:f.name,type:f.type||'burned',country:f.ct,date:f.date,area_ha:+f.ha.toFixed(2),area_km2:+f.km2.toFixed(3),cum_ha:+f.cum.toFixed(2)},
+  geometry:{type:'MultiPolygon',coordinates:f.polys.map(p=>[cl(rv(p.o)),...p.h.map(h=>cl(rv(h)))])}}))});
+}
+function toSHP(FS){
+ const recs=FS.map(f=>{const parts=[],pts=[];for(const p of f.polys)for(const r of[p.o,...p.h]){parts.push(pts.length);r.forEach(q=>pts.push(q));pts.push(r[0])}
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const q of pts){x0=Math.min(x0,q[0]);y0=Math.min(y0,q[1]);x1=Math.max(x1,q[0]);y1=Math.max(y1,q[1])}
+  return{parts,pts,b:[x0,y0,x1,y1]}}),
+ cl_=r=>44+4*r.parts.length+16*r.pts.length,
+ bb=[Math.min(...recs.map(r=>r.b[0])),Math.min(...recs.map(r=>r.b[1])),Math.max(...recs.map(r=>r.b[2])),Math.max(...recs.map(r=>r.b[3]))],
+ hdr=(dv,len)=>{dv.setInt32(0,9994);dv.setInt32(24,len/2);dv.setInt32(28,1000,true);dv.setInt32(32,5,true);bb.forEach((v,i)=>dv.setFloat64(36+8*i,v,true))},
+ tot=100+recs.reduce((a,r)=>a+8+cl_(r),0),shp=new DataView(new ArrayBuffer(tot)),shx=new DataView(new ArrayBuffer(100+8*recs.length));
+ hdr(shp,tot);hdr(shx,100+8*recs.length);let o=100;
+ recs.forEach((r,i)=>{const L=cl_(r)/2;shx.setInt32(100+8*i,o/2);shx.setInt32(104+8*i,L);shp.setInt32(o,i+1);shp.setInt32(o+4,L);o+=8;
+  shp.setInt32(o,5,true);r.b.forEach((v,k)=>shp.setFloat64(o+4+8*k,v,true));shp.setInt32(o+36,r.parts.length,true);shp.setInt32(o+40,r.pts.length,true);
+  let q=o+44;for(const v of r.parts){shp.setInt32(q,v,true);q+=4}for(const p of r.pts){shp.setFloat64(q,p[0],true);shp.setFloat64(q+8,p[1],true);q+=16}o=q});
+ const fl=[['NAME','C',24,0],['TYPE','C',10,0],['COUNTRY','C',10,0],['DATE','C',23,0],['AREA_HA','N',16,2],['AREA_KM2','N',14,3],['CUM_HA','N',16,2]],
+ rl=1+fl.reduce((a,f)=>a+f[2],0),hl=33+32*fl.length,db=new Uint8Array(hl+rl*FS.length+1),dd=new DataView(db.buffer),d=new Date();
+ db[0]=3;db[1]=d.getFullYear()-1900;db[2]=d.getMonth()+1;db[3]=d.getDate();dd.setUint32(4,FS.length,true);dd.setUint16(8,hl,true);dd.setUint16(10,rl,true);
+ fl.forEach((f,i)=>{const q=32+32*i;for(let k=0;k<f[0].length;k++)db[q+k]=f[0].charCodeAt(k);db[q+11]=f[1].charCodeAt(0);db[q+16]=f[2];db[q+17]=f[3]});
+ db[32+32*fl.length]=13;let u=hl;
+ FS.forEach(f=>{db[u++]=32;const v=[f.name,f.type||'burned',f.ct,f.date,f.ha.toFixed(2),f.km2.toFixed(3),f.cum.toFixed(2)];
+  fl.forEach((fd,i)=>{const s=fd[1]=='C'?String(v[i]).padEnd(fd[2]).slice(0,fd[2]):String(v[i]).padStart(fd[2]).slice(-fd[2]);for(let k=0;k<fd[2];k++)db[u++]=s.charCodeAt(k)&127})});
+ db[u]=26;
+ const en=new TextEncoder();
+ return zip([['burned_area.shp',new Uint8Array(shp.buffer)],['burned_area.shx',new Uint8Array(shx.buffer)],['burned_area.dbf',db],
+  ['burned_area.prj',en.encode('GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]')],['burned_area.cpg',en.encode('UTF-8')]]);
+}
+function zip(files){
+ const T=new Uint32Array(256).map((_,n)=>{for(let k=0;k<8;k++)n=n&1?0xEDB88320^(n>>>1):n>>>1;return n>>>0}),
+ crc=u=>{let c=-1;for(let i=0;i<u.length;i++)c=T[(c^u[i])&255]^(c>>>8);return(~c)>>>0},
+ en=new TextEncoder(),parts=[],cd=[],d=new Date(),dt=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate(),tm=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1);let off=0;
+ for(const[nm,u]of files){const nb=en.encode(nm),c=crc(u),h=new DataView(new ArrayBuffer(30)),g=new DataView(new ArrayBuffer(46));
+  h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(10,tm,true);h.setUint16(12,dt,true);h.setUint32(14,c,true);h.setUint32(18,u.length,true);h.setUint32(22,u.length,true);h.setUint16(26,nb.length,true);
+  g.setUint32(0,0x02014b50,true);g.setUint16(4,20,true);g.setUint16(6,20,true);g.setUint16(12,tm,true);g.setUint16(14,dt,true);g.setUint32(16,c,true);g.setUint32(20,u.length,true);g.setUint32(24,u.length,true);g.setUint16(28,nb.length,true);g.setUint32(42,off,true);
+  parts.push(new Uint8Array(h.buffer),nb,u);cd.push(new Uint8Array(g.buffer),nb);off+=30+nb.length+u.length}
+ const cs=cd.reduce((a,b)=>a+b.length,0),e=new DataView(new ArrayBuffer(22));
+ e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
+ return new Blob([...parts,...cd,new Uint8Array(e.buffer)],{type:'application/zip'});
+}
+function dl(name,data,type){const a=document.createElement('a'),u=URL.createObjectURL(data instanceof Blob?data:new Blob([data],{type}));a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),5e3)}
+function exp(kind){
+ if(!C||!C.pid)return log(L('Эхлээд тооцоолно уу.','Compute first.'),1);
+ log(L('Экспорт бэлтгэж байна (','Preparing export (')+kind+')...');
+ setTimeout(()=>{try{
+  const mode=$('xm').value,FS=feats(mode),nm='fire_burned_'+({total:'total',pass:'by_pass',cum:'cumulative'}[mode]||'total');
+  if(!FS.length)return log(L('Шатсан талбай олдсонгүй — экспортлох зүйл алга.','No burned area found — nothing to export.'),1);
+  if(kind=='gj')dl(nm+'.geojson',toGJ(FS),'application/geo+json');
+  else if(kind=='kml')dl(nm+'.kml',toKML(FS),'application/vnd.google-earth.kml+xml');
+  else dl(nm+'_shp.zip',toSHP(FS));
+  const B=FS,hl=B.reduce((a,f)=>a+f.holes.length,0),ua=B.reduce((a,f)=>a+f.holes.reduce((b,h)=>b+h.km2,0),0),ba=B.reduce((a,f)=>a+f.km2,0),rem=B.reduce((a,f)=>a+f.polys.reduce((b,q)=>b+q.h.length,0),0);
+  log(L('Экспорт бэлэн (WGS84): ','Export ready (WGS84): ')+B.length+L(' шатсан объект, ',' burned objects, ')+B.reduce((a,f)=>a+f.polys.length,0)+L(' полигон','  polygons'));
+  if(mode!='pass')log(L('   Шатаагүй цоорхой: ','   Unburned holes: ')+hl+(hl?' ('+fa(ua)+')':'')+L(' · цэвэр шатсан: ',' · net burned: ')+fa(ba)+(hl?(rem?L(' · шугамаар холбогдоогүй (жинхэнэ цоорхой хэвээр): ',' · not connectable (kept as true holes): ')+rem:L(' · бүгд холбогдсон',' · all connected')):L(' — тооцоолсон дүнд цоорхой олдсонгүй',' — no holes in the computed result')));
+ }catch(e){log(L('Экспортын алдаа: ','Export error: ')+e.message,1)}},30);
+}
+function makeMap(){
+ const{W,Ht,N,rgb,ps}=C,[w,s,e,n]=S.bb,k=Math.max(1,Math.round(1800/Math.max(W,Ht))),MW=W*k,MH=Ht*k,cv=document.createElement('canvas');
+ cv.width=MW;cv.height=MH;const x=cv.getContext('2d');x.imageSmoothingQuality='high';
+ x.drawImage(rgb,0,0,MW,MH);x.fillStyle='rgba(0,0,0,.22)';x.fillRect(0,0,MW,MH);
+ const FILL='rgba(255,87,34,.62)',EDGE='rgb(255,87,34)',mk=new Uint8Array(N);for(let i=0;i<N;i++)mk[i]=C.pid[i]>0?1:0;
+ const kx=MW/W,pth=new Path2D();
+ for(const g of vec(mk))for(const r of[g.o,...g.h]){r.forEach((c,i)=>i?pth.lineTo(c[0]*kx,c[1]*kx):pth.moveTo(c[0]*kx,c[1]*kx));pth.closePath()}
+ x.fillStyle=FILL;x.fill(pth,'evenodd');x.strokeStyle=EDGE;x.lineWidth=Math.max(1,MW/1400);x.lineJoin='round';x.stroke(pth);
+ const fs=Math.max(14,MW/70),pad=fs,X=lo=>(lo-w)/(e-w)*MW,Y=la=>(n-la)/(n-s)*MH,
+ fmt=ms=>new Date(ms).toLocaleDateString('en-GB',{timeZone:'Asia/Ulaanbaatar',day:'numeric',month:'short',year:'numeric'}),
+ T=(str,px,py,f,col,al)=>{x.font='bold '+f+'px system-ui,sans-serif';x.textAlign=al||'left';x.lineJoin='round';x.lineWidth=f/4;x.strokeStyle='rgba(0,0,0,.75)';x.strokeText(str,px,py);x.fillStyle=col;x.fillText(str,px,py)};
+ x.strokeStyle='rgba(255,255,255,.9)';x.lineWidth=Math.max(1.5,MW/900);
+ const ln=r=>{x.beginPath();r.forEach((c,i)=>i?x.lineTo(X(c[0]),Y(c[1])):x.moveTo(X(c[0]),Y(c[1])));x.stroke()};
+ for(const g of GJ){const t=g.type,c=g.coordinates;
+  if(t=='LineString')ln(c);else if(t=='MultiLineString'||t=='Polygon')c.forEach(ln);else if(t=='MultiPolygon')c.forEach(r=>r.forEach(ln));
+  else for(const pc of t=='Point'?[c]:t=='MultiPoint'?c:[]){const px=X(pc[0]),py=Y(pc[1]),pr=g.props;if(px<0||py<0||px>MW||py>MH)continue;
+   x.fillStyle='#fff';x.beginPath();x.arc(px,py,fs*.22,0,7);x.fill();T(pr&&(pr.name||pr.NAME||pr.Name||pr.name_mn||pr.name_en||pr.title)||'',px+fs*.4,py+fs*.3,fs*.85,'#fff')}}
+ x.fillStyle='rgba(13,17,23,.78)';x.fillRect(pad,pad,Math.min(MW*.6,fs*24),fs*(C.sdOK?8.2:6.9));
+ T($('ttl').value,pad*1.6,pad+fs*1.6,fs*1.5,'#fff');
+ T(fa(C.tot)+L(' шатсан',' burned'),pad*1.6,pad+fs*3.4,fs*1.45,'#ff7b2e');
+ T(fmt(ign0)+' → '+fmt(ign0+tmax*36e5),pad*1.6,pad+fs*4.7,fs*.85,'#c9d1d9');
+ T((C.bri?L('NIR+SWIR бууралт','NIR+SWIR drop'):'dNBR')+L(' · босго ',' · threshold ')+C.thr+' · '+ps.length+L(' давалт · ажиглагдсан ',' pass(es) · observed ')+C.pct+'%',pad*1.6,pad+fs*(C.sdOK?7.2:5.9),fs*.7,'#8b949e');if(C.sdOK)T(L('Монгол: ','Mongolia: ')+fa(cumM[cumM.length-1])+L(' · Хятад: ',' · China: ')+fa(cumC[cumC.length-1]),pad*1.6,pad+fs*5.95,fs*.9,'#fff');
+ const lh=fs*2.4,rx=pad,ry=MH-pad-lh;
+ x.fillStyle='rgba(13,17,23,.78)';x.fillRect(rx,ry,fs*11,lh);
+ x.fillStyle=FILL;x.fillRect(rx+fs*.7,ry+fs*.6,fs*1.6,fs*1.2);x.strokeStyle=EDGE;x.lineWidth=Math.max(1,fs/10);x.strokeRect(rx+fs*.7,ry+fs*.6,fs*1.6,fs*1.2);
+ T(L('Шатсан талбай','Burned area'),rx+fs*2.8,ry+fs*1.5,fs*.85,'#fff');
+ const kpp=C.dxk/MW,nice=[1,2,5,10,20,50,100,200].filter(v=>v<=MW*.18*kpp).pop()||1,bl=nice/kpp,bx=MW-pad-bl,by=MH-pad*2.2;
+ x.fillStyle='#fff';x.fillRect(bx,by,bl,fs*.28);T(nice+L(' км',' km'),bx+bl/2,by-fs*.4,fs*.9,'#fff','center');
+ const ax=MW-pad-fs*1.2,ay=pad+fs*3.2;x.fillStyle='#fff';x.beginPath();x.moveTo(ax,ay-fs*2.2);x.lineTo(ax-fs*.7,ay);x.lineTo(ax+fs*.7,ay);x.closePath();x.fill();T(L('Х','N'),ax,ay+fs*1.2,fs,'#fff','center');
+ T(L('Contains modified Copernicus Sentinel-2 data · автомат тооцоо, лавлах зориулалттай','Contains modified Copernicus Sentinel-2 data · automatic estimate, for reference only'),MW/2,MH-pad*.5,fs*.65,'#c9d1d9','center');
+ return cv;
+}
+function showMap(){
+ if(!C||!C.arr)return log(L('Эхлээд тооцоолно уу.','Compute first.'),1);
+ makeMap().toBlob(b=>{const m=$('mi');if(m.src.startsWith('blob:'))URL.revokeObjectURL(m.src);m.src=URL.createObjectURL(b);$('mp').hidden=false;$('mdl').focus()});
+}
+const UN={ha:['га','ha',100],km:['км²','km²',1],m:['м²','m²',1e6],ac:['акр','ac',247.105]};
+function fa(km){const U=UN[$('un').value],u=lang=='en'?U[1]:U[0],f=U[2],v=km*f;return v.toLocaleString(undefined,{maximumFractionDigits:$('un').value=='km'&&v<100?1:0})+' '+u}
+function re(){if(!C||!mesh)return;const a8=compute(),x=mesh.material.uniforms.a.value;x.image.data.set(a8);x.needsUpdate=true;upd()}
+function build(cv,a8,W,Ht,dem,dw,dh,dxk,dyk){
+ if(mesh){scene.remove(mesh);mesh.geometry.dispose()}
+ const sx=Math.min(250,W-1),sy=Math.min(250,Ht-1),g=new THREE.PlaneGeometry(dxk,dyk,sx,sy),hs=new Float32Array((sx+1)*(sy+1));
+ let mn=1e9;
+ if(dem){for(let iy=0;iy<=sy;iy++)for(let ix=0;ix<=sx;ix++){const k=(Math.round(iy/sy*(dh-1))*dw+Math.round(ix/sx*(dw-1)))*4,h=(dem.d[k]*256+dem.d[k+1]-500)/1000;hs[iy*(sx+1)+ix]=h;mn=Math.min(mn,h)}for(let i=0;i<hs.length;i++)hs[i]-=mn}
+ const aT=new THREE.DataTexture(a8,W,Ht,THREE.LuminanceFormat,THREE.UnsignedByteType);
+ aT.magFilter=aT.minFilter=THREE.NearestFilter;aT.unpackAlignment=1;aT.needsUpdate=true;
+ const ct=new THREE.CanvasTexture(cv);ct.anisotropy=R.capabilities.getMaxAnisotropy();
+ const mat=new THREE.ShaderMaterial({uniforms:{a:{value:aT},c:{value:ct},t:{value:0},g:{value:+$('br').value}},extensions:{derivatives:true},
+ vertexShader:'varying vec2 u;varying vec3 p;void main(){u=uv;p=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+ fragmentShader:`uniform sampler2D a,c;uniform float t,g;varying vec2 u;varying vec3 p;
+ void main(){
+  vec3 col=texture2D(c,u).rgb*g;
+  float v=texture2D(a,vec2(u.x,1.-u.y)).r*255.,k=v/254.;
+  vec3 n=normalize(cross(dFdx(p),dFdy(p)));if(n.z<0.)n=-n;
+  float d=clamp(dot(n,normalize(vec3(-.55,-.35,.75))),0.,1.),l=.62+.55*d;
+  if(v<254.5&&k<=t){
+   float ch=dot(col,vec3(.3,.59,.11));
+   col=mix(col,vec3(.13,.08,.06)+ch*.25,.6);
+   col+=(1.-smoothstep(0.,.025,t-k))*vec3(1.,.42,.08);
+  }
+  gl_FragColor=vec4(clamp(col*l,0.,1.),1.);
+ }`});
+ mesh=new THREE.Mesh(g,mat);mesh.rotation.x=-Math.PI/2;mesh.userData={hs,sx,sy,dxk,dyk};scene.add(mesh);
+ exag();cam.position.set(0,Math.max(dxk,dyk)*.65,dyk*.75);ctl.target.set(0,0,0);
+ pos=1000;$('sl').value=1000;$('pl').disabled=$('sl').disabled=false;upd();
+}
+function exag(){if(!mesh)return;const p=mesh.geometry.attributes.position,hs=mesh.userData.hs,e=+$('ex').value;for(let i=0;i<hs.length;i++)p.setZ(i,hs[i]*e);p.needsUpdate=true;drawGeo();need()}
+// playback: pos is 0..1000 along the fire's duration; a full run takes DUR ms
+let pos=1000,last=0,dirty=true;const DUR=12000,need=()=>{dirty=true};
+function play(on){playing=!!on&&!!mesh;$('pl').textContent=playing?'❚❚':'▶';if(playing){if(pos>=1000)pos=0;last=performance.now()}}
+function upd(){
+ need();if(!mesh)return;const t=pos/1000,h=t*tmax;mesh.material.uniforms.t.value=t;
+ $('dt').textContent=new Date(ign0+h*36e5).toLocaleString('en-GB',{timeZone:'Asia/Ulaanbaatar',dateStyle:'medium',timeStyle:'short'})+' (+'+Math.floor(h/24)+L('ө ','d ')+Math.floor(h%24)+L('ц)','h)');
+ const ix=Math.min(Math.floor(h),cum.length-1);$('km').textContent=fa(cum[ix]||0)+L(' шатсан',' burned');$('km2').textContent=C&&C.sdOK?L('Монгол ','Mongolia ')+fa(cumM[ix]||0)+L(' · Хятад ',' · China ')+fa(cumC[ix]||0):'';
+}
+function init(){
+ if(!window.THREE||!THREE.OrbitControls)throw Error(L('3D сан (three.js) ачаалагдсангүй — интернэтээ шалгана уу.','3D library (three.js) failed to load — check your connection.'));
+ R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(Math.min(devicePixelRatio||1,2));$('main').prepend(R.domElement);
+ scene=new THREE.Scene();cam=new THREE.PerspectiveCamera(45,1,.1,3000);ctl=new THREE.OrbitControls(cam,R.domElement);
+ ctl.enableDamping=true;ctl.dampingFactor=.12;ctl.addEventListener('change',need);
+ rs();addEventListener('resize',rs);
+ // render only when something changed (camera, time, inputs) to save battery
+ (function loop(now){requestAnimationFrame(loop);
+  if(playing){pos=Math.min(1000,pos+(now-last)/DUR*1000);last=now;$('sl').value=pos;upd();if(pos>=1000)play(false)}
+  ctl.update();if(dirty&&!document.hidden){dirty=false;R.render(scene,cam)}})(performance.now());
+}
+$('go').onclick=run;$('ex').onchange=exag;
+$('pl').onclick=()=>play(!playing);
+$('sl').oninput=()=>{play(false);pos=+$('sl').value;upd()};
+addEventListener('keydown',e=>{
+ if(e.key=='Escape'&&!$('mp').hidden){$('mp').hidden=true;return}
+ if(e.code=='Space'&&mesh&&!/INPUT|SELECT|TEXTAREA|BUTTON|SUMMARY/.test(document.activeElement.tagName)){e.preventDefault();play(!playing)}});
+function side(h){$('side').classList.toggle('h',h);rs()}
+
+function rs(){if(!R)return;const m=$('main'),h=m.clientHeight,w=m.clientWidth;R.setSize(w,h);cam.aspect=w/h;cam.updateProjectionMatrix();need()}
+function geoms(o,pr,out=[]){
+ if(!o)return out;
+ if(o.type=='FeatureCollection')o.features.forEach(f=>geoms(f,0,out));
+ else if(o.type=='Feature')geoms(o.geometry,o.properties,out);
+ else if(o.type=='GeometryCollection')o.geometries.forEach(g=>geoms(g,pr,out));
+ else out.push({type:o.type,coordinates:o.coordinates,props:pr});
+ return out;
+}
+function zAt(m,x,y){
+ const{sx,sy,hs,dxk,dyk}=m,fx=Math.min(sx-1e-6,Math.max(0,(x/dxk+.5)*sx)),fy=Math.min(sy-1e-6,Math.max(0,(.5-y/dyk)*sy)),
+ i=Math.floor(fx),j=Math.floor(fy),u=fx-i,v=fy-j,q=(a,b)=>hs[(j+b)*(sx+1)+i+a];
+ return((q(0,0)*(1-u)+q(1,0)*u)*(1-v)+(q(0,1)*(1-u)+q(1,1)*u)*v)*(+$('ex').value)+.08;
+}
+function label(pr,p,m){
+ const nm=pr&&(pr.name||pr.NAME||pr.Name||pr.name_mn||pr.name_en||pr.title)||'',c=document.createElement('canvas');
+ c.width=256;c.height=48;const x=c.getContext('2d');x.font='bold 26px system-ui';x.lineWidth=5;x.strokeStyle='#000';x.fillStyle='#fff';
+ x.strokeText('● '+nm,6,32);x.fillText('● '+nm,6,32);
+ const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));
+ sp.scale.set(m.dxk*.14,m.dxk*.14*48/256,1);sp.position.set(p[0]+m.dxk*.07,p[1],zAt(m,p[0],p[1])+.3);return sp;
+}
+function drawGeo(){
+ if(geoG&&geoG.parent)geoG.parent.remove(geoG);
+ if(!mesh||!GJ.length||!S.bb)return;
+ const m=mesh.userData,[w,s,e,n]=S.bb,hx=m.dxk/2,hy=m.dyk/2,P=[],g=new THREE.Group(),
+ xy=c=>[(c[0]-w)/(e-w)*m.dxk-hx,(c[1]-s)/(n-s)*m.dyk-hy],ins=p=>Math.abs(p[0])<=hx&&Math.abs(p[1])<=hy,
+ line=pts=>{pts=pts.map(xy);for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i];
+  if(Math.max(a[0],b[0])<-hx||Math.min(a[0],b[0])>hx||Math.max(a[1],b[1])<-hy||Math.min(a[1],b[1])>hy)continue;
+  const k=Math.min(1000,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])/.5));let p=a;
+  for(let j=1;j<=k;j++){const q=[a[0]+(b[0]-a[0])*j/k,a[1]+(b[1]-a[1])*j/k];
+   if(ins(p)&&ins(q))P.push(p[0],p[1],zAt(m,p[0],p[1]),q[0],q[1],zAt(m,q[0],q[1]));p=q}}};
+ for(const o of GJ){const t=o.type,c=o.coordinates;
+  if(t=='LineString')line(c);else if(t=='MultiLineString'||t=='Polygon')c.forEach(line);
+  else if(t=='MultiPolygon')c.forEach(r=>r.forEach(line));
+  else for(const pc of t=='Point'?[c]:t=='MultiPoint'?c:[]){const p=xy(pc);if(ins(p))g.add(label(o.props,p,m))}}
+ const lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(P),3));
+ g.add(new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0xffffff})));
+ mesh.add(g);geoG=g;need();
+}
+$('gjb').onclick=()=>$('gj').click();
+$('gj').onchange=async e=>{const f=e.target.files[0];if(!f)return;
+ try{GJ=geoms(JSON.parse(await f.text()));log('GeoJSON: '+GJ.length+L(' геометр ачааллаа',' geometries loaded')+(mesh?'':L(' (симулэшн тооцоолсны дараа харагдана)',' (visible after the simulation is computed)')));drawGeo();if(C){C.sd=undefined;if(mesh)re()}}
+ catch(x){log(L('GeoJSON алдаа: ','GeoJSON error: ')+x.message)}};
+$('lst').onclick=lst;$('one').onchange=re;$('xg').onclick=()=>exp('gj');$('xk').onclick=()=>exp('kml');$('xs').onclick=()=>exp('shp');$('mp0').onclick=showMap;$('mcl').onclick=()=>{$('mp').hidden=true};$('mp').onclick=e=>{if(e.target==$('mp'))$('mp').hidden=true};$('mdl').onclick=()=>{const a=document.createElement('a');a.href=$('mi').src;a.download='fire-burned-area.png';a.click()};$('un').onchange=()=>{if(C&&mesh)re();else upd()};$('tg').onclick=()=>side(!$('side').classList.contains('h'));$('lay').onchange=()=>{try{localStorage.lay=$('lay').value}catch(e){}};$('thr').onchange=re;$('idx').onchange=()=>{$('thr').value=$('idx').value=='bri'?.3:.15;re()};$('br').oninput=()=>{if(mesh){mesh.material.uniforms.g.value=+$('br').value;need()}};
+function setLang(l){
+ lang=l;document.documentElement.lang=l;$('lang').value=l;
+ document.querySelectorAll('[data-en]').forEach(el=>{if(el.dataset.mn===undefined)el.dataset.mn=el.textContent;el.textContent=l=='en'?el.dataset.en:el.dataset.mn});
+ document.querySelectorAll('[data-en-title]').forEach(el=>{if(el.dataset.mnTitle===undefined)el.dataset.mnTitle=el.title;el.title=l=='en'?el.dataset.enTitle:el.dataset.mnTitle});
+ document.title=l=='en'?'Wildfire simulation · Sentinel-2':'Түймрийн симулэшн · Sentinel-2';
+ $('mi').alt=l=='en'?'Burned area map':'Шатсан талбайн зураг';
+ const t=$('ttl');if(t.value==='Нөмрөг түймэр'||t.value==='Nömrög wildfire')t.value=l=='en'?'Nömrög wildfire':'Нөмрөг түймэр';
+ try{localStorage.lang=l}catch(e){}
+ upd();
+}
+$('lang').onchange=()=>setLang($('lang').value);
+// remember form inputs between visits
+const FI=['n','hn','s','hs','w','hw','e','he','start','end','ign','fend','cc','thr','idx','one','res','ex','br','xm','bridge','ttl','un'],DEF={},
+ getF=()=>{const o={};FI.forEach(id=>{const el=$(id);o[id]=el.type=='checkbox'?el.checked:el.value});return o},
+ setF=o=>FI.forEach(id=>{if(o[id]===undefined)return;const el=$(id);if(el.type=='checkbox')el.checked=!!o[id];else el.value=o[id]});
+Object.assign(DEF,getF());
+FI.forEach(id=>$(id).addEventListener('change',()=>{try{localStorage.fs=JSON.stringify(getF())}catch(e){}}));
+try{setF(JSON.parse(localStorage.fs||'{}'))}catch(e){}
+$('rst').onclick=()=>{setF(DEF);try{localStorage.removeItem('fs')}catch(e){}setLang(lang);
+ if(mesh){mesh.material.uniforms.g.value=+$('br').value;exag();re()}log(L('Оролтыг анхны утгад буцаалаа.','Inputs reset to defaults.'))};
+try{$('iid').value=localStorage.iid||''}catch(e){}
+$('iid').onchange=()=>{$('lay').innerHTML='';if($('iid').value.trim())lst()};
+{let l='mn';try{l=localStorage.lang||'mn'}catch(e){}setLang(l=='en'?'en':'mn')}
+try{init()}catch(e){log(e.message,1);$('go').disabled=true}
+if($('iid').value)lst();else $('cfg').open=true;
+</script></body></html>
