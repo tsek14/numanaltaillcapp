@@ -1151,6 +1151,9 @@
     var pts = shape.points;
     if(pts.length === 0) return 'empty';
     if(pts.length === 1) return 'point';
+    // Lines imported from a file (GeoJSON/KML LineString, GPX track or route)
+    // stay lines whatever their number of points.
+    if(shape.isLine) return 'line';
     if(shape.isTrack){
       if(pts.length >= 3 && distanceMeters(pts[0], pts[pts.length-1]) <= CLOSE_LOOP_METERS){
         return 'polygon';

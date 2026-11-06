@@ -27,11 +27,11 @@
         });
         break;
       case 'LineString':
-        out.push({ name:name, color:color, points: geom.coordinates.map(function(c){ return { lat:c[1], lng:c[0] }; }) });
+        out.push({ name:name, color:color, isLine:true, points: geom.coordinates.map(function(c){ return { lat:c[1], lng:c[0] }; }) });
         break;
       case 'MultiLineString':
         geom.coordinates.forEach(function(line, i){
-          out.push({ name:name+(geom.coordinates.length>1?' '+(i+1):''), color:color, points: line.map(function(c){ return { lat:c[1], lng:c[0] }; }) });
+          out.push({ name:name+(geom.coordinates.length>1?' '+(i+1):''), color:color, isLine:true, points: line.map(function(c){ return { lat:c[1], lng:c[0] }; }) });
         });
         break;
       case 'Polygon':
@@ -129,7 +129,7 @@
       });
       pm.querySelectorAll('LineString > coordinates').forEach(function(el, i){
         var pts = coordsToPts(el.textContent);
-        if(pts.length) results.push({ name: name+(i>0?' '+(i+1):''), color:color, points:pts });
+        if(pts.length) results.push({ name: name+(i>0?' '+(i+1):''), color:color, isLine:true, points:pts });
       });
       pm.querySelectorAll('Polygon').forEach(function(polyEl, i){
         var outerEl = polyEl.querySelector('outerBoundaryIs coordinates');
@@ -163,9 +163,11 @@
         if(isFinite(lat) && isFinite(lng)) pts.push({ lat:lat, lng:lng });
       });
       if(pts.length > 1){
+        // A track that ends where it started is an area; any other track is a line.
         var a = pts[0], b = pts[pts.length-1];
-        if(pts.length >= 3 && Math.abs(a.lat-b.lat) < 1e-9 && Math.abs(a.lng-b.lng) < 1e-9) pts.pop();
-        results.push({ name:name, color:null, points:pts });
+        var closed = pts.length >= 4 && Math.abs(a.lat-b.lat) < 1e-9 && Math.abs(a.lng-b.lng) < 1e-9;
+        if(closed) pts.pop();
+        results.push({ name:name, color:null, isLine:!closed, points:pts });
       } else if(pts.length === 1){
         results.push({ name:name, color:null, points:pts });
       }
@@ -179,7 +181,7 @@
         var lat = parseFloat(pt.getAttribute('lat')), lng = parseFloat(pt.getAttribute('lon'));
         if(isFinite(lat) && isFinite(lng)) pts.push({ lat:lat, lng:lng });
       });
-      if(pts.length) results.push({ name:name, color:null, points:pts });
+      if(pts.length) results.push({ name:name, color:null, isLine:pts.length > 1, points:pts });
     });
 
     return results;
@@ -208,6 +210,7 @@
       var shape = { points: s.points };
       if(s.name) shape.name = s.name;
       if(s.color) shape.color = s.color;
+      if(s.isLine && s.points.length > 1) shape.isLine = true;
       if(isBatch){
         shape.batchId = batchId;
         shape.batchName = batchName;

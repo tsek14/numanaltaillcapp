@@ -5,7 +5,9 @@
   // undefined means hidden for them. Lines keep both shown by default, since
   // a line with nothing drawn would simply vanish.
   function shapeShowsVertices(s){
-    if(s.batchId && s.showVertices === undefined) return false;
+    // Imported batches and lines can have thousands of points: their vertex
+    // markers start hidden (the «Цэгүүд» toggle shows them).
+    if((s.batchId || s.isLine) && s.showVertices === undefined) return false;
     return shapeKind(s) === 'polygon' ? s.showVertices === true : s.showVertices !== false;
   }
 
@@ -1098,13 +1100,13 @@
       var name = entry.shape.name || ('Shape_'+(idx+1));
       var props = { NAME: name };
       if(entry.shape.color) props.COLOR = entry.shape.color;
-      var geometry;
-      if(pts.length === 1){
+      var geometry, kind = shapeKind(entry.shape);
+      if(kind === 'point'){
         props.TYPE = 'point';
         geometry = { type:'Point', coordinates:[pts[0].lng, pts[0].lat] };
-      } else if(pts.length === 2){
+      } else if(kind === 'line'){
         props.TYPE = 'line';
-        props.LENGTH_M = Math.round(distanceMeters(pts[0], pts[1]) * 10) / 10;
+        props.LENGTH_M = Math.round(pathLengthMeters(pts) * 10) / 10;
         geometry = { type:'LineString', coordinates: pts.map(function(p){ return [p.lng, p.lat]; }) };
       } else {
         props.TYPE = 'polygon';
@@ -1140,12 +1142,12 @@
       var bgr = colorToKmlBgr(color);
       var name = entry.shape.name || ('Дүрс '+(idx+1));
       var desc = '';
-      var geomXml = '';
-      if(pts.length === 1){
+      var geomXml = '', kind = shapeKind(entry.shape);
+      if(kind === 'point'){
         name += ' (Цэг)';
         geomXml = '<Point><coordinates>'+toKmlCoords(pts,false)+'</coordinates></Point>';
-      } else if(pts.length === 2){
-        var d = distanceMeters(pts[0], pts[1]);
+      } else if(kind === 'line'){
+        var d = pathLengthMeters(pts);
         name += ' (Шугам)';
         desc = 'Урт: '+fmt(d,1)+' м';
         geomXml = '<LineString><tessellate>1</tessellate><coordinates>'+toKmlCoords(pts,false)+'</coordinates></LineString>';
@@ -1177,7 +1179,7 @@
       if(pts.length === 1){
         wpts += '<wpt lat="'+pts[0].lat.toFixed(7)+'" lon="'+pts[0].lng.toFixed(7)+'"><name>'+escapeXml(name+' (Цэг)')+'</name></wpt>\n';
       } else {
-        var closed = pts.length >= 3;
+        var closed = shapeKind(entry.shape) === 'polygon';
         var segPts = pts.slice();
         if(closed) segPts.push(pts[0]);
         var trkptsXml = segPts.map(function(p){
