@@ -58,6 +58,8 @@ th{color:var(--muted);font-weight:600}
 .legend i{width:16px;height:16px;border-radius:3px;display:inline-block}
 .hover{background:rgba(15,23,42,.88);color:#e2e8f0;padding:5px 9px;border-radius:6px;font-size:12px}
 .lbl{color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;white-space:nowrap;font-weight:700;display:inline-block}
+.sec{display:flex;gap:6px;align-items:center}.sec input{flex:1;min-width:0}
+.legend .nd{display:block;margin-top:6px;color:#555;font-size:10.5px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:640px){.grid2{grid-template-columns:1fr}}
 .how{margin-top:16px;padding:12px 16px;background:#1e3a5f;border-radius:8px;border-left:4px solid var(--accent);font-size:.85rem}
@@ -155,6 +157,11 @@ th{color:var(--muted);font-weight:600}
     <div class="grid2">
       <div><label class="f" for="scale" data-t="scaleLabel"></label><input type="number" id="scale" step="1" min="10"><small class="i" data-t="scaleInfo"></small></div>
     </div>
+    <hr>
+    <div class="h" style="font-size:.95rem" data-t="ndviTitle"></div>
+    <label class="f" for="iid" data-t="licLabel"></label>
+    <div class="sec" style="max-width:420px"><input type="password" id="iid" autocomplete="off" spellcheck="false" placeholder="••••••••••••" data-1p-ignore data-lpignore="true"><button type="button" class="btn sm" id="eye" aria-label="Show / hide" title="Show / hide">👁</button></div>
+    <small class="i" data-t="licInfo"></small>
     <div class="row" style="margin-top:16px"><button type="button" class="btn pri" id="applyBtn" data-t="apply"></button></div>
     <div class="status" id="regionStatus"></div>
     <div class="how" data-t="howTo" data-html></div>
@@ -183,7 +190,10 @@ const I18N={
 en:{
  title:'Flood Risk Map',
  subtitle:'Any area · SRTM elevation · TWI · slope · JRC surface water — same factors and weights as the Google Earth Engine model',
- demoNote:'Computed in your browser from real open data: SRTM elevation (elevation, slope, TWI) and JRC Global Surface Water. NDVI (5% weight) is not included, so the other weights are scaled up proportionally. This is a relative index, not a hydraulic model.',
+ demoNote:'Computed in your browser from real data: SRTM elevation (elevation, slope, TWI), JRC Global Surface Water and, when a Sentinel Hub License Number is set in Region settings, Sentinel-2 NDVI. Without it NDVI (5%) is left out and the other weights are scaled up. This is a relative index, not a hydraulic model.',
+ ndviTitle:'Sentinel-2 NDVI (optional)',licLabel:'Sentinel Hub License Number',
+ licInfo:'The same number as in the Wildfire simulation app — entering it in either app is enough. With it, NDVI (5%) from last summer’s Sentinel-2 imagery is added; leave it empty to calculate without NDVI.',
+ ndviOn:y=>`NDVI: Sentinel-2, summer ${y}`,ndviOff:'NDVI: not included',ndviErr:m=>`NDVI could not be loaded (${m}) — calculated without NDVI. Check the Sentinel Hub License Number.`,
  tabMap:'Map & analysis',tabRegion:'Region settings',tabGuide:'Guide',tabHelp:'Help',tabAbout:'About',
  addLocation:'Add a location',geomType:'Geometry type',
  typePoint:'Point',typeLine:'Line / Road',typePolygon:'Polygon / Area',
@@ -233,8 +243,8 @@ en:{
 <tr><td><b>Slope</b></td><td><b>30%</b></td><td>On flat ground water does not run off, it collects</td></tr>
 <tr><td><b>DEM</b> (elevation)</td><td><b>15%</b></td><td>Low ground is more at risk</td></tr>
 <tr><td><b>JRC</b> (surface water)</td><td><b>10%</b></td><td>River banks and wetlands</td></tr>
-<tr><td><b>NDVI</b> (vegetation)</td><td><b>5%</b></td><td>Bare ground absorbs less water — <i>not included in this app</i></td></tr></table>
-<p>NDVI needs Sentinel-2 imagery, which cannot be downloaded without an account, so this app leaves it out and scales the other four weights up proportionally (TWI 42%, slope 32%, elevation 16%, JRC 10.5%). The score is the weighted sum × 100.</p>
+<tr><td><b>NDVI</b> (vegetation)</td><td><b>5%</b></td><td>Bare ground absorbs less water — <i>needs a Sentinel Hub License Number</i></td></tr></table>
+<p>NDVI is calculated from Sentinel-2 imagery through your Sentinel Hub account: the highest NDVI of last summer (June–August), which avoids clouds. Enter the Sentinel Hub License Number in Region settings (the same one as in the Wildfire simulation app). Without it, NDVI is left out and the other four weights are scaled up proportionally (TWI 42%, slope 32%, elevation 16%, JRC 10.5%). The score is the weighted sum × 100. The map legend shows whether NDVI was used.</p>
 <h2>Risk classes</h2>
 <table><tr><th>Score</th><th>Class</th><th>Colour</th></tr>
 <tr><td>34–52</td><td>Low</td><td>Green</td></tr><tr><td>52–62</td><td>Moderate-low</td><td>Light green</td></tr>
@@ -270,7 +280,7 @@ North-east:  Lat (latitude) = larger number,  Lon (longitude) = larger number</p
 <ul><li><b>DEM</b>: SRTM elevation (~30 m), via AWS Terrain Tiles (Mapzen/Tilezen)</li>
 <li><b>Slope, TWI</b>: calculated in the browser from the DEM (sink filling, D8 flow accumulation, TWI = ln(a / tan β))</li>
 <li><b>JRC</b>: EC JRC / Google Global Surface Water 1984–2021, water occurrence</li>
-<li><b>NDVI</b>: not included</li>
+<li><b>NDVI</b>: Copernicus Sentinel-2 via Sentinel Hub (Copernicus Data Space), highest NDVI of June–August — when a License Number is set</li>
 <li><b>Base maps</b>: OpenStreetMap, Esri World Imagery</li></ul>`,
  help:`<h2>Help &amp; FAQ</h2>
 <p><b>What do the scores mean?</b><br>The score is 0–100: the weighted sum of the factors × 100. Higher means more at risk. For the Terelj example, the original GEE calculation gave 34–98.</p>
@@ -280,23 +290,27 @@ North-east:  Lat (latitude) = larger number,  Lon (longitude) = larger number</p
 <p><b>Does the risk map update after changing the region?</b><br>Yes. The map updates when you press "Apply region and update map".</p>
 <p><b>Why does it say the point is outside the region?</b><br>The coordinates are outside the region boundary. Check the south-west / north-east corner coordinates.</p>
 <p><b>How many points can I add?</b><br>No limit, but more than 20 may slow the map down.</p>
-<p><b>Where does the data come from?</b><br>SRTM elevation and JRC Global Surface Water, downloaded by your browser when the map loads. Nothing is sent to a server.</p>
+<p><b>Where does the data come from?</b><br>SRTM elevation and JRC Global Surface Water, downloaded by your browser when the map loads, plus Sentinel-2 NDVI from Sentinel Hub if a License Number is set. The License Number is kept only in this browser.</p>
+<p><b>How do I add NDVI?</b><br>Enter your Sentinel Hub License Number in Region settings and press the update button. If it is already set in the Wildfire simulation app, it is used automatically.</p>
 <p><b>Why does the map take a while to load?</b><br>The data is downloaded and the water flow is calculated for the whole area. Larger areas or finer scale take longer.</p>`,
  about:`<h2>About the app</h2>
 <p>A web app that shows a flood risk model developed on Google Earth Engine for any area, and calculates the risk for points, roads and areas you enter.</p>
 <h3>Technical details</h3>
 <ul><li><b>Map model</b>: weighted composite index of SRTM + TWI + JRC + NDVI + Slope</li>
-<li><b>Calculation</b>: the GEE model's factors and weights, calculated in the browser from SRTM and JRC open data (NDVI not included)</li>
+<li><b>Calculation</b>: the GEE model's factors and weights, calculated in the browser from SRTM, JRC and (with a Sentinel Hub License Number) Sentinel-2 data</li>
 <li><b>Coverage</b>: any area in the world (set by coordinates)</li>
 <li><b>Map resolution</b>: ~30 m (SRTM), coarser for large areas</li></ul>
-<h3>Technology</h3><p>JavaScript · Leaflet · AWS Terrain Tiles · JRC Global Surface Water · OpenStreetMap · Esri World Imagery</p>
+<h3>Technology</h3><p>JavaScript · Leaflet · AWS Terrain Tiles · JRC Global Surface Water · Sentinel Hub · OpenStreetMap · Esri World Imagery</p>
 <h3>Caution</h3><p>This map is a relative risk assessment intended for research and education only. Consult a qualified organisation before making real decisions.</p>
 <p>© Numan-Altai LLC</p>`
 },
 mn:{
  title:'Үерийн эрсдлийн зураг',
  subtitle:'Дурын нутагт · SRTM өндөр · TWI · налуу · JRC гадаргын ус — Google Earth Engine загварын хүчин зүйл, жингээр',
- demoNote:'Бодит нээлттэй өгөгдлөөс хөтөч дотор тооцоологдоно: SRTM өндөр (өндөр, налуу, TWI) ба JRC Global Surface Water. NDVI (5% жин) ороогүй тул бусад жинг пропорциональ өсгөсөн. Энэ нь харьцангуй индекс бөгөөд гидравлик загвар биш.',
+ demoNote:'Бодит өгөгдлөөс хөтөч дотор тооцоологдоно: SRTM өндөр (өндөр, налуу, TWI), JRC Global Surface Water, мөн Нутгийн тохиргоонд Sentinel Hub License Number оруулсан бол Sentinel-2 NDVI. Оруулаагүй бол NDVI (5%) орохгүй, бусад жинг өсгөнө. Энэ нь харьцангуй индекс бөгөөд гидравлик загвар биш.',
+ ndviTitle:'Sentinel-2 NDVI (заавал биш)',licLabel:'Sentinel Hub License Number',
+ licInfo:'Түймрийн симулэшн апптай ижил дугаар — аль нэг апп-д оруулахад хангалттай. Оруулбал өнгөрсөн зуны Sentinel-2 зургаас NDVI (5%) нэмэгдэнэ; хоосон орхивол NDVI-гүй тооцно.',
+ ndviOn:y=>`NDVI: Sentinel-2, ${y} оны зун`,ndviOff:'NDVI: ороогүй',ndviErr:m=>`NDVI ачаалагдсангүй (${m}) — NDVI-гүй тооцлоо. Sentinel Hub License Number-ээ шалгана уу.`,
  tabMap:'Зураг & шинжилгээ',tabRegion:'Нутгийн тохиргоо',tabGuide:'Гарын авлага',tabHelp:'Тусламж',tabAbout:'Тухай',
  addLocation:'Байршил нэмэх',geomType:'Геометрийн төрөл',
  typePoint:'Цэг',typeLine:'Шугам / Зам',typePolygon:'Олон өнцөгт / Дүрс',
@@ -346,8 +360,8 @@ mn:{
 <tr><td><b>Slope</b> (налуу)</td><td><b>30%</b></td><td>Хавтгай газарт ус урсахгүй, хуримтлагдана</td></tr>
 <tr><td><b>DEM</b> (өндөр)</td><td><b>15%</b></td><td>Нам газар илүү эрсдэлтэй</td></tr>
 <tr><td><b>JRC</b> (одоогийн ус)</td><td><b>10%</b></td><td>Голын хажуу, намаг</td></tr>
-<tr><td><b>NDVI</b> (ургамал)</td><td><b>5%</b></td><td>Ургамалгүй газар ус шингэдэггүй — <i>энэ апп-д ороогүй</i></td></tr></table>
-<p>NDVI-д Sentinel-2-ын зураг хэрэгтэй бөгөөд түүнийг бүртгэлгүйгээр татах боломжгүй тул энэ апп-д оруулаагүй. Бусад дөрвөн жинг пропорциональ өсгөсөн (TWI 42%, налуу 32%, өндөр 16%, JRC 10.5%). Оноо нь жигнэсэн нийлбэр × 100.</p>
+<tr><td><b>NDVI</b> (ургамал)</td><td><b>5%</b></td><td>Ургамалгүй газар ус шингэдэггүй — <i>Sentinel Hub License Number шаардлагатай</i></td></tr></table>
+<p>NDVI-г таны Sentinel Hub бүртгэлээр Sentinel-2 зургаас тооцно: өнгөрсөн зуны (6–8-р сар) хамгийн их NDVI тул үүл нөлөөлөхгүй. Нутгийн тохиргоонд Sentinel Hub License Number оруулна (Түймрийн симулэшн апптай ижил). Оруулаагүй бол NDVI орохгүй, бусад дөрвөн жинг пропорциональ өсгөнө (TWI 42%, налуу 32%, өндөр 16%, JRC 10.5%). Оноо нь жигнэсэн нийлбэр × 100. NDVI ашигласан эсэхийг газрын зургийн тайлбарт харуулна.</p>
 <h2>Эрсдлийн ангилал</h2>
 <table><tr><th>Оноо</th><th>Ангилал</th><th>Өнгө</th></tr>
 <tr><td>34–52</td><td>Бага</td><td>Ногоон</td></tr><tr><td>52–62</td><td>Дунд бага</td><td>Цайвар ногоон</td></tr>
@@ -383,7 +397,7 @@ mn:{
 <ul><li><b>DEM</b>: SRTM өндөр (~30 м), AWS Terrain Tiles (Mapzen/Tilezen)-ээр</li>
 <li><b>Налуу, TWI</b>: DEM-ээс хөтөч дотор тооцоологдоно (хонхор дүүргэх, D8 урсацын хуримтлал, TWI = ln(a / tan β))</li>
 <li><b>JRC</b>: EC JRC / Google Global Surface Water 1984–2021, ус илрэх давтамж</li>
-<li><b>NDVI</b>: ороогүй</li>
+<li><b>NDVI</b>: Copernicus Sentinel-2, Sentinel Hub (Copernicus Data Space)-ээр, 6–8-р сарын хамгийн их NDVI — License Number оруулсан үед</li>
 <li><b>Суурь зураг</b>: OpenStreetMap, Esri World Imagery</li></ul>`,
  help:`<h2>Тусламж &amp; Түгээмэл асуулт</h2>
 <p><b>Оноо юуг илэрхийлэх вэ?</b><br>Оноо 0–100: хүчин зүйлсийн жигнэсэн нийлбэр × 100. Их байх тусам эрсдэл өндөр. Тэрэлжийн жишээнд GEE-ийн анхны тооцоо 34–98 гарсан.</p>
@@ -393,16 +407,17 @@ mn:{
 <p><b>Нутгийг өөрчилсний дараа эрсдлийн зураг шинэчлэгддэг үү?</b><br>Тийм. "Нутаг тохируулах ба зураг шинэчлэх" товчийг дарахад зураг шинэчлэгдэнэ.</p>
 <p><b>Яагаад цэг нутгаас гадна гэж гардаг вэ?</b><br>Оруулсан координат нутгийн хилийн гадна байна. Нутгийн баруун урд / зүүн хойд булангийн координатыг шалгана уу.</p>
 <p><b>Хэдэн цэг нэмж болох вэ?</b><br>Хязгааргүй. Гэхдээ 20-оос дээш бол зураг удаашрах магадлалтай.</p>
-<p><b>Өгөгдөл хаанаас ирдэг вэ?</b><br>SRTM өндөр ба JRC Global Surface Water-ийг зураг ачаалахад таны хөтөч татна. Сервер рүү юу ч илгээхгүй.</p>
+<p><b>Өгөгдөл хаанаас ирдэг вэ?</b><br>SRTM өндөр ба JRC Global Surface Water-ийг зураг ачаалахад таны хөтөч татна. License Number оруулсан бол Sentinel Hub-аас Sentinel-2 NDVI мөн татна. License Number зөвхөн энэ хөтөчид хадгалагдана.</p>
+<p><b>NDVI-г яаж нэмэх вэ?</b><br>Нутгийн тохиргоонд Sentinel Hub License Number-ээ оруулаад шинэчлэх товчийг дарна. Түймрийн симулэшн апп-д аль хэдийн оруулсан бол автоматаар ашиглагдана.</p>
 <p><b>Зураг яагаад удаан ачаалдаг вэ?</b><br>Өгөгдлийг татаж, бүх нутгийн усны урсацыг тооцоолдог. Том нутаг эсвэл нарийн нарийвчлал удаан болно.</p>`,
  about:`<h2>Аппын тухай</h2>
 <p>Google Earth Engine дээр боловсруулсан үерийн эрсдлийн загварыг дурын нутагт харуулах, цэг/зам/дүрс оруулж эрсдлийг тооцоолох вэб апп.</p>
 <h3>Техникийн мэдээлэл</h3>
 <ul><li><b>Зургийн загвар</b>: SRTM + TWI + JRC + NDVI + Slope жинтэй нийлмэл индекс</li>
-<li><b>Тооцоолол</b>: GEE загварын хүчин зүйл, жингээр SRTM ба JRC нээлттэй өгөгдлөөс хөтөч дотор тооцоологдоно (NDVI ороогүй)</li>
+<li><b>Тооцоолол</b>: GEE загварын хүчин зүйл, жингээр SRTM, JRC болон (Sentinel Hub License Number-тэй үед) Sentinel-2 өгөгдлөөс хөтөч дотор тооцоологдоно</li>
 <li><b>Хамрах нутаг</b>: дэлхийн дурын нутаг (координатаар тохируулна)</li>
 <li><b>Зургийн нарийвчлал</b>: ~30 м (SRTM), том нутагт бүдүүн</li></ul>
-<h3>Хэрэглэсэн технологи</h3><p>JavaScript · Leaflet · AWS Terrain Tiles · JRC Global Surface Water · OpenStreetMap · Esri World Imagery</p>
+<h3>Хэрэглэсэн технологи</h3><p>JavaScript · Leaflet · AWS Terrain Tiles · JRC Global Surface Water · Sentinel Hub · OpenStreetMap · Esri World Imagery</p>
 <h3>Анхааруулга</h3><p>Энэ зураг нь харьцангуй эрсдлийн үнэлгээ бөгөөд зөвхөн судалгаа, боловсролын зориулалттай. Бодит шийдвэр гаргахдаа мэргэжлийн байгууллагатай зөвлөлдөнө үү.</p>
 <p>© Нуман-Алтай ХХК</p>`
 }};
@@ -413,8 +428,38 @@ document.getElementById('name').placeholder=T.namePh;
 
 /* ───────── defaults (Terelj / Ulaanbaatar region from the GEE script) ───────── */
 const DEF={lonMin:107.35,latMin:47.82,lonMax:107.52,latMax:47.92,scale:30};
-// GEE weights. NDVI (5%) cannot be fetched without an account, so the other four are scaled up.
-const W0={twi:0.40,slope:0.30,elev:0.15,jrc:0.10},WS=W0.twi+W0.slope+W0.elev+W0.jrc;
+// GEE weights. NDVI needs a Sentinel Hub account; without it the other four are scaled up.
+const W0={twi:0.40,slope:0.30,elev:0.15,jrc:0.10,ndvi:0.05};
+const OGC='https://sh.dataspace.copernicus.eu/ogc/wms/';
+// Highest NDVI over last summer's passes (clouds lower NDVI, so the maximum avoids them).
+const NDVI_ES=`//VERSION=3
+function setup(){return{input:[{bands:["B04","B08","dataMask"]}],mosaicking:"ORBIT",output:{bands:3,sampleType:"UINT8"}}}
+function preProcessScenes(c){c.scenes.orbits=c.scenes.orbits.slice(0,15);return c}
+function evaluatePixel(a){let m=-2;for(const s of a){if(!s.dataMask)continue;const n=(s.B08-s.B04)/(s.B08+s.B04+1e-6);if(n>m)m=n}return m<-1.5?[0,0,0]:[Math.round((Math.max(-1,Math.min(1,m))+1)*127.5),255,0]}`;
+// The Sentinel Hub instance ID ("License Number"), shared with the Wildfire simulation app.
+const getIID=()=>{try{return(localStorage.getItem('iid')||'').trim()}catch(e){return''}};
+const hideId=m=>String(m).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,'••••');
+const summerYear=()=>{const d=new Date();return d.getUTCMonth()>=8?d.getUTCFullYear():d.getUTCFullYear()-1};
+async function shLayer(iid){
+  let lay='';try{lay=localStorage.getItem('lay')||''}catch(e){}
+  if(lay)return lay;
+  const r=await fetch(OGC+iid+'?SERVICE=WMS&REQUEST=GetCapabilities');if(!r.ok)throw new Error('HTTP '+r.status);
+  const names=[...new DOMParser().parseFromString(await r.text(),'text/xml').querySelectorAll('Layer>Layer>Name')].map(n=>n.textContent);
+  if(!names.length)throw new Error('no layers');
+  return names.find(n=>/L2A/i.test(n))||names[0];
+}
+// NDVI for the region's Web Mercator pixels [x0,x1)×[y0,y1) at zoom z, at most 512 px wide.
+async function fetchNdvi(iid,z,x0,y0,x1,y1){
+  const lay=await shLayer(iid),R=6378137,E=2*Math.PI*R,m=(p,ax)=>ax?E/2-p/(256*2**z)*E:p/(256*2**z)*E-E/2;
+  const k=Math.min(1,512/Math.max(x1-x0,y1-y0)),w=Math.max(1,Math.round((x1-x0)*k)),h=Math.max(1,Math.round((y1-y0)*k)),y=summerYear();
+  const q=new URLSearchParams({SERVICE:'WMS',VERSION:'1.1.1',REQUEST:'GetMap',LAYERS:lay,SRS:'EPSG:3857',BBOX:[m(x0),m(y1,1),m(x1),m(y0,1)].join(','),
+    WIDTH:w,HEIGHT:h,FORMAT:'image/png',TIME:`${y}-06-01T00:00:00Z/${y}-08-31T23:59:59Z`,MAXCC:'60',EVALSCRIPT:btoa(NDVI_ES),SHOWLOGO:'false',TRANSPARENT:'false'});
+  const r=await fetch(OGC+iid+'?'+q);
+  if(!r.ok){const t=(await r.text()).replace(/<!\[CDATA\[|\]\]>/g,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();throw new Error('HTTP '+r.status+(t?': '+t.slice(0,160):''))}
+  const bm=await createImageBitmap(await r.blob(),{colorSpaceConversion:'none',premultiplyAlpha:'none'});
+  const c=document.createElement('canvas');c.width=w;c.height=h;const cx=c.getContext('2d',{willReadFrequently:true});cx.drawImage(bm,0,0);
+  return{w,h,k,px:cx.getImageData(0,0,w,h).data,year:y};
+}
 const DEM_URL=(z,x,y)=>`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
 const JRC_URL=(z,x,y)=>`https://storage.googleapis.com/global-surface-water/tiles2021/occurrence/${z}/${x}/${y}.png`;
 const MAX_CELLS=1100*1100;
@@ -503,28 +548,33 @@ async function buildGrid(R,progress){
   const total=tiles(wx0,wy0,wx0+W,wy0+H)+tiles(rx0,ry0,rx1,ry1);let doneT=0;const tick=()=>progress(++doneT,total);
   const rgb=await mosaic(DEM_URL,z,wx0,wy0,wx0+W,wy0+H,tick,true);
   const jrcPx=await mosaic(JRC_URL,Math.min(z,13),rx0,ry0,rx1,ry1,tick,false);
+  const iid=getIID();let nd=null,ndErr=null;
+  if(iid){try{nd=await fetchNdvi(iid,z,rx0,ry0,rx1,ry1)}catch(e){ndErr=hideId(e.message||e)}}
   progress(-1);await new Promise(r=>setTimeout(r,30));
   const N=W*H,dem=new Float32Array(N),cs=new Float64Array(H);
   for(let i=0;i<N;i++)dem[i]=rgb[i*4]*256+rgb[i*4+1]+rgb[i*4+2]/256-32768;
   for(let y=0;y<H;y++)cs[y]=40075016.686*Math.cos(px2lat(wy0+y+0.5,z)*Math.PI/180)/(256*2**z);
   const{tanb,twi}=terrain(dem,W,H,cs);
   // Region cells (inside the user's rectangle) set the normalisation ranges.
-  const RW=rx1-rx0,RH=ry1-ry0,inR=[],eV=[],tV=[],sV=[];
+  const RW=rx1-rx0,RH=ry1-ry0,inR=[],eV=[],tV=[],sV=[],nV=[];
+  const ndAt=k=>{if(!nd)return null;const x=Math.min(nd.w-1,Math.floor((k%RW)*nd.k)),y=Math.min(nd.h-1,Math.floor(Math.floor(k/RW)*nd.k)),j=(y*nd.w+x)*4;return nd.px[j+1]>127?nd.px[j]/127.5-1:null};
   for(let y=0;y<RH;y++)for(let x=0;x<RW;x++){
     const lat=px2lat(ry0+y+0.5,z),lon=px2lon(rx0+x+0.5,z),i=(y+pad)*W+(x+pad);
     if(lat<R.latMin||lat>R.latMax||lon<R.lonMin||lon>R.lonMax){inR.push(-1);continue}
-    inR.push(i);eV.push(dem[i]);tV.push(twi[i]);sV.push(tanb[i]);
+    inR.push(i);eV.push(dem[i]);tV.push(twi[i]);sV.push(tanb[i]);const nv=ndAt(inR.length-1);if(nv!=null)nV.push(nv);
   }
   if(!eV.length)throw new Error('empty area');
   let eMin=Infinity,eMax=-Infinity;for(const v of eV){if(v<eMin)eMin=v;if(v>eMax)eMax=v}
   const t0=pct(tV,0.02),t1=pct(tV,0.98),s0=pct(sV,0.02),s1=pct(sV,0.98);
+  const n0=nV.length?pct(nV,0.02):0,n1=nV.length?pct(nV,0.98):0;if(nd&&!nV.length){nd=null;ndErr=ndErr||'no clear imagery'}
   const risk=new Float32Array(RW*RH).fill(NaN),nz=(v,a,b)=>b>a?clip((v-a)/(b-a),0,1):0;
   for(let k=0;k<inR.length;k++){const i=inR[k];if(i<0)continue;
     const occ=jrcPx[k*4+3]/255;
-    const sc=W0.twi*nz(twi[i],t0,t1)+W0.slope*(1-nz(tanb[i],s0,s1))+W0.elev*(1-nz(dem[i],eMin,eMax))+W0.jrc*occ;
-    risk[k]=100*sc/WS;
+    let sc=W0.twi*nz(twi[i],t0,t1)+W0.slope*(1-nz(tanb[i],s0,s1))+W0.elev*(1-nz(dem[i],eMin,eMax))+W0.jrc*occ,ws=W0.twi+W0.slope+W0.elev+W0.jrc;
+    const nv=ndAt(k);if(nd&&nv!=null){sc+=W0.ndvi*(1-nz(nv,n0,n1));ws+=W0.ndvi}
+    risk[k]=100*sc/ws;
   }
-  return{z,x0:rx0,y0:ry0,W:RW,H:RH,risk,eMin,eMax,res:cs[pad+(RH>>1)]};
+  return{z,x0:rx0,y0:ry0,W:RW,H:RH,risk,eMin,eMax,res:cs[pad+(RH>>1)],ndYear:nd?nd.year:null,ndErr};
 }
 
 /* ───────── 4. sampling & classification ───────── */
@@ -563,10 +613,10 @@ const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZ
 const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'});
 const mine=L.featureGroup().addTo(map),riskGroup=L.layerGroup().addTo(map);
 L.control.layers({[T.baseMap]:osm,[T.baseSat]:sat},{[T.ovRisk]:riskGroup,[T.ovMine]:mine},{position:'topright'}).addTo(map);
-map.attributionControl.addAttribution('SRTM via AWS Terrain Tiles · JRC Global Surface Water');
+map.attributionControl.addAttribution('SRTM via AWS Terrain Tiles · JRC Global Surface Water · Copernicus Sentinel-2');
 const legend=L.control({position:'bottomleft'});
 legend.onAdd=()=>{const d=L.DomUtil.create('div','legend');const rng=['< 52','52–62','62–72','72–85','≥ 85'];
-  d.innerHTML='<b>'+T.legendTitle+'</b>'+CLASSES.map((c,i)=>`<div><i style="background:${c[2]};${c[2]==='#ffffbf'?'border:1px solid #ccc':''}"></i>${T.cls[c[0]]} (${rng[i]})</div>`).join('');return d};
+  d.innerHTML='<b>'+T.legendTitle+'</b>'+CLASSES.map((c,i)=>`<div><i style="background:${c[2]};${c[2]==='#ffffbf'?'border:1px solid #ccc':''}"></i>${T.cls[c[0]]} (${rng[i]})</div>`).join('')+'<span class="nd" id="ndState"></span>';return d};
 legend.addTo(map);
 const hover=L.control({position:'bottomright'});
 hover.onAdd=()=>{const d=L.DomUtil.create('div','hover');d.style.display='none';return d};hover.addTo(map);
@@ -634,7 +684,8 @@ async function refresh(fit,report){
   try{
     const g=await buildGrid(S.region,(n,m)=>{if(id===loadId)b.textContent=n<0?T.computing:T.loading(n,m)});
     if(id!==loadId)return;
-    G=g;b.style.display='none';
+    G=g;$('ndState').textContent=G.ndYear?T.ndviOn(G.ndYear):T.ndviOff;
+    if(G.ndErr){b.textContent=T.ndviErr(G.ndErr);setTimeout(()=>{if(id===loadId)b.style.display='none'},9000)}else b.style.display='none';
     $('elMin').value=Math.round(G.eMin);$('elMax').value=Math.round(G.eMax);
     S.features.forEach(f=>{const r=computeRisk(f.type,f.co);f.v=r.err?null:r.v});save();
     drawRegion();drawFeatures();
@@ -647,6 +698,8 @@ async function refresh(fit,report){
 }
 
 // region settings
+$('iid').value=getIID();
+$('eye').onclick=()=>{const i=$('iid');i.type=i.type==='password'?'text':'password'};
 const R0=S.region;$('swLat').value=R0.latMin;$('swLon').value=R0.lonMin;$('neLat').value=R0.latMax;$('neLon').value=R0.lonMax;$('scale').value=R0.scale;
 $('applyBtn').onclick=()=>{
   const n=id=>parseFloat($(id).value),sa=n('swLat'),so=n('swLon'),na=n('neLat'),no=n('neLon'),sc=n('scale');
@@ -655,6 +708,7 @@ $('applyBtn').onclick=()=>{
   if(!errs.length&&(na-sa>3||no-so>3))errs.push(T.errBig);
   if(errs.length)return status($('regionStatus'),T.errPrefix+errs.join(' | '),1);
   S.region={lonMin:so,latMin:sa,lonMax:no,latMax:na,scale:Math.max(10,Math.round(sc))};save();
+  try{const v=$('iid').value.trim();if(v)localStorage.setItem('iid',v);else localStorage.removeItem('iid')}catch(e){}
   status($('regionStatus'),T.loading(0,'…'));
   refresh(true,()=>{
     const w=(no-so)*111.32*Math.cos((sa+na)/2*Math.PI/180),h=(na-sa)*111.32;
