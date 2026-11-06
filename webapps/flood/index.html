@@ -147,14 +147,13 @@ th{color:var(--muted);font-weight:600}
     <hr>
     <div class="h" style="font-size:.95rem" data-t="demTitle"></div>
     <div class="grid2">
-      <div><label class="f" for="elMin" data-t="elevMin"></label><input type="number" id="elMin" step="1"><small class="i" data-t="elevInfo"></small></div>
-      <div><label class="f" for="elMax" data-t="elevMax"></label><input type="number" id="elMax" step="1"><small class="i" data-t="elevInfo"></small></div>
+      <div><label class="f" for="elMin" data-t="elevMin"></label><input type="number" id="elMin" step="1" disabled><small class="i" data-t="elevInfo"></small></div>
+      <div><label class="f" for="elMax" data-t="elevMax"></label><input type="number" id="elMax" step="1" disabled><small class="i" data-t="elevInfo"></small></div>
     </div>
     <hr>
     <div class="h" style="font-size:.95rem" data-t="geeTitle"></div>
     <div class="grid2">
-      <div><label class="f" for="scale" data-t="scaleLabel"></label><input type="number" id="scale" step="1"><small class="i" data-t="scaleInfo"></small></div>
-      <div><label class="f" for="maxpix">maxPixels</label><input type="text" id="maxpix"><small class="i" data-t="maxpixInfo"></small></div>
+      <div><label class="f" for="scale" data-t="scaleLabel"></label><input type="number" id="scale" step="1" min="10"><small class="i" data-t="scaleInfo"></small></div>
     </div>
     <div class="row" style="margin-top:16px"><button type="button" class="btn pri" id="applyBtn" data-t="apply"></button></div>
     <div class="status" id="regionStatus"></div>
@@ -183,8 +182,8 @@ document.documentElement.lang=LANG;
 const I18N={
 en:{
  title:'Flood Risk Map',
- subtitle:'Any area · SRTM / TWI / JRC / NDVI / Slope — Google Earth Engine model',
- demoNote:'Demo: the risk map is a synthetic approximation of the Google Earth Engine model, generated in your browser without live satellite data. Use it to explore the method, not for real decisions.',
+ subtitle:'Any area · SRTM elevation · TWI · slope · JRC surface water — same factors and weights as the Google Earth Engine model',
+ demoNote:'Computed in your browser from real open data: SRTM elevation (elevation, slope, TWI) and JRC Global Surface Water. NDVI (5% weight) is not included, so the other weights are scaled up proportionally. This is a relative index, not a hydraulic model.',
  tabMap:'Map & analysis',tabRegion:'Region settings',tabGuide:'Guide',tabHelp:'Help',tabAbout:'About',
  addLocation:'Add a location',geomType:'Geometry type',
  typePoint:'Point',typeLine:'Line / Road',typePolygon:'Polygon / Area',
@@ -211,18 +210,19 @@ en:{
  latSW:'Latitude (Lat SW)',lonSW:'Longitude (Lon SW)',latNE:'Latitude (Lat NE)',lonNE:'Longitude (Lon NE)',
  latMinInfo:'Smallest latitude',lonMinInfo:'Smallest longitude',latMaxInfo:'Largest latitude',lonMaxInfo:'Largest longitude',
  demTitle:'Elevation above sea level (DEM)',elevMin:'Lowest elevation (m)',elevMax:'Highest point (m)',
- elevInfo:'From the GEE DEM.reduceRegion minMax output',
- geeTitle:'GEE export settings',scaleLabel:'Scale — resolution (m)',scaleInfo:'30 = SRTM default (recommended)',
- maxpixInfo:'Increase up to 1e13 for large areas',
+ elevInfo:'Calculated automatically from SRTM for the area',
+ geeTitle:'Resolution',scaleLabel:'Scale — resolution (m)',scaleInfo:'30 = SRTM resolution (recommended). Large areas are calculated more coarsely.',
  apply:'Apply region and update map',
  errLat:'SW latitude must be smaller than NE latitude.',errLon:'SW longitude must be smaller than NE longitude.',
- errElev:'Lowest elevation must be smaller than the highest point.',errNum:'Fill in all numbers.',errPrefix:'Error: ',
- regionOk:(a,b,w,h,e1,e2,s)=>`Region updated — ${a}° × ${b}° (~${w} km × ${h} km) | Elevation: ${e1}–${e2} m | Scale: ${s} m`,
+ errBig:'The area is too large (at most 3° × 3°).',errNum:'Fill in all numbers.',errPrefix:'Error: ',
+ regionOk:(a,b,w,h,e1,e2,s)=>`Region updated — ${a}° × ${b}° (~${w} km × ${h} km) | Elevation: ${e1}–${e2} m | Resolution: ~${s} m`,
+ loading:(n,m)=>`Downloading elevation and surface-water data… ${n}/${m}`,computing:'Calculating flood risk…',
+ loadErr:m=>`Could not download the data (${m}). Check your internet connection.`,calcErr:m=>`Could not calculate the risk map (${m}).`,retry:'Try again',notReady:'The risk map is still loading — try again in a moment.',
  howTo:`<b>How to set it up</b><br>
 1. In Google Maps, find the south-west corner of your area<br>
 2. Right-click → copy the coordinates (lat, lon order)<br>
 3. Do the same for the north-east corner<br>
-4. Enter the DEM min/max values from the GEE script<br>
+4. Choose the resolution (30 m recommended)<br>
 5. Press "Apply region and update map"`,
  guide:`<h2>Flood Risk Map — Guide</h2>
 <h2>What is the flood risk index?</h2>
@@ -233,7 +233,8 @@ en:{
 <tr><td><b>Slope</b></td><td><b>30%</b></td><td>On flat ground water does not run off, it collects</td></tr>
 <tr><td><b>DEM</b> (elevation)</td><td><b>15%</b></td><td>Low ground is more at risk</td></tr>
 <tr><td><b>JRC</b> (surface water)</td><td><b>10%</b></td><td>River banks and wetlands</td></tr>
-<tr><td><b>NDVI</b> (vegetation)</td><td><b>5%</b></td><td>Bare ground absorbs less water</td></tr></table>
+<tr><td><b>NDVI</b> (vegetation)</td><td><b>5%</b></td><td>Bare ground absorbs less water — <i>not included in this app</i></td></tr></table>
+<p>NDVI needs Sentinel-2 imagery, which cannot be downloaded without an account, so this app leaves it out and scales the other four weights up proportionally (TWI 42%, slope 32%, elevation 16%, JRC 10.5%). The score is the weighted sum × 100.</p>
 <h2>Risk classes</h2>
 <table><tr><th>Score</th><th>Class</th><th>Colour</th></tr>
 <tr><td>34–52</td><td>Low</td><td>Green</td></tr><tr><td>52–62</td><td>Moderate-low</td><td>Light green</td></tr>
@@ -248,19 +249,12 @@ North-east:  Lat (latitude) = larger number,  Lon (longitude) = larger number</p
 <p><b>Example — Ulaanbaatar city:</b></p><ul><li>South-west: Lat = 47.87, Lon = 106.75</li><li>North-east: Lat = 47.98, Lon = 106.98</li></ul>
 <p><b>Example — Terelj (default):</b></p><ul><li>South-west: Lat = 47.82, Lon = 107.35</li><li>North-east: Lat = 47.92, Lon = 107.52</li></ul>
 <h3>Elevation range</h3>
-<p>DEM normalisation values from the GEE script:</p>
-<table><tr><th>Field</th><th>Description</th><th>Example</th></tr>
-<tr><td><b>Lowest elevation (m)</b></td><td>DEM min value</td><td>1436</td></tr>
-<tr><td><b>Highest point (m)</b></td><td>DEM max value</td><td>1733</td></tr></table>
-<p>You can get these values from GEE's <code>print()</code> output:</p>
-<pre>print(dem.reduceRegion({reducer: ee.Reducer.minMax(), ...}))</pre>
+<p>The lowest and highest elevation are calculated automatically from SRTM for the chosen area and shown in the settings. Elevation is scored from the lowest point (highest risk) to the highest point (lowest risk).</p>
 <h3>Scale (resolution)</h3>
 <table><tr><th>Value</th><th>Description</th></tr>
-<tr><td><b>30</b></td><td>SRTM default resolution (recommended)</td></tr><tr><td><b>10</b></td><td>Sentinel-2 resolution</td></tr>
-<tr><td><b>90</b></td><td>SRTM 3 arc-second</td></tr><tr><td><b>250</b></td><td>MODIS</td></tr></table>
-<h3>maxPixels</h3>
-<p>The GEE export limit. Use a larger number for large areas:</p>
-<ul><li>Small area (&lt; 100 km²): <code>1e8</code></li><li>Medium area (&lt; 1000 km²): <code>1e10</code></li><li>Large area (&gt; 1000 km²): <code>1e13</code></li></ul>
+<tr><td><b>30</b></td><td>SRTM resolution (recommended)</td></tr>
+<tr><td><b>60–120</b></td><td>Faster, for larger areas</td></tr></table>
+<p>To keep the browser fast, large areas are calculated more coarsely than the chosen scale. The resolution used is shown after the update.</p>
 <h2>Adding features</h2>
 <h3>Point</h3><pre>47.8550, 107.4200</pre><p>One point per line — lat (latitude), then lon (longitude).</p>
 <h3>Road / Line</h3><pre>47.8550, 107.4200
@@ -273,31 +267,36 @@ North-east:  Lat (latitude) = larger number,  Lon (longitude) = larger number</p
 <h2>Caution</h2>
 <blockquote>This map shows <b>relative risk</b> — a comparison within the area. It does not answer "how much water will come".<br>Real calculations need a hydraulic model such as <b>HEC-RAS</b>.</blockquote>
 <h2>Data sources</h2>
-<ul><li><b>DEM</b>: USGS SRTMGL1 (30 m resolution)</li><li><b>TWI</b>: WWF HydroSHEDS 15s</li><li><b>NDVI</b>: Copernicus Sentinel-2 SR (2022–2023)</li><li><b>JRC</b>: Global Surface Water v1.4</li><li><b>Processing</b>: Google Earth Engine</li></ul>`,
+<ul><li><b>DEM</b>: SRTM elevation (~30 m), via AWS Terrain Tiles (Mapzen/Tilezen)</li>
+<li><b>Slope, TWI</b>: calculated in the browser from the DEM (sink filling, D8 flow accumulation, TWI = ln(a / tan β))</li>
+<li><b>JRC</b>: EC JRC / Google Global Surface Water 1984–2021, water occurrence</li>
+<li><b>NDVI</b>: not included</li>
+<li><b>Base maps</b>: OpenStreetMap, Esri World Imagery</li></ul>`,
  help:`<h2>Help &amp; FAQ</h2>
-<p><b>Why are the scores between 34 and 98?</b><br>These are the min/max values from the real GEE calculation. 34 = safest, 98 = most at risk.</p>
+<p><b>What do the scores mean?</b><br>The score is 0–100: the weighted sum of the factors × 100. Higher means more at risk. For the Terelj example, the original GEE calculation gave 34–98.</p>
 <p><b>How is a line scored?</b><br>The average of 20 points along each segment of the line.</p>
 <p><b>How is a polygon scored?</b><br>The average of 200 random points inside the area.</p>
 <p><b>What if the coordinates are wrong?</b><br>Check the lat, lon order. For Mongolia, lat ≈ 42–52 and lon ≈ 87–119.</p>
 <p><b>Does the risk map update after changing the region?</b><br>Yes. The map updates when you press "Apply region and update map".</p>
 <p><b>Why does it say the point is outside the region?</b><br>The coordinates are outside the region boundary. Check the south-west / north-east corner coordinates.</p>
 <p><b>How many points can I add?</b><br>No limit, but more than 20 may slow the map down.</p>
-<p><b>What is maxPixels?</b><br>The GEE export calculation limit. Use a larger number for large areas (up to 1e13).</p>`,
+<p><b>Where does the data come from?</b><br>SRTM elevation and JRC Global Surface Water, downloaded by your browser when the map loads. Nothing is sent to a server.</p>
+<p><b>Why does the map take a while to load?</b><br>The data is downloaded and the water flow is calculated for the whole area. Larger areas or finer scale take longer.</p>`,
  about:`<h2>About the app</h2>
 <p>A web app that shows a flood risk model developed on Google Earth Engine for any area, and calculates the risk for points, roads and areas you enter.</p>
 <h3>Technical details</h3>
 <ul><li><b>Map model</b>: weighted composite index of SRTM + TWI + JRC + NDVI + Slope</li>
-<li><b>Calculation</b>: a synthetic approximation of the GEE algorithm, computed in the browser</li>
+<li><b>Calculation</b>: the GEE model's factors and weights, calculated in the browser from SRTM and JRC open data (NDVI not included)</li>
 <li><b>Coverage</b>: any area in the world (set by coordinates)</li>
-<li><b>Map resolution</b>: 30 m (SRTM), adjustable</li></ul>
-<h3>Technology</h3><p>JavaScript · Leaflet · OpenStreetMap · Esri World Imagery</p>
+<li><b>Map resolution</b>: ~30 m (SRTM), coarser for large areas</li></ul>
+<h3>Technology</h3><p>JavaScript · Leaflet · AWS Terrain Tiles · JRC Global Surface Water · OpenStreetMap · Esri World Imagery</p>
 <h3>Caution</h3><p>This map is a relative risk assessment intended for research and education only. Consult a qualified organisation before making real decisions.</p>
 <p>© Numan-Altai LLC</p>`
 },
 mn:{
  title:'Үерийн эрсдлийн зураг',
- subtitle:'Дурын нутагт SRTM / TWI / JRC / NDVI / Slope — Google Earth Engine загвар',
- demoNote:'Демо: эрсдлийн зураг нь Google Earth Engine загварын синтетик дуурайлга бөгөөд хиймэл дагуулын бодит өгөгдөлгүйгээр хөтөч дотор үүсгэгдэнэ. Аргачлалтай танилцахад ашиглаж, бодит шийдвэр гаргахад бүү ашигла.',
+ subtitle:'Дурын нутагт · SRTM өндөр · TWI · налуу · JRC гадаргын ус — Google Earth Engine загварын хүчин зүйл, жингээр',
+ demoNote:'Бодит нээлттэй өгөгдлөөс хөтөч дотор тооцоологдоно: SRTM өндөр (өндөр, налуу, TWI) ба JRC Global Surface Water. NDVI (5% жин) ороогүй тул бусад жинг пропорциональ өсгөсөн. Энэ нь харьцангуй индекс бөгөөд гидравлик загвар биш.',
  tabMap:'Зураг & шинжилгээ',tabRegion:'Нутгийн тохиргоо',tabGuide:'Гарын авлага',tabHelp:'Тусламж',tabAbout:'Тухай',
  addLocation:'Байршил нэмэх',geomType:'Геометрийн төрөл',
  typePoint:'Цэг',typeLine:'Шугам / Зам',typePolygon:'Олон өнцөгт / Дүрс',
@@ -324,18 +323,19 @@ mn:{
  latSW:'Өргөрөг (Lat SW)',lonSW:'Уртраг (Lon SW)',latNE:'Өргөрөг (Lat NE)',lonNE:'Уртраг (Lon NE)',
  latMinInfo:'Хамгийн бага өргөргийн утга',lonMinInfo:'Хамгийн бага уртрагийн утга',latMaxInfo:'Хамгийн их өргөргийн утга',lonMaxInfo:'Хамгийн их уртрагийн утга',
  demTitle:'Далайн түвшнээс дээш өндөр (DEM)',elevMin:'Хамгийн нам өндөр (м)',elevMax:'Хамгийн өндөр цэг (м)',
- elevInfo:'GEE-ийн DEM.reduceRegion minMax гаралтаас авна',
- geeTitle:'GEE Export тохиргоо',scaleLabel:'Scale — нарийвчлал (м)',scaleInfo:'30 = SRTM анхдагч (санал болгоно)',
- maxpixInfo:'Том нутгийн хувьд 1e13 хүртэл нэмэгдүүлнэ',
+ elevInfo:'Нутгийн SRTM өгөгдлөөс автоматаар тооцоологдоно',
+ geeTitle:'Нарийвчлал',scaleLabel:'Scale — нарийвчлал (м)',scaleInfo:'30 = SRTM нарийвчлал (санал болгоно). Том нутгийг илүү бүдүүн нарийвчлалаар тооцно.',
  apply:'Нутаг тохируулах ба зураг шинэчлэх',
  errLat:'Баруун урд өргөрөг < Зүүн хойд өргөрөг байх ёстой.',errLon:'Баруун урд уртраг < Зүүн хойд уртраг байх ёстой.',
- errElev:'Нам өндөр < Өндөр цэг байх ёстой.',errNum:'Бүх тоог бөглөнө үү.',errPrefix:'Алдаа: ',
- regionOk:(a,b,w,h,e1,e2,s)=>`Нутаг шинэчлэгдлээ — ${a}° × ${b}° (~${w} км × ${h} км) | Өндөр: ${e1}–${e2} м | Scale: ${s} м`,
+ errBig:'Нутаг хэт том байна (хамгийн ихдээ 3° × 3°).',errNum:'Бүх тоог бөглөнө үү.',errPrefix:'Алдаа: ',
+ regionOk:(a,b,w,h,e1,e2,s)=>`Нутаг шинэчлэгдлээ — ${a}° × ${b}° (~${w} км × ${h} км) | Өндөр: ${e1}–${e2} м | Нарийвчлал: ~${s} м`,
+ loading:(n,m)=>`Өндөр ба гадаргын усны өгөгдөл татаж байна… ${n}/${m}`,computing:'Үерийн эрсдлийг тооцоолж байна…',
+ loadErr:m=>`Өгөгдөл татаж чадсангүй (${m}). Интернэт холболтоо шалгана уу.`,calcErr:m=>`Эрсдлийн зургийг тооцоолж чадсангүй (${m}).`,retry:'Дахин оролдох',notReady:'Эрсдлийн зураг ачаалж байна — түр хүлээгээд дахин оролдоно уу.',
  howTo:`<b>Хэрхэн тохируулах вэ?</b><br>
 1. Google Maps дээр нутгийнхаа баруун урд булангийн цэгийг хайна<br>
 2. Хулганы баруун товч → координат хуулна (lat, lon дарааллаар)<br>
 3. Зүүн хойд булангийн цэгийг мөн адил хийнэ<br>
-4. GEE скриптийн DEM min/max утгыг оруулна<br>
+4. Нарийвчлалаа сонгоно (30 м санал болгоно)<br>
 5. "Нутаг тохируулах ба зураг шинэчлэх" товчийг дарна`,
  guide:`<h2>Үерийн эрсдлийн зураг — Гарын авлага</h2>
 <h2>Үерийн эрсдлийн индекс гэж юу вэ?</h2>
@@ -346,7 +346,8 @@ mn:{
 <tr><td><b>Slope</b> (налуу)</td><td><b>30%</b></td><td>Хавтгай газарт ус урсахгүй, хуримтлагдана</td></tr>
 <tr><td><b>DEM</b> (өндөр)</td><td><b>15%</b></td><td>Нам газар илүү эрсдэлтэй</td></tr>
 <tr><td><b>JRC</b> (одоогийн ус)</td><td><b>10%</b></td><td>Голын хажуу, намаг</td></tr>
-<tr><td><b>NDVI</b> (ургамал)</td><td><b>5%</b></td><td>Ургамалгүй газар ус шингэдэггүй</td></tr></table>
+<tr><td><b>NDVI</b> (ургамал)</td><td><b>5%</b></td><td>Ургамалгүй газар ус шингэдэггүй — <i>энэ апп-д ороогүй</i></td></tr></table>
+<p>NDVI-д Sentinel-2-ын зураг хэрэгтэй бөгөөд түүнийг бүртгэлгүйгээр татах боломжгүй тул энэ апп-д оруулаагүй. Бусад дөрвөн жинг пропорциональ өсгөсөн (TWI 42%, налуу 32%, өндөр 16%, JRC 10.5%). Оноо нь жигнэсэн нийлбэр × 100.</p>
 <h2>Эрсдлийн ангилал</h2>
 <table><tr><th>Оноо</th><th>Ангилал</th><th>Өнгө</th></tr>
 <tr><td>34–52</td><td>Бага</td><td>Ногоон</td></tr><tr><td>52–62</td><td>Дунд бага</td><td>Цайвар ногоон</td></tr>
@@ -361,19 +362,12 @@ mn:{
 <p><b>Жишээ — Улаанбаатар хот:</b></p><ul><li>Баруун урд: Lat = 47.87, Lon = 106.75</li><li>Зүүн хойд: Lat = 47.98, Lon = 106.98</li></ul>
 <p><b>Жишээ — Тэрэлж (анхдагч):</b></p><ul><li>Баруун урд: Lat = 47.82, Lon = 107.35</li><li>Зүүн хойд: Lat = 47.92, Lon = 107.52</li></ul>
 <h3>Өндөршлийн хязгаар</h3>
-<p>GEE скриптийн DEM нормчлолын утга:</p>
-<table><tr><th>Талбар</th><th>Тайлбар</th><th>Жишээ</th></tr>
-<tr><td><b>Хамгийн нам өндөр (м)</b></td><td>DEM min утга</td><td>1436</td></tr>
-<tr><td><b>Хамгийн өндөр цэг (м)</b></td><td>DEM max утга</td><td>1733</td></tr></table>
-<p>GEE-ийн <code>print()</code> гаралтаас эдгээр утгыг авч болно:</p>
-<pre>print(dem.reduceRegion({reducer: ee.Reducer.minMax(), ...}))</pre>
+<p>Хамгийн нам ба хамгийн өндөр цэгийг сонгосон нутгийн SRTM өгөгдлөөс автоматаар тооцоолж, тохиргоонд харуулна. Өндрийн оноо хамгийн нам цэгт хамгийн их, хамгийн өндөр цэгт хамгийн бага байна.</p>
 <h3>Scale (нарийвчлал)</h3>
 <table><tr><th>Утга</th><th>Тайлбар</th></tr>
-<tr><td><b>30</b></td><td>SRTM анхдагч нарийвчлал (санал болгоно)</td></tr><tr><td><b>10</b></td><td>Sentinel-2-ын нарийвчлал</td></tr>
-<tr><td><b>90</b></td><td>SRTM 3 arc-second</td></tr><tr><td><b>250</b></td><td>MODIS</td></tr></table>
-<h3>maxPixels</h3>
-<p>GEE Export-ын хязгаар. Том нутгийн хувьд их тоо оруулна:</p>
-<ul><li>Жижиг нутаг (&lt; 100 км²): <code>1e8</code></li><li>Дундаж нутаг (&lt; 1000 км²): <code>1e10</code></li><li>Том нутаг (&gt; 1000 км²): <code>1e13</code></li></ul>
+<tr><td><b>30</b></td><td>SRTM нарийвчлал (санал болгоно)</td></tr>
+<tr><td><b>60–120</b></td><td>Илүү хурдан, том нутагт</td></tr></table>
+<p>Хөтөч удаашрахгүйн тулд том нутгийг сонгосноос бүдүүн нарийвчлалаар тооцно. Ашигласан нарийвчлалыг шинэчилсний дараа харуулна.</p>
 <h2>Тэмдэглэл нэмэх заавар</h2>
 <h3>Цэг (Point)</h3><pre>47.8550, 107.4200</pre><p>Нэг мөрт нэг цэг — lat (өргөрөг), lon (уртраг) дараалан.</p>
 <h3>Зам / Шугам (Line)</h3><pre>47.8550, 107.4200
@@ -386,24 +380,29 @@ mn:{
 <h2>Анхааруулга</h2>
 <blockquote>Энэ зураг нь <b>харьцангуй эрсдэл</b> — нутаг доторх харьцуулалт. "Яг хэр их ус ирэх вэ" гэдэгт хариулахгүй.<br>Бодит тооцоололд <b>HEC-RAS</b> зэрэг гидравлик загвар шаардлагатай.</blockquote>
 <h2>Мэдээллийн эх сурвалж</h2>
-<ul><li><b>DEM</b>: USGS SRTMGL1 (30 м нарийвчлал)</li><li><b>TWI</b>: WWF HydroSHEDS 15s</li><li><b>NDVI</b>: Copernicus Sentinel-2 SR (2022–2023)</li><li><b>JRC</b>: Global Surface Water v1.4</li><li><b>Боловсруулалт</b>: Google Earth Engine</li></ul>`,
+<ul><li><b>DEM</b>: SRTM өндөр (~30 м), AWS Terrain Tiles (Mapzen/Tilezen)-ээр</li>
+<li><b>Налуу, TWI</b>: DEM-ээс хөтөч дотор тооцоологдоно (хонхор дүүргэх, D8 урсацын хуримтлал, TWI = ln(a / tan β))</li>
+<li><b>JRC</b>: EC JRC / Google Global Surface Water 1984–2021, ус илрэх давтамж</li>
+<li><b>NDVI</b>: ороогүй</li>
+<li><b>Суурь зураг</b>: OpenStreetMap, Esri World Imagery</li></ul>`,
  help:`<h2>Тусламж &amp; Түгээмэл асуулт</h2>
-<p><b>Оноо яагаад 34–98 байна вэ?</b><br>GEE-ийн бодит тооцооллоос гарсан min/max утга. 34 = хамгийн аюулгүй, 98 = хамгийн эрсдэлтэй.</p>
+<p><b>Оноо юуг илэрхийлэх вэ?</b><br>Оноо 0–100: хүчин зүйлсийн жигнэсэн нийлбэр × 100. Их байх тусам эрсдэл өндөр. Тэрэлжийн жишээнд GEE-ийн анхны тооцоо 34–98 гарсан.</p>
 <p><b>Шугамын оноо хэрхэн тооцоологддог вэ?</b><br>Шугамын хэсэг бүрийн дагуух 20 цэгийн дундаж.</p>
 <p><b>Олон өнцөгтийн оноо хэрхэн тооцоологддог вэ?</b><br>Талбай доторх 200 санамсаргүй цэгийн дундаж.</p>
 <p><b>Координат алдаатай бол яах вэ?</b><br>lat, lon дарааллыг шалгана уу. Монгол орны хувьд lat ≈ 42–52, lon ≈ 87–119.</p>
 <p><b>Нутгийг өөрчилсний дараа эрсдлийн зураг шинэчлэгддэг үү?</b><br>Тийм. "Нутаг тохируулах ба зураг шинэчлэх" товчийг дарахад зураг шинэчлэгдэнэ.</p>
 <p><b>Яагаад цэг нутгаас гадна гэж гардаг вэ?</b><br>Оруулсан координат нутгийн хилийн гадна байна. Нутгийн баруун урд / зүүн хойд булангийн координатыг шалгана уу.</p>
 <p><b>Хэдэн цэг нэмж болох вэ?</b><br>Хязгааргүй. Гэхдээ 20-оос дээш бол зураг удаашрах магадлалтай.</p>
-<p><b>maxPixels гэж юу вэ?</b><br>GEE Export-ын тооцооллын хязгаар. Том нутгийн хувьд их тоо оруулна (1e13 хүртэл).</p>`,
+<p><b>Өгөгдөл хаанаас ирдэг вэ?</b><br>SRTM өндөр ба JRC Global Surface Water-ийг зураг ачаалахад таны хөтөч татна. Сервер рүү юу ч илгээхгүй.</p>
+<p><b>Зураг яагаад удаан ачаалдаг вэ?</b><br>Өгөгдлийг татаж, бүх нутгийн усны урсацыг тооцоолдог. Том нутаг эсвэл нарийн нарийвчлал удаан болно.</p>`,
  about:`<h2>Аппын тухай</h2>
 <p>Google Earth Engine дээр боловсруулсан үерийн эрсдлийн загварыг дурын нутагт харуулах, цэг/зам/дүрс оруулж эрсдлийг тооцоолох вэб апп.</p>
 <h3>Техникийн мэдээлэл</h3>
 <ul><li><b>Зургийн загвар</b>: SRTM + TWI + JRC + NDVI + Slope жинтэй нийлмэл индекс</li>
-<li><b>Тооцоолол</b>: GEE алгоритмын синтетик дуурайлга, хөтөч дотор тооцоологдоно</li>
+<li><b>Тооцоолол</b>: GEE загварын хүчин зүйл, жингээр SRTM ба JRC нээлттэй өгөгдлөөс хөтөч дотор тооцоологдоно (NDVI ороогүй)</li>
 <li><b>Хамрах нутаг</b>: дэлхийн дурын нутаг (координатаар тохируулна)</li>
-<li><b>Зургийн нарийвчлал</b>: 30 м (SRTM), тохируулж болно</li></ul>
-<h3>Хэрэглэсэн технологи</h3><p>JavaScript · Leaflet · OpenStreetMap · Esri World Imagery</p>
+<li><b>Зургийн нарийвчлал</b>: ~30 м (SRTM), том нутагт бүдүүн</li></ul>
+<h3>Хэрэглэсэн технологи</h3><p>JavaScript · Leaflet · AWS Terrain Tiles · JRC Global Surface Water · OpenStreetMap · Esri World Imagery</p>
 <h3>Анхааруулга</h3><p>Энэ зураг нь харьцангуй эрсдлийн үнэлгээ бөгөөд зөвхөн судалгаа, боловсролын зориулалттай. Бодит шийдвэр гаргахдаа мэргэжлийн байгууллагатай зөвлөлдөнө үү.</p>
 <p>© Нуман-Алтай ХХК</p>`
 }};
@@ -413,62 +412,131 @@ document.querySelectorAll('[data-t]').forEach(el=>{const v=T[el.dataset.t];if(ty
 document.getElementById('name').placeholder=T.namePh;
 
 /* ───────── defaults (Terelj / Ulaanbaatar region from the GEE script) ───────── */
-const DEF={lonMin:107.35,latMin:47.82,lonMax:107.52,latMax:47.92,elMin:1436,elMax:1733,scale:30,maxpix:'1e13'};
-const GW=170,GH=100;
+const DEF={lonMin:107.35,latMin:47.82,lonMax:107.52,latMax:47.92,scale:30};
+// GEE weights. NDVI (5%) cannot be fetched without an account, so the other four are scaled up.
+const W0={twi:0.40,slope:0.30,elev:0.15,jrc:0.10},WS=W0.twi+W0.slope+W0.elev+W0.jrc;
+const DEM_URL=(z,x,y)=>`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+const JRC_URL=(z,x,y)=>`https://storage.googleapis.com/global-surface-water/tiles2021/occurrence/${z}/${x}/${y}.png`;
+const MAX_CELLS=1100*1100;
 
-/* ───────── 1. risk model ───────── */
-function rng(seed){let a=seed>>>0;return()=>{a=(a+0x6D2B79F5)>>>0;let t=a;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296}}
-function randn(r){let u=0,v=0;while(u===0)u=r();while(v===0)v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
-// Gaussian blur with the same defaults as scipy.ndimage.gaussian_filter (mode 'reflect', truncate 4).
-function gauss(src,sigma){
-  const r=Math.floor(4*sigma+0.5),k=[];let s=0;
-  for(let i=-r;i<=r;i++){const w=Math.exp(-0.5*(i/sigma)**2);k.push(w);s+=w}
-  for(let i=0;i<k.length;i++)k[i]/=s;
-  const refl=(i,n)=>{while(i<0||i>=n){if(i<0)i=-i-1;if(i>=n)i=2*n-i-1}return i};
-  const tmp=new Float32Array(GW*GH),out=new Float32Array(GW*GH);
-  for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){let a=0;for(let j=-r;j<=r;j++)a+=k[j+r]*src[y*GW+refl(x+j,GW)];tmp[y*GW+x]=a}
-  for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){let a=0;for(let j=-r;j<=r;j++)a+=k[j+r]*tmp[refl(y+j,GH)*GW+x];out[y*GW+x]=a}
+/* ───────── Web Mercator helpers ───────── */
+const lon2px=(lon,z)=>(lon+180)/360*256*2**z;
+const lat2px=(lat,z)=>{const s=Math.sin(lat*Math.PI/180);return(0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*256*2**z};
+const px2lat=(py,z)=>{const n=Math.PI-2*Math.PI*py/(256*2**z);return 180/Math.PI*Math.atan(Math.sinh(n))};
+const px2lon=(px,z)=>px/(256*2**z)*360-180;
+
+/* ───────── 1. data download ───────── */
+function loadImg(url){return new Promise(res=>{const im=new Image();im.crossOrigin='anonymous';im.onload=()=>res(im);im.onerror=()=>res(null);im.src=url})}
+// Downloads the tiles covering [x0,x1)×[y0,y1) (global pixels at zoom z) and returns their RGBA pixels.
+async function mosaic(urlFn,z,x0,y0,x1,y1,onTile,required){
+  const W=x1-x0,H=y1-y0,cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const cx=cv.getContext('2d',{willReadFrequently:true}),jobs=[],n=2**z;
+  for(let ty=Math.floor(y0/256);ty<=Math.floor((y1-1)/256);ty++)for(let tx=Math.floor(x0/256);tx<=Math.floor((x1-1)/256);tx++)jobs.push([tx,ty]);
+  let failed=0;
+  for(let i=0;i<jobs.length;i+=8){
+    await Promise.all(jobs.slice(i,i+8).map(async([tx,ty])=>{
+      const im=(ty>=0&&ty<n)?await loadImg(urlFn(z,((tx%n)+n)%n,ty)):null;
+      if(im)cx.drawImage(im,tx*256-x0,ty*256-y0);else failed++;
+      onTile();
+    }));
+  }
+  if(required&&failed){const e=new Error(failed+' tile(s) failed');e.download=true;throw e}
+  return cx.getImageData(0,0,W,H).data;
+}
+
+/* ───────── 2. terrain analysis ───────── */
+// Min-heap of cell indices keyed by elevation (for priority-flood sink filling).
+function Heap(key){const a=[];return{size:()=>a.length,
+  push(i){a.push(i);let c=a.length-1;while(c>0){const p=(c-1)>>1;if(key[a[p]]<=key[i])break;a[c]=a[p];c=p}a[c]=i},
+  pop(){const top=a[0],last=a.pop(),n=a.length;if(n){let c=0;for(;;){const l=2*c+1,r=l+1;let m=-1,mk=key[last];if(l<n&&key[a[l]]<mk){m=l;mk=key[a[l]]}if(r<n&&key[a[r]]<mk)m=r;if(m<0)break;a[c]=a[m];c=m}a[c]=last}return top}}}
+const NB=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+// Returns slope (tan β) and TWI for every cell of a W×H DEM; cs[y] is the cell size (m) of row y.
+function terrain(dem,W,H,cs){
+  const N=W*H,fill=new Float64Array(dem),done=new Uint8Array(N),hp=Heap(fill);
+  // Priority-flood with a tiny gradient so every cell drains to the edge (Barnes et al. 2014).
+  for(let x=0;x<W;x++){hp.push(x);done[x]=1;const b=(H-1)*W+x;if(!done[b]){hp.push(b);done[b]=1}}
+  for(let y=1;y<H-1;y++){for(const i of[y*W,y*W+W-1])if(!done[i]){hp.push(i);done[i]=1}}
+  while(hp.size()){const c=hp.pop(),cx=c%W,cy=(c-cx)/W;
+    for(const[dx,dy]of NB){const x=cx+dx,y=cy+dy;if(x<0||y<0||x>=W||y>=H)continue;const i=y*W+x;if(done[i])continue;done[i]=1;
+      if(fill[i]<=fill[c])fill[i]=fill[c]+1e-4;hp.push(i)}}
+  // D8 flow directions and accumulation (cells processed from highest to lowest).
+  const down=new Int32Array(N).fill(-1);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const c=y*W+x;let best=0,bi=-1;
+    for(const[dx,dy]of NB){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=W||yy>=H)continue;const i=yy*W+xx,d=(dx&&dy)?1.4142:1,g=(fill[c]-fill[i])/d;if(g>best){best=g;bi=i}}
+    down[c]=bi}
+  const order=new Uint32Array(N);for(let i=0;i<N;i++)order[i]=i;order.sort((a,b)=>fill[b]-fill[a]);
+  const acc=new Float64Array(N).fill(1);for(const c of order)if(down[c]>=0)acc[down[c]]+=acc[c];
+  // Slope (Horn 1981) on the original DEM, and TWI = ln(a / tan β).
+  const tanb=new Float32Array(N),twi=new Float32Array(N),e=(x,y)=>dem[Math.min(H-1,Math.max(0,y))*W+Math.min(W-1,Math.max(0,x))];
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const a=e(x-1,y-1),b=e(x,y-1),c=e(x+1,y-1),d=e(x-1,y),f=e(x+1,y),g=e(x-1,y+1),h=e(x,y+1),k=e(x+1,y+1);
+    const gx=((c+2*f+k)-(a+2*d+g))/(8*cs[y]),gy=((g+2*h+k)-(a+2*b+c))/(8*cs[y]),t=Math.hypot(gx,gy),i=y*W+x;
+    tanb[i]=t;twi[i]=Math.log(acc[i]*cs[y]/Math.max(t,0.001));
+  }
+  return{tanb,twi:blur(blur(twi,W,H,2),W,H,2)};
+}
+// Box blur (radius r, run twice ≈ Gaussian). Smooths the parallel flow lines D8 leaves on flat ground.
+function blur(src,W,H,r){
+  const tmp=new Float32Array(W*H),out=new Float32Array(W*H);
+  for(let y=0;y<H;y++){let s=0,n=0;for(let x=-r;x<=r;x++)if(x>=0&&x<W){s+=src[y*W+x];n++}
+    for(let x=0;x<W;x++){tmp[y*W+x]=s/n;const a=x-r,b=x+r+1;if(a>=0){s-=src[y*W+a];n--}if(b<W){s+=src[y*W+b];n++}}}
+  for(let x=0;x<W;x++){let s=0,n=0;for(let y=-r;y<=r;y++)if(y>=0&&y<H){s+=tmp[y*W+x];n++}
+    for(let y=0;y<H;y++){out[y*W+x]=s/n;const a=y-r,b=y+r+1;if(a>=0){s-=tmp[a*W+x];n--}if(b<H){s+=tmp[b*W+x];n++}}}
   return out;
 }
+function pct(vals,p){const a=Float32Array.from(vals).sort();return a[Math.min(a.length-1,Math.floor(p*(a.length-1)))]}
 const clip=(v,a,b)=>Math.min(b,Math.max(a,v));
-// Synthetic flood-risk grid that mimics the GEE output. All 5 factors
-// (TWI, slope, DEM, JRC, NDVI) are modelled analytically, so the app works
-// without a GEE connection.
-function buildRiskGrid(lonMin,latMin,lonMax,latMax){
-  const r=rng(42),N=GW*GH;
-  const aspect=(lonMax-lonMin)/Math.max(latMax-latMin,1e-6),slopeFrac=Math.min(aspect/5,1);
-  const elev=new Float32Array(N);
-  for(let i=0;i<GH;i++)for(let j=0;j<GW;j++){const xx=j/(GW-1),yy=i/(GH-1);elev[i*GW+j]=clip(Math.abs(yy-0.4-xx*0.3*slopeFrac)*2.5,0,1)}
-  let twi=new Float32Array(N);
-  for(let i=0;i<GH;i++){const c=Math.floor(GW*(0.2+i/GH*0.5)),w=Math.max(3,Math.floor(GW*0.08*(1-i/GH*0.3)));
-    for(let j=Math.max(0,c-w);j<Math.min(GW,c+w);j++){const d=Math.abs(j-c)/w;twi[i*GW+j]=Math.max(twi[i*GW+j],1-d**1.5)}}
-  for(let i=Math.floor(GH/2);i<GH;i++){const c=Math.floor(GW*(0.6+(i-Math.floor(GH/2))/GH*0.2)),w=Math.max(2,Math.floor(GW*0.05));
-    for(let j=Math.max(0,c-w);j<Math.min(GW,c+w);j++){const d=Math.abs(j-c)/w;twi[i*GW+j]=Math.max(twi[i*GW+j],(1-d**1.5)*0.8)}}
-  twi=gauss(twi,3);
-  const noise=new Float32Array(N);for(let i=0;i<N;i++)noise[i]=randn(r)*0.1;
-  const base=gauss(noise,4);
-  const jrc0=gauss(twi,2),risk=new Float32Array(N);
-  for(let i=0;i<N;i++){
-    const slope=1-clip(Math.abs(base[i])*8,0,1);
-    const jrc=clip(jrc0[i]*0.7+randn(r)*0.05,0,1);
-    risk[i]=twi[i]*0.40+slope*0.30+elev[i]*0.15+jrc*0.10;
+
+/* ───────── 3. build the risk grid for the region ───────── */
+let G=null,loadId=0;
+async function buildGrid(R,progress){
+  const midLat=(R.latMin+R.latMax)/2,cosL=Math.cos(midLat*Math.PI/180);
+  let z=clip(Math.round(Math.log2(156543.03*cosL/Math.max(R.scale||30,10))),3,12);
+  let rx0,rx1,ry0,ry1,pad,wx0,wy0,W,H;
+  for(;;){
+    rx0=Math.floor(lon2px(R.lonMin,z));rx1=Math.ceil(lon2px(R.lonMax,z));ry0=Math.floor(lat2px(R.latMax,z));ry1=Math.ceil(lat2px(R.latMin,z));
+    pad=Math.max(16,Math.round(0.15*Math.max(rx1-rx0,ry1-ry0)));
+    wx0=rx0-pad;wy0=ry0-pad;W=rx1-rx0+2*pad;H=ry1-ry0+2*pad;
+    if(W*H<=MAX_CELLS||z<=3)break;z--;
   }
-  for(let i=0;i<N;i++)risk[i]+=(1-clip(twi[i]*0.6+randn(r)*0.1,0,1))*0.05;
-  let mn=Infinity,mx=-Infinity;for(let i=0;i<N;i++){mn=Math.min(mn,risk[i]);mx=Math.max(mx,risk[i])}
-  for(let i=0;i<N;i++){let v=risk[i]-mn;if(mx-mn>0)v/=(mx-mn);risk[i]=v*(98-34)+34}
-  return risk;
+  const tiles=(x0,y0,x1,y1)=>(Math.floor((x1-1)/256)-Math.floor(x0/256)+1)*(Math.floor((y1-1)/256)-Math.floor(y0/256)+1);
+  const total=tiles(wx0,wy0,wx0+W,wy0+H)+tiles(rx0,ry0,rx1,ry1);let doneT=0;const tick=()=>progress(++doneT,total);
+  const rgb=await mosaic(DEM_URL,z,wx0,wy0,wx0+W,wy0+H,tick,true);
+  const jrcPx=await mosaic(JRC_URL,Math.min(z,13),rx0,ry0,rx1,ry1,tick,false);
+  progress(-1);await new Promise(r=>setTimeout(r,30));
+  const N=W*H,dem=new Float32Array(N),cs=new Float64Array(H);
+  for(let i=0;i<N;i++)dem[i]=rgb[i*4]*256+rgb[i*4+1]+rgb[i*4+2]/256-32768;
+  for(let y=0;y<H;y++)cs[y]=40075016.686*Math.cos(px2lat(wy0+y+0.5,z)*Math.PI/180)/(256*2**z);
+  const{tanb,twi}=terrain(dem,W,H,cs);
+  // Region cells (inside the user's rectangle) set the normalisation ranges.
+  const RW=rx1-rx0,RH=ry1-ry0,inR=[],eV=[],tV=[],sV=[];
+  for(let y=0;y<RH;y++)for(let x=0;x<RW;x++){
+    const lat=px2lat(ry0+y+0.5,z),lon=px2lon(rx0+x+0.5,z),i=(y+pad)*W+(x+pad);
+    if(lat<R.latMin||lat>R.latMax||lon<R.lonMin||lon>R.lonMax){inR.push(-1);continue}
+    inR.push(i);eV.push(dem[i]);tV.push(twi[i]);sV.push(tanb[i]);
+  }
+  if(!eV.length)throw new Error('empty area');
+  let eMin=Infinity,eMax=-Infinity;for(const v of eV){if(v<eMin)eMin=v;if(v>eMax)eMax=v}
+  const t0=pct(tV,0.02),t1=pct(tV,0.98),s0=pct(sV,0.02),s1=pct(sV,0.98);
+  const risk=new Float32Array(RW*RH).fill(NaN),nz=(v,a,b)=>b>a?clip((v-a)/(b-a),0,1):0;
+  for(let k=0;k<inR.length;k++){const i=inR[k];if(i<0)continue;
+    const occ=jrcPx[k*4+3]/255;
+    const sc=W0.twi*nz(twi[i],t0,t1)+W0.slope*(1-nz(tanb[i],s0,s1))+W0.elev*(1-nz(dem[i],eMin,eMax))+W0.jrc*occ;
+    risk[k]=100*sc/WS;
+  }
+  return{z,x0:rx0,y0:ry0,W:RW,H:RH,risk,eMin,eMax,res:cs[pad+(RH>>1)]};
 }
 
-/* ───────── 2. interpolation & classification ───────── */
+/* ───────── 4. sampling & classification ───────── */
 function getRisk(lat,lon){
-  const R=S.region;
+  const R=S.region;if(!G)return null;
   if(!(R.latMin<=lat&&lat<=R.latMax&&R.lonMin<=lon&&lon<=R.lonMax))return null;
-  const col=(lon-R.lonMin)/(R.lonMax-R.lonMin)*(GW-1);
-  const row=GH-1-(lat-R.latMin)/(R.latMax-R.latMin)*(GH-1);
-  const c0=Math.floor(col),r0=Math.floor(row),c1=Math.min(c0+1,GW-1),r1=Math.min(r0+1,GH-1),fc=col-c0,fr=row-r0,g=GRID;
-  return g[r0*GW+c0]*(1-fc)*(1-fr)+g[r0*GW+c1]*fc*(1-fr)+g[r1*GW+c0]*(1-fc)*fr+g[r1*GW+c1]*fc*fr;
+  const fx=lon2px(lon,G.z)-G.x0-0.5,fy=lat2px(lat,G.z)-G.y0-0.5;
+  const x0=clip(Math.floor(fx),0,G.W-1),y0=clip(Math.floor(fy),0,G.H-1),x1=Math.min(x0+1,G.W-1),y1=Math.min(y0+1,G.H-1),ax=clip(fx-x0,0,1),ay=clip(fy-y0,0,1);
+  let sw=0,sv=0;for(const[x,y,w]of[[x0,y0,(1-ax)*(1-ay)],[x1,y0,ax*(1-ay)],[x0,y1,(1-ax)*ay],[x1,y1,ax*ay]]){const v=G.risk[y*G.W+x];if(!isNaN(v)&&w>0){sw+=w;sv+=v*w}}
+  return sw?sv/sw:null;
 }
-const CLASSES=[['low',52,'#1a9641'],['medlow',62,'#a6d96a'],['med',72,'#ffffbf'],['high',85,'#fdae61'],['vhigh',999,'#d7191c']];
+const CLASSES=[['low',52,'#1a9641'],['medlow',62,'#a6d96a'],['med',72,'#ffffbf'],['high',85,'#fdae61'],['vhigh',1e9,'#d7191c']];
 function riskClass(v){if(v==null)return['out','#888888'];for(const c of CLASSES)if(v<c[1])return[c[0],c[2]];}
 function lineSamples(co,n=20){const s=[];for(let i=0;i<co.length-1;i++)for(let k=0;k<n;k++){const t=n>1?k/(n-1):0;const v=getRisk(co[i][0]+t*(co[i+1][0]-co[i][0]),co[i][1]+t*(co[i+1][1]-co[i][1]));if(v!=null)s.push(v)}return s.length?s:null}
 function polySamples(co,n=200){
@@ -482,41 +550,42 @@ function computeRisk(type,co){
   if(type==='line'){if(co.length<2)return{err:T.errLine2};const s=lineSamples(co);return s?{v:mean(s)}:{err:T.errLineOut}}
   if(co.length<3)return{err:T.errPoly3};const s=polySamples(co);return s?{v:mean(s)}:{err:T.errPolyOut};
 }
-function parseCoords(text){const out=[];text.trim().replace(/;/g,'\n').split('\n').forEach(l=>{const p=l.trim().replace(/,/g,' ').split(/\s+/);if(p.length>=2){const a=parseFloat(p[0]),b=parseFloat(p[1]);if(isFinite(a)&&isFinite(b)&&/^[-+]?[\d.]+(e[-+]?\d+)?$/i.test(p[0])&&/^[-+]?[\d.]+(e[-+]?\d+)?$/i.test(p[1]))out.push([a,b])}});return out}
+function parseCoords(text){const out=[],num=/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i;text.trim().replace(/;/g,'\n').split('\n').forEach(l=>{const p=l.trim().replace(/,/g,' ').split(/\s+/);if(p.length>=2&&num.test(p[0])&&num.test(p[1]))out.push([+p[0],+p[1]])});return out}
 
 /* ───────── state (kept across reloads and language switches) ───────── */
 let S={region:{...DEF},features:[]};
-try{const s=JSON.parse(localStorage.getItem('floodRiskState')||'null');if(s&&s.region&&Array.isArray(s.features))S=s}catch(e){}
+try{const s=JSON.parse(localStorage.getItem('floodRiskState')||'null');if(s&&s.region&&Array.isArray(s.features))S={region:{...DEF,...s.region},features:s.features}}catch(e){}
 const save=()=>{try{localStorage.setItem('floodRiskState',JSON.stringify(S))}catch(e){}};
-let GRID=buildRiskGrid(S.region.lonMin,S.region.latMin,S.region.lonMax,S.region.latMax);
 
-/* ───────── 3. map ───────── */
+/* ───────── 5. map ───────── */
 const map=L.map('map',{zoomControl:true});
 const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
 const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'});
-let riskLayer=null,boxLayer=null;const mine=L.featureGroup().addTo(map);
-const riskGroup=L.layerGroup().addTo(map);
+const mine=L.featureGroup().addTo(map),riskGroup=L.layerGroup().addTo(map);
 L.control.layers({[T.baseMap]:osm,[T.baseSat]:sat},{[T.ovRisk]:riskGroup,[T.ovMine]:mine},{position:'topright'}).addTo(map);
+map.attributionControl.addAttribution('SRTM via AWS Terrain Tiles · JRC Global Surface Water');
 const legend=L.control({position:'bottomleft'});
-legend.onAdd=()=>{const d=L.DomUtil.create('div','legend');const rng=['34–52','52–62','62–72','72–85','85–98'];
+legend.onAdd=()=>{const d=L.DomUtil.create('div','legend');const rng=['< 52','52–62','62–72','72–85','≥ 85'];
   d.innerHTML='<b>'+T.legendTitle+'</b>'+CLASSES.map((c,i)=>`<div><i style="background:${c[2]};${c[2]==='#ffffbf'?'border:1px solid #ccc':''}"></i>${T.cls[c[0]]} (${rng[i]})</div>`).join('');return d};
 legend.addTo(map);
 const hover=L.control({position:'bottomright'});
 hover.onAdd=()=>{const d=L.DomUtil.create('div','hover');d.style.display='none';return d};hover.addTo(map);
+const busy=L.control({position:'topleft'});
+busy.onAdd=()=>{const d=L.DomUtil.create('div','hover');d.style.display='none';d.style.marginLeft='46px';return d};busy.addTo(map);
 map.on('mousemove',e=>{const v=getRisk(e.latlng.lat,e.latlng.lng),d=hover.getContainer();if(v==null){d.style.display='none';return}d.style.display='';d.textContent=`${T.hoverRisk}: ${v.toFixed(1)} (${T.cls[riskClass(v)[0]]})`});
 map.on('mouseout',()=>{hover.getContainer().style.display='none'});
 
 function zoomFor(R){const s=Math.max(R.lonMax-R.lonMin,R.latMax-R.latMin);return s>10?6:s>5?7:s>2?9:s>0.5?11:s>0.1?13:14}
-function drawRisk(fit){
-  const R=S.region,cv=document.createElement('canvas');cv.width=GW;cv.height=GH;
-  const cx=cv.getContext('2d'),img=cx.createImageData(GW,GH);
-  for(let i=0;i<GW*GH;i++){const h=riskClass(GRID[i])[1];img.data[i*4]=parseInt(h.slice(1,3),16);img.data[i*4+1]=parseInt(h.slice(3,5),16);img.data[i*4+2]=parseInt(h.slice(5,7),16);img.data[i*4+3]=255}
+function drawRegion(){
+  const R=S.region;riskGroup.clearLayers();
+  L.rectangle([[R.latMin,R.lonMin],[R.latMax,R.lonMax]],{color:'#ef4444',fill:false,weight:2,dashArray:'6 4',interactive:false}).addTo(riskGroup);
+  if(!G)return;
+  const cv=document.createElement('canvas');cv.width=G.W;cv.height=G.H;
+  const cx=cv.getContext('2d'),img=cx.createImageData(G.W,G.H);
+  for(let i=0;i<G.W*G.H;i++){const v=G.risk[i];if(isNaN(v))continue;const h=riskClass(v)[1];img.data[i*4]=parseInt(h.slice(1,3),16);img.data[i*4+1]=parseInt(h.slice(3,5),16);img.data[i*4+2]=parseInt(h.slice(5,7),16);img.data[i*4+3]=255}
   cx.putImageData(img,0,0);
-  const b=[[R.latMin,R.lonMin],[R.latMax,R.lonMax]];
-  riskGroup.clearLayers();
-  riskLayer=L.imageOverlay(cv.toDataURL(),b,{opacity:0.55,interactive:false}).addTo(riskGroup);
-  boxLayer=L.rectangle(b,{color:'#ef4444',fill:false,weight:2,dashArray:'6 4',interactive:false}).addTo(riskGroup);
-  if(fit)map.setView([(R.latMin+R.latMax)/2,(R.lonMin+R.lonMax)/2],zoomFor(R));
+  const b=[[px2lat(G.y0+G.H,G.z),px2lon(G.x0,G.z)],[px2lat(G.y0,G.z),px2lon(G.x0+G.W,G.z)]];
+  L.imageOverlay(cv.toDataURL(),b,{opacity:0.55,interactive:false}).addTo(riskGroup).bringToBack();
 }
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function drawFeatures(){
@@ -534,7 +603,7 @@ function drawFeatures(){
     S.features.map((f,i)=>{const[k,col]=riskClass(f.v);return`<tr><td>${i+1}</td><td>${esc(f.name)}</td><td>${T.kind[f.type]}</td><td>${f.v==null?'—':f.v.toFixed(1)}</td><td><span class="sw" style="background:${col}"></span><b>${T.cls[k]}</b></td></tr>`}).join('')+'</table>':'';
 }
 
-/* ───────── 4. UI ───────── */
+/* ───────── 6. UI ───────── */
 const $=id=>document.getElementById(id);
 const status=(el,html,err)=>{el.innerHTML=html;el.classList.toggle('err',!!err)};
 const curType=()=>document.querySelector('input[name=ft]:checked').value;
@@ -542,6 +611,7 @@ const HINT={point:'47.8550, 107.4200',line:'47.8550, 107.4200\n47.8600, 107.4350
 document.querySelectorAll('input[name=ft]').forEach(r=>r.onchange=()=>{$('coords').placeholder=HINT[curType()]});
 
 $('addBtn').onclick=()=>{
+  if(!G)return status($('status'),T.notReady,1);
   const co=parseCoords($('coords').value);
   if(!co.length)return status($('status'),T.errParse,1);
   const type=curType(),r=computeRisk(type,co);
@@ -556,20 +626,40 @@ const EX=[['point','47.8520, 107.4150','exName1'],['line','47.8480, 107.3980\n47
   ['point','47.8850, 107.4950','exName3'],['polygon','47.8510, 107.4100\n47.8550, 107.4250\n47.8530, 107.4400\n47.8480, 107.4300\n47.8460, 107.4150','exName4']];
 document.querySelectorAll('[data-ex]').forEach(b=>b.onclick=()=>{const e=EX[+b.dataset.ex];document.querySelector(`input[name=ft][value=${e[0]}]`).checked=true;$('coords').value=e[1];$('name').value=T[e[2]];$('coords').placeholder=HINT[e[0]]});
 
+// Download data and compute the risk map for the current region.
+async function refresh(fit,report){
+  const id=++loadId,b=busy.getContainer();G=null;drawRegion();
+  if(fit){const R=S.region;map.setView([(R.latMin+R.latMax)/2,(R.lonMin+R.lonMax)/2],zoomFor(R))}
+  b.style.display='';b.textContent=T.loading(0,'…');$('applyBtn').disabled=true;
+  try{
+    const g=await buildGrid(S.region,(n,m)=>{if(id===loadId)b.textContent=n<0?T.computing:T.loading(n,m)});
+    if(id!==loadId)return;
+    G=g;b.style.display='none';
+    $('elMin').value=Math.round(G.eMin);$('elMax').value=Math.round(G.eMax);
+    S.features.forEach(f=>{const r=computeRisk(f.type,f.co);f.v=r.err?null:r.v});save();
+    drawRegion();drawFeatures();
+    if(report)report();
+  }catch(e){
+    if(id!==loadId)return;
+    b.innerHTML=esc(e.download?T.loadErr(e.message):T.calcErr(e.message))+' <button type="button" class="btn sm" id="retryBtn">'+T.retry+'</button>';
+    $('retryBtn').onclick=()=>refresh(false,report);
+  }finally{if(id===loadId)$('applyBtn').disabled=false}
+}
+
 // region settings
-const R0=S.region;$('swLat').value=R0.latMin;$('swLon').value=R0.lonMin;$('neLat').value=R0.latMax;$('neLon').value=R0.lonMax;
-$('elMin').value=R0.elMin;$('elMax').value=R0.elMax;$('scale').value=R0.scale;$('maxpix').value=R0.maxpix;
+const R0=S.region;$('swLat').value=R0.latMin;$('swLon').value=R0.lonMin;$('neLat').value=R0.latMax;$('neLon').value=R0.lonMax;$('scale').value=R0.scale;
 $('applyBtn').onclick=()=>{
-  const n=id=>parseFloat($(id).value),sa=n('swLat'),so=n('swLon'),na=n('neLat'),no=n('neLon'),e1=n('elMin'),e2=n('elMax'),sc=n('scale');
-  if([sa,so,na,no,e1,e2,sc].some(v=>!isFinite(v)))return status($('regionStatus'),T.errPrefix+T.errNum,1);
-  const errs=[];if(sa>=na)errs.push(T.errLat);if(so>=no)errs.push(T.errLon);if(e1>=e2)errs.push(T.errElev);
+  const n=id=>parseFloat($(id).value),sa=n('swLat'),so=n('swLon'),na=n('neLat'),no=n('neLon'),sc=n('scale');
+  if([sa,so,na,no,sc].some(v=>!isFinite(v)))return status($('regionStatus'),T.errPrefix+T.errNum,1);
+  const errs=[];if(sa>=na)errs.push(T.errLat);if(so>=no)errs.push(T.errLon);
+  if(!errs.length&&(na-sa>3||no-so>3))errs.push(T.errBig);
   if(errs.length)return status($('regionStatus'),T.errPrefix+errs.join(' | '),1);
-  S.region={lonMin:so,latMin:sa,lonMax:no,latMax:na,elMin:e1,elMax:e2,scale:sc,maxpix:$('maxpix').value.trim()||'1e13'};
-  GRID=buildRiskGrid(so,sa,no,na);
-  S.features.forEach(f=>{const r=computeRisk(f.type,f.co);f.v=r.err?null:r.v});
-  save();drawRisk(true);drawFeatures();
-  const w=(no-so)*111.32*Math.cos((sa+na)/2*Math.PI/180),h=(na-sa)*111.32;
-  status($('regionStatus'),T.regionOk((na-sa).toFixed(4),(no-so).toFixed(4),w.toFixed(1),h.toFixed(1),Math.round(e1),Math.round(e2),Math.round(sc)));
+  S.region={lonMin:so,latMin:sa,lonMax:no,latMax:na,scale:Math.max(10,Math.round(sc))};save();
+  status($('regionStatus'),T.loading(0,'…'));
+  refresh(true,()=>{
+    const w=(no-so)*111.32*Math.cos((sa+na)/2*Math.PI/180),h=(na-sa)*111.32;
+    status($('regionStatus'),T.regionOk((na-sa).toFixed(4),(no-so).toFixed(4),w.toFixed(1),h.toFixed(1),Math.round(G.eMin),Math.round(G.eMax),Math.round(G.res)));
+  });
 };
 
 // tabs
@@ -583,7 +673,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
 const lb=$('langBtn');lb.textContent=LANG==='en'?'MN':'EN';lb.title=LANG==='en'?'Монгол хэл':'English';
 lb.onclick=()=>{try{localStorage.setItem('appLang',LANG==='en'?'mn':'en')}catch(e){}const u=new URL(location.href);u.searchParams.delete('lang');location.replace(u.href)};
 
-drawRisk(true);drawFeatures();
+drawFeatures();refresh(true);
 })();
 </script>
 </body>
