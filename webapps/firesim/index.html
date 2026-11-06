@@ -27,11 +27,20 @@ small{color:var(--mut);display:block;margin-top:4px;line-height:1.4}
 #mp{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:50;display:flex;align-items:center;justify-content:center}#mp[hidden]{display:none}
 #mbox{max-width:94vw}#mi{max-width:94vw;max-height:76vh;border-radius:6px;display:block;margin:0 auto}
 #mb{display:flex;gap:8px;justify-content:center;margin-top:10px}#mb button{width:auto;padding:8px 18px;margin:0}
+input[type=range]{accent-color:var(--ac)}input:invalid{border-color:#f85149}
+details{margin-top:8px;border:1px solid #30363d;border-radius:5px;padding:4px 8px}summary{cursor:pointer;color:var(--mut);font-size:12px;padding:2px 0}
+details[open]{padding-bottom:8px}
+#bar #pl{background:var(--ac);color:#111;font-size:15px}
+#log .er{color:#f85149}
 </style></head><body>
 <div id="side">
 <div class="r" style="grid-template-columns:1fr auto;align-items:center"><h1 data-en="🔥 Wildfire spread simulation">🔥 Түймрийн тархалтын симулэшн</h1><select id="lang" style="width:auto"><option value="mn">Монгол</option><option value="en">English</option></select></div>
 <small>Sentinel-2 L2A · Sentinel Hub (Copernicus Data Space)</small>
-<div hidden><input id="iid"><select id="lay"></select><button id="lst" type="button"></button></div>
+<details id="cfg"><summary data-en="⚙ Sentinel Hub settings">⚙ Sentinel Hub тохиргоо</summary>
+<label data-en="Instance ID (Copernicus Data Space → Configuration)">Instance ID (Copernicus Data Space → Configuration)</label><input id="iid" autocomplete="off" spellcheck="false" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+<label data-en="Layer">Давхарга</label><select id="lay"></select>
+<div class="r"><button id="lst" type="button" class="b2" data-en="Load layers">Давхарга татах</button><button id="rst" type="button" class="b2" data-en="Reset inputs">Анхны утга</button></div>
+</details>
 <div class="r"><div><label data-en="North latitude">Хойд өргөрөг</label><div class="r" style="grid-template-columns:1fr 62px"><input id="n" type="number" step="any" min="0" value="48.3"><select id="hn"><option value="N" data-en="N">Хойд</option><option value="S" data-en="S">Урд</option></select></div></div><div><label data-en="South latitude">Урд өргөрөг</label><div class="r" style="grid-template-columns:1fr 62px"><input id="s" type="number" step="any" min="0" value="47.3"><select id="hs"><option value="N" data-en="N">Хойд</option><option value="S" data-en="S">Урд</option></select></div></div><div><label data-en="West longitude">Баруун уртраг</label><div class="r" style="grid-template-columns:1fr 62px"><input id="w" type="number" step="any" min="0" value="119.2"><select id="hw"><option value="E" data-en="E">Зүүн</option><option value="W" data-en="W">Баруун</option></select></div></div><div><label data-en="East longitude">Зүүн уртраг</label><div class="r" style="grid-template-columns:1fr 62px"><input id="e" type="number" step="any" min="0" value="120.6"><select id="he"><option value="E" data-en="E">Зүүн</option><option value="W" data-en="W">Баруун</option></select></div></div></div>
 <label data-en="Pre-fire imagery start · Verification imagery end">Гал гарахаас өмнөх зургийн эхлэл · Баталгаажуулах зургийн төгсгөл</label>
 <div class="r"><input id="start" type="date" value="2026-09-28"><input id="end" type="date" value="2026-10-24"></div>
@@ -53,13 +62,13 @@ small{color:var(--mut);display:block;margin-top:4px;line-height:1.4}
 </div>
 <div id="main">
 <div id="hud"><b data-en="Fire">Түймэр</b><div id="dt">—</div><span id="km"></span><div id="km2" style="color:#c9d1d9"></div></div>
-<div id="bar"><button id="tg" title="Самбар нуух / харуулах" data-en-title="Hide / show panel">◀</button><button id="mp0" title="Түймрийн зураг гаргах" data-en-title="Make fire map image">🖼</button><select id="un" style="width:72px" title="Талбайн нэгж" data-en-title="Area unit"><option value="ha" data-en="ha">га</option><option value="km" data-en="km²">км²</option><option value="m" data-en="m²">м²</option><option value="ac" data-en="ac">акр</option></select><input id="sl" type="hidden" value="1000"></div>
+<div id="bar"><button id="tg" title="Самбар нуух / харуулах" data-en-title="Hide / show panel">☰</button><button id="pl" title="Тоглуулах / зогсоох (Space)" data-en-title="Play / pause (Space)" disabled>▶</button><button id="mp0" title="Түймрийн зураг гаргах" data-en-title="Make fire map image">🖼</button><select id="un" style="width:72px" title="Талбайн нэгж" data-en-title="Area unit"><option value="ha" data-en="ha">га</option><option value="km" data-en="km²">км²</option><option value="m" data-en="m²">м²</option><option value="ac" data-en="ac">акр</option></select><input id="sl" type="range" min="0" max="1000" step="any" value="1000" disabled title="Цаг хугацаа" data-en-title="Time"></div>
 </div>
 <div id="mp" hidden><div id="mbox"><img id="mi" alt="Шатсан талбайн зураг"><div id="mb"><button id="mdl" data-en="⬇ Download PNG">⬇ PNG татах</button><button id="mcl" class="b2" data-en="Close">Хаах</button></div></div></div>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
-const $=id=>document.getElementById(id),log=m=>{$('log').textContent+=m+'\n'};
+const $=id=>document.getElementById(id),log=(m,er)=>{const s=document.createElement('span');s.textContent=m+'\n';if(er)s.className='er';$('log').append(s);return s};
 let lang='mn';const L=(m,e)=>lang=='en'?e:m;
 const OGC='https://sh.dataspace.copernicus.eu/ogc/wms/';
 const ES={
@@ -97,7 +106,7 @@ function days(ign,end){
  return o;
 }
 async function lst(){
- const id=$('iid').value.trim();if(!id)return log(L('Instance ID оруулна уу.','Enter the Instance ID.'));
+ const id=$('iid').value.trim();if(!id){$('cfg').open=true;$('iid').focus();return log(L('Instance ID оруулна уу.','Enter the Instance ID.'),1)}
  try{
   const r=await fetch(OGC+id+'?SERVICE=WMS&REQUEST=GetCapabilities');if(!r.ok)throw Error('HTTP '+r.status);
   const x=new DOMParser().parseFromString(await r.text(),'text/xml'),sel=$('lay');sel.innerHTML='';
@@ -105,7 +114,8 @@ async function lst(){
   if(!sel.options.length)throw Error(L('давхарга олдсонгүй','no layers found'));
   let w='';try{w=localStorage.lay||''}catch(e){}
   sel.value=[...sel.options].some(o=>o.value==w)?w:([...sel.options].find(o=>/L2A/i.test(o.value))||sel.options[0]).value;
-  }catch(e){log(L('Жагсаалт татаж чадсангүй: ','Could not load list: ')+e.message)}
+  return true;
+  }catch(e){log(L('Жагсаалт татаж чадсангүй: ','Could not load list: ')+e.message+L(' — Instance ID-гаа шалгана уу.',' — check the Instance ID.'),1);$('cfg').open=true}
 }
 async function terrain(dw,dh){
  const[w,s,e,n]=S.bb,mx=l=>(l+180)/360,my=l=>{const r=l*Math.PI/180;return(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2};
@@ -177,40 +187,67 @@ function sidesOf(){
 function dist(b,N,W){
  const d=new Float32Array(N),sr=new Int32Array(N);for(let i=0;i<N;i++){d[i]=b[i]?0:1e9;sr[i]=i}
  const f=(i,j,c)=>{if(j>=0&&j<N&&d[j]+c<d[i]){d[i]=d[j]+c;sr[i]=sr[j]}};
- for(let i=0;i<N;i++){f(i,i-1,1);f(i,i-W,1);f(i,i-W-1,1.414);f(i,i-W+1,1.414)}
- for(let i=N-1;i>=0;i--){f(i,i+1,1);f(i,i+W,1);f(i,i+W+1,1.414);f(i,i+W-1,1.414)}
+ // column guards stop neighbours from wrapping to the opposite edge of the previous/next row
+ for(let i=0;i<N;i++){const c=i%W;f(i,i-W,1);if(c>0){f(i,i-1,1);f(i,i-W-1,1.414)}if(c<W-1)f(i,i-W+1,1.414)}
+ for(let i=N-1;i>=0;i--){const c=i%W;f(i,i+W,1);if(c<W-1){f(i,i+1,1);f(i,i+W+1,1.414)}if(c>0)f(i,i+W-1,1.414)}
  return{d,sr};
 }
+// run fn over items with at most n requests in flight; results keep input order
+async function pool(items,n,fn){const out=[];let k=0;
+ await Promise.all(Array.from({length:Math.min(n,items.length)},async()=>{while(k<items.length){const i=k++;out[i]=await fn(items[i],i)}}));return out}
+function busy(t){const g=$('go');g.disabled=!!t;g.textContent=t?L('Тооцоолж байна… ','Working… ')+(t===true?'':t):(lang=='en'?g.dataset.en:g.dataset.mn);
+ ['xg','xk','xs','mp0','lst'].forEach(i=>$(i).disabled=!!t)}
+function check(bb,ign){
+ const bad=(id,mn,en)=>{const el=$(id);if(el.closest('details'))el.closest('details').open=true;el.focus();throw Error(L(mn,en))},v=id=>$(id).value;
+ if(bb.some(x=>!isFinite(x)))bad('n','Солбицлыг бүрэн оруулна уу.','Enter all coordinates.');
+ if(Math.abs(bb[1])>85||Math.abs(bb[3])>85)bad('n','Өргөрөг ±85°-аас хэтрэхгүй.','Latitude must be within ±85°.');
+ if(Math.abs(bb[0])>180||Math.abs(bb[2])>180)bad('w','Уртраг ±180°-аас хэтрэхгүй.','Longitude must be within ±180°.');
+ if(!(bb[1]<bb[3]))bad('s','Урд өргөрөг хойд өргөрөгөөс бага байх ёстой.','South latitude must be less than north latitude.');
+ if(!(bb[0]<bb[2]))bad('w','Баруун уртраг зүүн уртрагаас бага байх ёстой.','West longitude must be less than east longitude.');
+ if(isNaN(ign))bad('ign','Гал гарсан цагийг оруулна уу.','Enter the ignition time.');
+ if(!v('start')||Date.parse(v('start')+'T00:00:00Z')>=+ign)bad('start','Өмнөх зургийн эхлэл гал гарахаас өмнө байх ёстой.','Pre-fire start must be before ignition.');
+ if(!v('end')||Date.parse(v('end')+'T23:59:59Z')<=+ign)bad('end','Баталгаажуулах төгсгөл гал гарснаас хойш байх ёстой.','Verification end must be after ignition.');
+ if(v('fend')&&new Date(v('fend')+':00+08:00')<=ign)bad('fend','Унтарсан цаг гал гарснаас хойш байх ёстой.','Fire-out time must be after ignition.');
+ if(!(+v('res')>=10))bad('res','Нягтрал 10 м-ээс багагүй байна.','Resolution must be at least 10 m.');
+ if(!(+v('cc')>=0&&+v('cc')<=100))bad('cc','Үүлний хязгаар 0–100 байна.','Cloud cover must be 0–100.');
+}
 async function run(){
- $('log').textContent='';$('go').disabled=true;
+ if($('go').disabled)return;
+ $('log').textContent='';busy(true);play(false);
+ const S0=S,C0=C,g0=ign0;
  try{
-  const v=id=>+$(id).value,sg=(a,b)=>v(a)*(($(b).value=='S'||$(b).value=='W')?-1:1),bb=[sg('w','hw'),sg('s','hs'),sg('e','he'),sg('n','hn')],ign=new Date($('ign').value+':00+08:00');ign0=+ign;
+  const v=id=>+$(id).value,sg=(a,b)=>($(a).value===''?NaN:v(a))*(($(b).value=='S'||$(b).value=='W')?-1:1),bb=[sg('w','hw'),sg('s','hs'),sg('e','he'),sg('n','hn')],ign=new Date($('ign').value+':00+08:00');
+  check(bb,ign);
   const dxk=(bb[2]-bb[0])*111.32*Math.cos((bb[1]+bb[3])/2*Math.PI/180),dyk=(bb[3]-bb[1])*111.2;
   let res=v('res');while(Math.max(dxk,dyk)*1000/res>2500)res+=10;
   const W=Math.round(dxk*1000/res),Ht=Math.round(dyk*1000/res),N=W*Ht,rowA=new Float32Array(Ht);
   for(let r=0;r<Ht;r++)rowA[r]=(bb[2]-bb[0])/W*111.32*Math.cos((bb[3]-(bb[3]-bb[1])*(r+.5)/Ht)*Math.PI/180)*(bb[3]-bb[1])/Ht*111.2;
-  if(!$('iid').value.trim()){const x=prompt(L('Sentinel Hub Instance ID оруулна уу:','Enter the Sentinel Hub Instance ID:'));if(x)$('iid').value=x.trim()}
-  if($('iid').value.trim()&&!$('lay').value)await lst();
+  if(!$('iid').value.trim()){$('cfg').open=true;$('iid').focus();throw Error(L('Sentinel Hub тохиргоонд Instance ID оруулна уу.','Enter the Instance ID in Sentinel Hub settings.'))}
+  if(!$('lay').value)await lst();
   S={bb,cc:v('cc'),iid:$('iid').value.trim(),lay:$('lay').value};
-  if(!S.iid||!S.lay)throw Error(L('Instance ID эсвэл давхарга олдсонгүй.','Instance ID or layer not found.'));
+  if(!S.lay)throw Error(L('Давхарга олдсонгүй.','Layer not found.'));
   try{localStorage.iid=S.iid;localStorage.lay=S.lay}catch(e){}
   const ps=days(ign,$('end').value),t0=$('start').value+'T00:00:00Z';
-  log(L('Гал гарахаас өмнөх зураг татаж байна...','Downloading pre-fire imagery...'));
-  const pre=await proc(t0,ign.toISOString(),W,Ht,ES.nbr),rgb=await proc(t0,ign.toISOString(),W,Ht,ES.rgb);
-  C={W,Ht,N,ign,rowA,pre:pre.d,ps:[],pxm:dxk*1000/W,hEnd:$('fend').value?(new Date($('fend').value+':00+08:00')-ign)/36e5:1e9};
-  for(const p of ps){
-   log(p.d+L(' шалгаж байна...',' checking...'));
-   let im;try{im=await proc(p.d+'T00:00:00Z',p.d+'T23:59:59Z',W,Ht,ES.nbr)}catch(e){log(L('  алгассан: ','  skipped: ')+e.message.slice(0,90));continue}
-   let nv=0;for(let i=1;i<im.d.length;i+=4)if(im.d[i])nv++;
-   log(L('  цэвэр зургийн хамрах: ','  clear-pixel coverage: ')+Math.round(nv/N*100)+'%'+(nv<N*.03?L(' — хэт бага, алгассан',' — too low, skipped'):''));if(nv<N*.03)continue;
-   C.ps.push({t:p.t,im:im.d});
-  }
+  log(L('Гал гарахаас өмнөх зураг татаж байна...','Downloading pre-fire imagery...'));busy(L('өмнөх зураг','pre-fire'));
+  const[pre,rgb]=await Promise.all([proc(t0,ign.toISOString(),W,Ht,ES.nbr),proc(t0,ign.toISOString(),W,Ht,ES.rgb)]);
+  const Cn={W,Ht,N,ign,rowA,pre:pre.d,ps:[],pxm:dxk*1000/W,hEnd:$('fend').value?(new Date($('fend').value+':00+08:00')-ign)/36e5:1e9};
+  let done=0;const pg=log(''),tick=()=>{pg.textContent=L('Давалтууд татаж байна: ','Downloading passes: ')+done+'/'+ps.length+'\n';busy(done+'/'+ps.length)};tick();
+  const got=await pool(ps,3,async p=>{
+   try{const im=await proc(p.d+'T00:00:00Z',p.d+'T23:59:59Z',W,Ht,ES.nbr);let nv=0;for(let i=1;i<im.d.length;i+=4)if(im.d[i])nv++;
+    return{nv,d:nv<N*.03?null:im.d}}catch(e){return{err:e}}finally{done++;tick()}});
+  ps.forEach((p,j)=>{const g=got[j];
+   if(g.err)return log(p.d+L(' алгассан: ',' skipped: ')+g.err.message.slice(0,90));
+   log(p.d+L(' цэвэр зургийн хамрах: ',' clear-pixel coverage: ')+Math.round(g.nv/N*100)+'%'+(g.d?'':L(' — хэт бага, алгассан',' — too low, skipped')));
+   if(g.d)Cn.ps.push({t:p.t,im:g.d})});
+  C=Cn;ign0=+ign;
   if(!C.ps.length)throw Error(L('Дагуулын давалт олдсонгүй. Үүлний хязгаар, огноо, давхаргыг шалгана уу.','No satellite passes found. Check the cloud limit, dates and layer.'));
   let dem=null;const dw=Math.min(W,400),dh=Math.round(dw*Ht/W);
-  try{log(L('Өндрийн загвар татаж байна...','Downloading elevation model...'));dem=await terrain(dw,dh)}catch(e){log(L('DEM алдаа, хавтгай гадаргуу: ','DEM error, flat surface: ')+e.message)}
-  const a8=compute();enhance(rgb.c);C.rgb=rgb.c;C.dxk=dxk;build(rgb.c,a8,W,Ht,dem,dw,dh,dxk,dyk);log(L('Бэлэн. Босго/индексийг өөрчилбөл дахин татахгүйгээр шинэчлэгдэнэ.','Done. Changing the threshold/index updates without re-downloading.'));showMap();
- }catch(e){log(L('АЛДАА: ','ERROR: ')+e.message)}
- $('go').disabled=false;
+  try{log(L('Өндрийн загвар татаж байна...','Downloading elevation model...'));busy('DEM');dem=await terrain(dw,dh)}catch(e){log(L('DEM алдаа, хавтгай гадаргуу: ','DEM error, flat surface: ')+e.message)}
+  const a8=compute();enhance(rgb.c);C.rgb=rgb.c;C.dxk=dxk;build(rgb.c,a8,W,Ht,dem,dw,dh,dxk,dyk);log(L('Бэлэн. Босго/индексийг өөрчилбөл дахин татахгүйгээр шинэчлэгдэнэ. ▶ товчоор тархалтыг тоглуулна.','Done. Changing the threshold/index updates without re-downloading. Press ▶ to play the spread.'));
+  if(innerWidth<=720)side(true);
+  showMap();
+ }catch(e){S=S0;C=C0;ign0=g0;log(L('АЛДАА: ','ERROR: ')+e.message+(/fetch|network/i.test(e.message)?L(' (сүлжээ эсвэл Instance ID-г шалгана уу)',' (check the network or Instance ID)'):''),1)}
+ busy(false);
 }
 function compute(){
  const{W,Ht,N,ign,pre,ps,rowA}=C,bri=$('idx').value=='bri',thr=+$('thr').value;
@@ -220,7 +257,7 @@ function compute(){
  for(const p of ps){
   const Q=p.im,cand=new Uint8Array(N);let keep=[];pj++;
   for(let i=0;i<N;i++){const k=i*4;if(pre[k+1]&&Q[k+1]){obs[i]=1;const d=dv(Q,k);if(d>mx[i])mx[i]=d;if(!burned[i]&&d>thr)cand[i]=1}}
-  for(let i=0;i<N;i++)if(cand[i]){let n=0;for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)if((a||b)&&(cand[i+a*W+b]||burned[i+a*W+b]))n++;if(n>=3)keep.push(i)}
+  for(let i=0;i<N;i++)if(cand[i]){const c=i%W;let n=0;for(let a=-1;a<=1;a++){const r=i+a*W;if(r<0||r>=N)continue;for(let b=-1;b<=1;b++){if(!(a||b)||c+b<0||c+b>=W)continue;if(cand[r+b]||burned[r+b])n++}}if(n>=3)keep.push(i)}
   if(one&&keep.length){const M=new Uint8Array(burned);for(const i of keep)M[i]=1;const Fm=clean(M,N,W);keep=[];for(let i=0;i<N;i++)if(Fm[i]&&!burned[i])keep.push(i)}
   const{d,sr}=dist(burned,N,W);let m=1;for(const i of keep)m=Math.max(m,d[i]);
   const th=(p.t-ign)/36e5,hi=Math.min(th,hE);
@@ -428,19 +465,20 @@ function zip(files){
  e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
  return new Blob([...parts,...cd,new Uint8Array(e.buffer)],{type:'application/zip'});
 }
-function dl(name,data,type){const a=document.createElement('a');a.href=URL.createObjectURL(data instanceof Blob?data:new Blob([data],{type}));a.download=name;a.click()}
+function dl(name,data,type){const a=document.createElement('a'),u=URL.createObjectURL(data instanceof Blob?data:new Blob([data],{type}));a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),5e3)}
 function exp(kind){
- if(!C||!C.pid)return log(L('Эхлээд тооцоолно уу.','Compute first.'));
+ if(!C||!C.pid)return log(L('Эхлээд тооцоолно уу.','Compute first.'),1);
  log(L('Экспорт бэлтгэж байна (','Preparing export (')+kind+')...');
  setTimeout(()=>{try{
   const mode=$('xm').value,FS=feats(mode),nm='fire_burned_'+({total:'total',pass:'by_pass',cum:'cumulative'}[mode]||'total');
+  if(!FS.length)return log(L('Шатсан талбай олдсонгүй — экспортлох зүйл алга.','No burned area found — nothing to export.'),1);
   if(kind=='gj')dl(nm+'.geojson',toGJ(FS),'application/geo+json');
   else if(kind=='kml')dl(nm+'.kml',toKML(FS),'application/vnd.google-earth.kml+xml');
   else dl(nm+'_shp.zip',toSHP(FS));
   const B=FS,hl=B.reduce((a,f)=>a+f.holes.length,0),ua=B.reduce((a,f)=>a+f.holes.reduce((b,h)=>b+h.km2,0),0),ba=B.reduce((a,f)=>a+f.km2,0),rem=B.reduce((a,f)=>a+f.polys.reduce((b,q)=>b+q.h.length,0),0);
   log(L('Экспорт бэлэн (WGS84): ','Export ready (WGS84): ')+B.length+L(' шатсан объект, ',' burned objects, ')+B.reduce((a,f)=>a+f.polys.length,0)+L(' полигон','  polygons'));
   if(mode!='pass')log(L('   Шатаагүй цоорхой: ','   Unburned holes: ')+hl+(hl?' ('+fa(ua)+')':'')+L(' · цэвэр шатсан: ',' · net burned: ')+fa(ba)+(hl?(rem?L(' · шугамаар холбогдоогүй (жинхэнэ цоорхой хэвээр): ',' · not connectable (kept as true holes): ')+rem:L(' · бүгд холбогдсон',' · all connected')):L(' — тооцоолсон дүнд цоорхой олдсонгүй',' — no holes in the computed result')));
- }catch(e){log(L('Экспортын алдаа: ','Export error: ')+e.message)}},30);
+ }catch(e){log(L('Экспортын алдаа: ','Export error: ')+e.message,1)}},30);
 }
 function makeMap(){
  const{W,Ht,N,rgb,ps}=C,[w,s,e,n]=S.bb,k=Math.max(1,Math.round(1800/Math.max(W,Ht))),MW=W*k,MH=Ht*k,cv=document.createElement('canvas');
@@ -475,8 +513,8 @@ function makeMap(){
  return cv;
 }
 function showMap(){
- if(!C||!C.arr)return log(L('Эхлээд тооцоолно уу.','Compute first.'));
- makeMap().toBlob(b=>{$('mi').src=URL.createObjectURL(b);$('mp').hidden=false});
+ if(!C||!C.arr)return log(L('Эхлээд тооцоолно уу.','Compute first.'),1);
+ makeMap().toBlob(b=>{const m=$('mi');if(m.src.startsWith('blob:'))URL.revokeObjectURL(m.src);m.src=URL.createObjectURL(b);$('mp').hidden=false;$('mdl').focus()});
 }
 const UN={ha:['га','ha',100],km:['км²','km²',1],m:['м²','m²',1e6],ac:['акр','ac',247.105]};
 function fa(km){const U=UN[$('un').value],u=lang=='en'?U[1]:U[0],f=U[2],v=km*f;return v.toLocaleString(undefined,{maximumFractionDigits:$('un').value=='km'&&v<100?1:0})+' '+u}
@@ -506,25 +544,37 @@ function build(cv,a8,W,Ht,dem,dw,dh,dxk,dyk){
  }`});
  mesh=new THREE.Mesh(g,mat);mesh.rotation.x=-Math.PI/2;mesh.userData={hs,sx,sy,dxk,dyk};scene.add(mesh);
  exag();cam.position.set(0,Math.max(dxk,dyk)*.65,dyk*.75);ctl.target.set(0,0,0);
- $('sl').value=1000;upd();
+ pos=1000;$('sl').value=1000;$('pl').disabled=$('sl').disabled=false;upd();
 }
-function exag(){if(!mesh)return;const p=mesh.geometry.attributes.position,hs=mesh.userData.hs,e=+$('ex').value;for(let i=0;i<hs.length;i++)p.setZ(i,hs[i]*e);p.needsUpdate=true;drawGeo()}
+function exag(){if(!mesh)return;const p=mesh.geometry.attributes.position,hs=mesh.userData.hs,e=+$('ex').value;for(let i=0;i<hs.length;i++)p.setZ(i,hs[i]*e);p.needsUpdate=true;drawGeo();need()}
+// playback: pos is 0..1000 along the fire's duration; a full run takes DUR ms
+let pos=1000,last=0,dirty=true;const DUR=12000,need=()=>{dirty=true};
+function play(on){playing=!!on&&!!mesh;$('pl').textContent=playing?'❚❚':'▶';if(playing){if(pos>=1000)pos=0;last=performance.now()}}
 function upd(){
- if(!mesh)return;const t=$('sl').value/1000,h=t*tmax;mesh.material.uniforms.t.value=t;
+ need();if(!mesh)return;const t=pos/1000,h=t*tmax;mesh.material.uniforms.t.value=t;
  $('dt').textContent=new Date(ign0+h*36e5).toLocaleString('en-GB',{timeZone:'Asia/Ulaanbaatar',dateStyle:'medium',timeStyle:'short'})+' (+'+Math.floor(h/24)+L('ө ','d ')+Math.floor(h%24)+L('ц)','h)');
  const ix=Math.min(Math.floor(h),cum.length-1);$('km').textContent=fa(cum[ix]||0)+L(' шатсан',' burned');$('km2').textContent=C&&C.sdOK?L('Монгол ','Mongolia ')+fa(cumM[ix]||0)+L(' · Хятад ',' · China ')+fa(cumC[ix]||0):'';
 }
 function init(){
+ if(!window.THREE||!THREE.OrbitControls)throw Error(L('3D сан (three.js) ачаалагдсангүй — интернэтээ шалгана уу.','3D library (three.js) failed to load — check your connection.'));
  R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(Math.min(devicePixelRatio||1,2));$('main').prepend(R.domElement);
  scene=new THREE.Scene();cam=new THREE.PerspectiveCamera(45,1,.1,3000);ctl=new THREE.OrbitControls(cam,R.domElement);
- 
+ ctl.enableDamping=true;ctl.dampingFactor=.12;ctl.addEventListener('change',need);
  rs();addEventListener('resize',rs);
- (function loop(){requestAnimationFrame(loop);
-  ctl.update();R.render(scene,cam)})();
+ // render only when something changed (camera, time, inputs) to save battery
+ (function loop(now){requestAnimationFrame(loop);
+  if(playing){pos=Math.min(1000,pos+(now-last)/DUR*1000);last=now;$('sl').value=pos;upd();if(pos>=1000)play(false)}
+  ctl.update();if(dirty&&!document.hidden){dirty=false;R.render(scene,cam)}})(performance.now());
 }
 $('go').onclick=run;$('ex').onchange=exag;
+$('pl').onclick=()=>play(!playing);
+$('sl').oninput=()=>{play(false);pos=+$('sl').value;upd()};
+addEventListener('keydown',e=>{
+ if(e.key=='Escape'&&!$('mp').hidden){$('mp').hidden=true;return}
+ if(e.code=='Space'&&mesh&&!/INPUT|SELECT|TEXTAREA|BUTTON|SUMMARY/.test(document.activeElement.tagName)){e.preventDefault();play(!playing)}});
+function side(h){$('side').classList.toggle('h',h);rs()}
 
-function rs(){const m=$('main'),h=m.clientHeight,w=m.clientWidth;R.setSize(w,h);cam.aspect=w/h;cam.updateProjectionMatrix()}
+function rs(){if(!R)return;const m=$('main'),h=m.clientHeight,w=m.clientWidth;R.setSize(w,h);cam.aspect=w/h;cam.updateProjectionMatrix();need()}
 function geoms(o,pr,out=[]){
  if(!o)return out;
  if(o.type=='FeatureCollection')o.features.forEach(f=>geoms(f,0,out));
@@ -561,13 +611,13 @@ function drawGeo(){
   else for(const pc of t=='Point'?[c]:t=='MultiPoint'?c:[]){const p=xy(pc);if(ins(p))g.add(label(o.props,p,m))}}
  const lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(P),3));
  g.add(new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0xffffff})));
- mesh.add(g);geoG=g;
+ mesh.add(g);geoG=g;need();
 }
 $('gjb').onclick=()=>$('gj').click();
 $('gj').onchange=async e=>{const f=e.target.files[0];if(!f)return;
  try{GJ=geoms(JSON.parse(await f.text()));log('GeoJSON: '+GJ.length+L(' геометр ачааллаа',' geometries loaded')+(mesh?'':L(' (симулэшн тооцоолсны дараа харагдана)',' (visible after the simulation is computed)')));drawGeo();if(C){C.sd=undefined;if(mesh)re()}}
  catch(x){log(L('GeoJSON алдаа: ','GeoJSON error: ')+x.message)}};
-$('lst').onclick=lst;$('one').onchange=re;$('xg').onclick=()=>exp('gj');$('xk').onclick=()=>exp('kml');$('xs').onclick=()=>exp('shp');$('mp0').onclick=showMap;$('mcl').onclick=()=>{$('mp').hidden=true};$('mp').onclick=e=>{if(e.target==$('mp'))$('mp').hidden=true};$('mdl').onclick=()=>{const a=document.createElement('a');a.href=$('mi').src;a.download='fire-burned-area.png';a.click()};$('un').onchange=()=>{if(C&&mesh)re();else upd()};$('tg').onclick=()=>{const h=$('side').classList.toggle('h');$('tg').textContent=h?'▶':'◀';rs()};$('thr').onchange=re;$('idx').onchange=()=>{$('thr').value=$('idx').value=='bri'?.3:.15;re()};$('br').oninput=()=>{if(mesh)mesh.material.uniforms.g.value=+$('br').value};
+$('lst').onclick=lst;$('one').onchange=re;$('xg').onclick=()=>exp('gj');$('xk').onclick=()=>exp('kml');$('xs').onclick=()=>exp('shp');$('mp0').onclick=showMap;$('mcl').onclick=()=>{$('mp').hidden=true};$('mp').onclick=e=>{if(e.target==$('mp'))$('mp').hidden=true};$('mdl').onclick=()=>{const a=document.createElement('a');a.href=$('mi').src;a.download='fire-burned-area.png';a.click()};$('un').onchange=()=>{if(C&&mesh)re();else upd()};$('tg').onclick=()=>side(!$('side').classList.contains('h'));$('lay').onchange=()=>{try{localStorage.lay=$('lay').value}catch(e){}};$('thr').onchange=re;$('idx').onchange=()=>{$('thr').value=$('idx').value=='bri'?.3:.15;re()};$('br').oninput=()=>{if(mesh){mesh.material.uniforms.g.value=+$('br').value;need()}};
 function setLang(l){
  lang=l;document.documentElement.lang=l;$('lang').value=l;
  document.querySelectorAll('[data-en]').forEach(el=>{if(el.dataset.mn===undefined)el.dataset.mn=el.textContent;el.textContent=l=='en'?el.dataset.en:el.dataset.mn});
@@ -579,7 +629,18 @@ function setLang(l){
  upd();
 }
 $('lang').onchange=()=>setLang($('lang').value);
+// remember form inputs between visits
+const FI=['n','hn','s','hs','w','hw','e','he','start','end','ign','fend','cc','thr','idx','one','res','ex','br','xm','bridge','ttl','un'],DEF={},
+ getF=()=>{const o={};FI.forEach(id=>{const el=$(id);o[id]=el.type=='checkbox'?el.checked:el.value});return o},
+ setF=o=>FI.forEach(id=>{if(o[id]===undefined)return;const el=$(id);if(el.type=='checkbox')el.checked=!!o[id];else el.value=o[id]});
+Object.assign(DEF,getF());
+FI.forEach(id=>$(id).addEventListener('change',()=>{try{localStorage.fs=JSON.stringify(getF())}catch(e){}}));
+try{setF(JSON.parse(localStorage.fs||'{}'))}catch(e){}
+$('rst').onclick=()=>{setF(DEF);try{localStorage.removeItem('fs')}catch(e){}setLang(lang);
+ if(mesh){mesh.material.uniforms.g.value=+$('br').value;exag();re()}log(L('Оролтыг анхны утгад буцаалаа.','Inputs reset to defaults.'))};
 try{$('iid').value=localStorage.iid||''}catch(e){}
+$('iid').onchange=()=>{$('lay').innerHTML='';if($('iid').value.trim())lst()};
 {let l='mn';try{l=localStorage.lang||'mn'}catch(e){}setLang(l=='en'?'en':'mn')}
-init();if($('iid').value)lst();
+try{init()}catch(e){log(e.message,1);$('go').disabled=true}
+if($('iid').value)lst();else $('cfg').open=true;
 </script></body></html>
