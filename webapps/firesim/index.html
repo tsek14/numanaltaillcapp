@@ -27,6 +27,7 @@ small{color:var(--mut);display:block;margin-top:4px;line-height:1.4}
 #mp{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:50;display:flex;align-items:center;justify-content:center}#mp[hidden]{display:none}
 #mbox{max-width:94vw}#mi{max-width:94vw;max-height:76vh;border-radius:6px;display:block;margin:0 auto}
 #mb{display:flex;gap:8px;justify-content:center;margin-top:10px}#mb button{width:auto;padding:8px 18px;margin:0}
+.sec{display:flex;gap:6px;align-items:center}.sec input{flex:1;min-width:0;margin:0}.sec button{width:auto;flex:none;margin:0;padding:0 10px;height:30px}
 input[type=range]{accent-color:var(--ac)}input:invalid{border-color:#f85149}
 details{margin-top:8px;border:1px solid #30363d;border-radius:5px;padding:4px 8px}summary{cursor:pointer;color:var(--mut);font-size:12px;padding:2px 0}
 details[open]{padding-bottom:8px}
@@ -37,7 +38,7 @@ details[open]{padding-bottom:8px}
 <div class="r" style="grid-template-columns:1fr auto;align-items:center"><h1 data-en="🔥 Wildfire spread simulation">🔥 Түймрийн тархалтын симулэшн</h1><select id="lang" style="width:auto"><option value="mn">Монгол</option><option value="en">English</option></select></div>
 <small>Sentinel-2 L2A · Sentinel Hub (Copernicus Data Space)</small>
 <details id="cfg"><summary data-en="⚙ Sentinel Hub settings">⚙ Sentinel Hub тохиргоо</summary>
-<label data-en="Instance ID (Copernicus Data Space → Configuration)">Instance ID (Copernicus Data Space → Configuration)</label><input id="iid" autocomplete="off" spellcheck="false" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+<label for="iid" data-en="Sentinel Hub License Number">Sentinel Hub License Number</label><div class="sec"><input id="iid" type="password" autocomplete="off" spellcheck="false" placeholder="••••••••••••" data-1p-ignore data-lpignore="true"><button id="eye" type="button" class="b2" aria-label="Show / hide" title="Show / hide">👁</button></div>
 <label data-en="Layer">Давхарга</label><select id="lay"></select>
 <div class="r"><button id="lst" type="button" class="b2" data-en="Load layers">Давхарга татах</button><button id="rst" type="button" class="b2" data-en="Reset inputs">Анхны утга</button></div>
 </details>
@@ -106,7 +107,7 @@ function days(ign,end){
  return o;
 }
 async function lst(){
- const id=$('iid').value.trim();if(!id){$('cfg').open=true;$('iid').focus();return log(L('Instance ID оруулна уу.','Enter the Instance ID.'),1)}
+ const id=$('iid').value.trim();if(!id){$('cfg').open=true;$('iid').focus();return log(L('Sentinel Hub License Number оруулна уу.','Enter the Sentinel Hub License Number.'),1)}
  try{
   const r=await fetch(OGC+id+'?SERVICE=WMS&REQUEST=GetCapabilities');if(!r.ok)throw Error('HTTP '+r.status);
   const x=new DOMParser().parseFromString(await r.text(),'text/xml'),sel=$('lay');sel.innerHTML='';
@@ -115,7 +116,7 @@ async function lst(){
   let w='';try{w=localStorage.lay||''}catch(e){}
   sel.value=[...sel.options].some(o=>o.value==w)?w:([...sel.options].find(o=>/L2A/i.test(o.value))||sel.options[0]).value;
   return true;
-  }catch(e){log(L('Жагсаалт татаж чадсангүй: ','Could not load list: ')+e.message+L(' — Instance ID-гаа шалгана уу.',' — check the Instance ID.'),1);$('cfg').open=true}
+  }catch(e){log(L('Жагсаалт татаж чадсангүй: ','Could not load list: ')+e.message+L(' — License Number-ээ шалгана уу.',' — check the License Number.'),1);$('cfg').open=true}
 }
 async function terrain(dw,dh){
  const[w,s,e,n]=S.bb,mx=l=>(l+180)/360,my=l=>{const r=l*Math.PI/180;return(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2};
@@ -222,7 +223,7 @@ async function run(){
   let res=v('res');while(Math.max(dxk,dyk)*1000/res>2500)res+=10;
   const W=Math.round(dxk*1000/res),Ht=Math.round(dyk*1000/res),N=W*Ht,rowA=new Float32Array(Ht);
   for(let r=0;r<Ht;r++)rowA[r]=(bb[2]-bb[0])/W*111.32*Math.cos((bb[3]-(bb[3]-bb[1])*(r+.5)/Ht)*Math.PI/180)*(bb[3]-bb[1])/Ht*111.2;
-  if(!$('iid').value.trim()){$('cfg').open=true;$('iid').focus();throw Error(L('Sentinel Hub тохиргоонд Instance ID оруулна уу.','Enter the Instance ID in Sentinel Hub settings.'))}
+  if(!$('iid').value.trim()){$('cfg').open=true;$('iid').focus();throw Error(L('Sentinel Hub тохиргоонд License Number оруулна уу.','Enter the License Number in Sentinel Hub settings.'))}
   if(!$('lay').value)await lst();
   S={bb,cc:v('cc'),iid:$('iid').value.trim(),lay:$('lay').value};
   if(!S.lay)throw Error(L('Давхарга олдсонгүй.','Layer not found.'));
@@ -246,7 +247,7 @@ async function run(){
   const a8=compute();enhance(rgb.c);C.rgb=rgb.c;C.dxk=dxk;build(rgb.c,a8,W,Ht,dem,dw,dh,dxk,dyk);log(L('Бэлэн. Босго/индексийг өөрчилбөл дахин татахгүйгээр шинэчлэгдэнэ. ▶ товчоор тархалтыг тоглуулна.','Done. Changing the threshold/index updates without re-downloading. Press ▶ to play the spread.'));
   if(innerWidth<=720)side(true);
   showMap();
- }catch(e){S=S0;C=C0;ign0=g0;log(L('АЛДАА: ','ERROR: ')+e.message+(/fetch|network/i.test(e.message)?L(' (сүлжээ эсвэл Instance ID-г шалгана уу)',' (check the network or Instance ID)'):''),1)}
+ }catch(e){S=S0;C=C0;ign0=g0;log(L('АЛДАА: ','ERROR: ')+e.message+(/fetch|network/i.test(e.message)?L(' (сүлжээ эсвэл License Number-ээ шалгана уу)',' (check the network or License Number)'):''),1)}
  busy(false);
 }
 function compute(){
@@ -642,5 +643,6 @@ try{$('iid').value=localStorage.iid||''}catch(e){}
 $('iid').onchange=()=>{$('lay').innerHTML='';if($('iid').value.trim())lst()};
 {let l='mn';try{l=localStorage.lang||'mn'}catch(e){}setLang(l=='en'?'en':'mn')}
 try{init()}catch(e){log(e.message,1);$('go').disabled=true}
-if($('iid').value)lst();else $('cfg').open=true;
+if($('iid').value)lst();
+$('eye').onclick=()=>{const i=$('iid');i.type=i.type=='password'?'text':'password'};
 </script></body></html>
