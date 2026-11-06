@@ -21,7 +21,7 @@ $('#ex').onclick=()=>{$('#is').value='auto';showP('i');$('#in').value=`Талб�
 5310100 18650100
 5310100 18650400
 5309800 18650400
-5309800 18650100`;run(1)};
+5309800 18650100`;if(window.APP_LANG=='en')$('#in').value=$('#in').value.replace('Талбай А','Area A').replace('Шугам Б','Line B').replace('Цэг В','Point C').replace('Талбай Г','Area D');run(1)};
 $('#cp').onclick=async()=>{const o=$('#out'),b=$('#cp');try{await navigator.clipboard.writeText(o.value)}catch(e){o.select();document.execCommand('copy')}b.textContent='Хуулагдлаа ✓';setTimeout(()=>b.textContent='Хуулах',1200)};
 $('#th').onclick=()=>{const r=document.documentElement;r.dataset.theme=getComputedStyle(r).getPropertyValue('--dk').trim()=='1'?'light':'dark';draw()};
 $('#ex').click();

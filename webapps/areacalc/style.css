@@ -1280,3 +1280,10 @@
     #measurePanel{ left:calc(var(--panel-w) + 14px); top:max(14px, env(safe-area-inset-top)); }
     #mrpamHint, #adminHint, #cadastreHint, #userGjHint, #toast{ left:calc(50% + var(--panel-w) / 2); }
   }
+
+  /* Language switch (EN/MN), added by ../i18n.js */
+  #topbar .lang-switch{
+    margin-left:8px; padding:3px 9px; border-radius:999px; flex-shrink:0;
+    border:1px solid var(--border, #cfd8d3); background:transparent; color:inherit;
+    font:600 12px/1.4 'JetBrains Mono',monospace; cursor:pointer;
+  }
