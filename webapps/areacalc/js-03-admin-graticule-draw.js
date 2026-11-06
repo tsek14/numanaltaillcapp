@@ -964,6 +964,11 @@
   var mode = 'tap'; // 'tap' | 'layers' | 'coords'
   var tapDrawActive = false;
   var tapShapeIndex = 0; // which shapes[] entry tap-draw currently edits
+  // Tap tools write into shapes[tapShapeIndex]; never let that be a shape of an imported batch.
+  if(shapes[0] && shapes[0].batchId){
+    shapes.push({ points: [] });
+    tapShapeIndex = shapes.length - 1;
+  }
   var lngLatOrder = getSetting('lngLatOrder', false); // false = lat,lng ; true = lng,lat
   var SHAPE_COLORS = ['#35d9b0', '#ff7a3d', '#5fb3ff', '#e8d05a', '#c792ea', '#ff6b9d', '#7ee787', '#ffb454'];
 
@@ -982,9 +987,22 @@
   function snapshotState(){
     return { shapes: JSON.parse(JSON.stringify(shapes)), tapShapeIndex: tapShapeIndex };
   }
+  // Undo keeps full copies, so with very large imports the stack is also
+  // capped by the total number of points held (memory), not just by count.
+  var UNDO_MAX_POINTS = 1500000;
+  function snapshotPoints(snap){
+    var n = 0;
+    snap.shapes.forEach(function(s){ n += s.points.length; });
+    return n;
+  }
   function pushUndo(){
-    undoStack.push(snapshotState());
+    var snap = snapshotState();
+    snap.nPts = snapshotPoints(snap);
+    undoStack.push(snap);
     if(undoStack.length > UNDO_MAX) undoStack.shift();
+    var total = 0;
+    undoStack.forEach(function(sn){ total += sn.nPts || 0; });
+    while(undoStack.length > 1 && total > UNDO_MAX_POINTS){ total -= undoStack.shift().nPts || 0; }
     redoStack = []; // a fresh edit invalidates the redo branch
     updateUndoRedoButtons();
   }
@@ -1172,13 +1190,31 @@
   // so a refresh, closed tab, or crash never wipes out work someone spent
   // real time on in the field. Debounced since redrawAll() can fire many
   // times a second during active GPS tracking.
+  var persistTooBigWarned = false;
   var persistShapesDebounced = debounce(function(){
     try{
       // Skip persisting an all-empty single default shape — no point
       // writing/restoring "nothing was ever drawn".
       var hasContent = shapes.some(function(s){ return s.points.length > 0; });
       if(hasContent){
-        localStorage.setItem(SHAPES_KEY, JSON.stringify(shapes));
+        // Points are stored as one flat [lat,lng,lat,lng,…] array per shape
+        // (7 decimals ≈ 1 cm): about half the size of {lat,lng} objects, so
+        // large imported files still fit in the browser's storage quota.
+        var packed = shapes.map(function(s){
+          var o = {}, k;
+          for(k in s){ if(k !== 'points') o[k] = s[k]; }
+          var flat = new Array(s.points.length * 2);
+          s.points.forEach(function(p, i){ flat[2*i] = +p.lat.toFixed(7); flat[2*i+1] = +p.lng.toFixed(7); });
+          o.p = flat;
+          return o;
+        });
+        try{
+          localStorage.setItem(SHAPES_KEY, JSON.stringify(packed));
+          persistTooBigWarned = false;
+        } catch(err){
+          localStorage.removeItem(SHAPES_KEY);
+          if(!persistTooBigWarned){ persistTooBigWarned = true; toast('Дүрсүүд хэт их тул энэ төхөөрөмжид хадгалагдсангүй — хуудсыг хаахаас өмнө экспортлоорой'); }
+        }
       } else {
         localStorage.removeItem(SHAPES_KEY);
       }
@@ -1191,6 +1227,14 @@
       if(!raw) return null;
       var restored = JSON.parse(raw);
       if(!Array.isArray(restored) || !restored.length) return null;
+      restored.forEach(function(s){
+        if(s && Array.isArray(s.p) && !s.points){
+          var pts = [];
+          for(var i=0;i+1<s.p.length;i+=2) pts.push({ lat:s.p[i], lng:s.p[i+1] });
+          s.points = pts;
+          delete s.p;
+        }
+      });
       // Basic shape validation so corrupted/foreign data can't crash the app.
       var valid = restored.every(function(s){
         return s && Array.isArray(s.points) && s.points.every(function(p){

@@ -441,6 +441,31 @@ window.I18N_EN = [
 ['Дэмжигдэхгүй файлын төрөл: .', 'Unsupported file type: .'],
 [' файлыг унших үед алдаа гарлаа', ' — error reading the file'],
 
+// ---- batches (an imported file with several shapes) and the coordinate list
+['Багц', 'Batch'],
+['БАГЦ', 'BATCH'],
+['ДҮРС', 'SHAPES'],
+['Багцыг хилээр тайрах', 'Clip the batch by boundary'],
+['Багцыг экспортлох', 'Export the batch'],
+['Багцыг устгах', 'Delete the batch'],
+['Багцыг тусдаа дүрсүүд болгох', 'Turn the batch into separate shapes'],
+['Задлах', 'Ungroup'],
+['" багц устгагдлаа (', '" batch deleted ('],
+['" багцыг задаллаа — ', '" batch ungrouped — '],
+[' тусдаа дүрс', ' separate shapes'],
+['Хувааж байна…', 'Clipping…'],
+['" багц: ', '" batch: '],
+[' хэсэг болж тайрагдлаа', ' pieces after clipping'],
+[' полигон хилийн гадна байсан тул хасагдлаа', ' polygons were outside the boundaries and removed'],
+[' шугам/цэг хэвээр үлдлээ', ' lines/points left unchanged'],
+[' полигоныг хувааж чадсангүй', ' polygons could not be clipped'],
+[' импортлогдлоо — 1 багц (', ' imported — 1 batch ('],
+['Дүрсүүд хэт их тул энэ төхөөрөмжид хадгалагдсангүй — хуудсыг хаахаас өмнө экспортлоорой', 'Too many shapes to save on this device — export them before closing the page'],
+['Солбицол харуулах (', 'Show coordinates ('],
+['Цааш харуулах (', 'Show more ('],
+[' үлдсэн)', ' left)'],
+['Нуух', 'Hide'],
+
 // ---- units (also matched inside longer text)
 ['км²', 'km²'], ['м²', 'm²'], ['га', 'ha'], ['км', 'km'], ['м', 'm']
 ];

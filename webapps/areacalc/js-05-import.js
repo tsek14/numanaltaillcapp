@@ -186,7 +186,10 @@
   }
 
   // Adds parsed { name, color, points } entries to shapes[] and refreshes the map.
-  function commitImportedShapes(imported, sourceLabel){
+  // A file with more than one shape becomes one batch ("багц"): its shapes
+  // share batchId/batchName and are shown, styled, exported, split and
+  // deleted together (see the batch section in js-04).
+  function commitImportedShapes(imported, sourceLabel, fileName){
     imported = imported.filter(function(s){ return s.points && s.points.length > 0; });
     if(imported.length === 0){
       toast(sourceLabel+' файлаас дүрс олдсонгүй');
@@ -197,15 +200,31 @@
     if(shapes.length === 1 && shapes[0].points.length === 0 && !shapes[0].name){
       shapes = [];
     }
+    var isBatch = imported.length > 1;
+    var batchId = isBatch ? newBatchId() : null;
+    var batchName = isBatch ? ((fileName || sourceLabel).replace(/\.[^.]+$/, '') || sourceLabel) : null;
+    var batchColor = isBatch ? SHAPE_COLORS[shapes.length % SHAPE_COLORS.length] : null;
     imported.forEach(function(s){
       var shape = { points: s.points };
       if(s.name) shape.name = s.name;
       if(s.color) shape.color = s.color;
+      if(isBatch){
+        shape.batchId = batchId;
+        shape.batchName = batchName;
+        if(!shape.color) shape.color = batchColor;
+      }
       shapes.push(shape);
     });
+    if(isBatch){
+      // Tap tools (centre point, GPS, remove point) write into shapes[tapShapeIndex];
+      // give them a fresh empty shape so they never edit a batch member.
+      shapes.push({ points: [] });
+    }
     tapShapeIndex = shapes.length - 1;
     redrawAll();
-    toast(sourceLabel+' импортлогдлоо ('+imported.length+' дүрс)');
+    toast(isBatch
+      ? sourceLabel+' импортлогдлоо — 1 багц ('+imported.length+' дүрс)'
+      : sourceLabel+' импортлогдлоо ('+imported.length+' дүрс)');
   }
 
   function readFileAsText(file){
@@ -231,12 +250,12 @@
 
     if(ext === 'kml'){
       return readFileAsText(file).then(function(text){
-        commitImportedShapes(parseKML(text), 'KML');
+        commitImportedShapes(parseKML(text), 'KML', file.name);
       });
     }
     if(ext === 'gpx'){
       return readFileAsText(file).then(function(text){
-        commitImportedShapes(parseGPX(text), 'GPX');
+        commitImportedShapes(parseGPX(text), 'GPX', file.name);
       });
     }
     if(ext === 'kmz'){
@@ -259,13 +278,13 @@
         if(kmlEntries.length === 0) throw new Error('KMZ файлд .kml олдсонгүй');
         return zip.files[kmlEntries[0]].async('text');
       }).then(function(text){
-        commitImportedShapes(parseKML(text), 'KMZ');
+        commitImportedShapes(parseKML(text), 'KMZ', file.name);
       });
     }
     if(ext === 'geojson' || ext === 'json'){
       return readFileAsText(file).then(function(text){
         var data = JSON.parse(text);
-        commitImportedShapes(geojsonToImportedShapes(data), 'GeoJSON');
+        commitImportedShapes(geojsonToImportedShapes(data), 'GeoJSON', file.name);
       });
     }
     if(ext === 'zip'){
@@ -284,7 +303,7 @@
         var all = [];
         var collections = Array.isArray(data) ? data : [data];
         collections.forEach(function(fc){ all = all.concat(geojsonToImportedShapes(fc)); });
-        commitImportedShapes(all, 'SHP');
+        commitImportedShapes(all, 'SHP', file.name);
       });
     }
 

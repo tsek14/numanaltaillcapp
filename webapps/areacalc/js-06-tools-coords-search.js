@@ -946,20 +946,53 @@
     empty.style.display = 'none';
     body.style.display = '';
 
+    // Listing every coordinate is what made large imports slow (hundreds of
+    // thousands of rows), so long lists are only built on request, in steps.
     var format = coordsFormatSelect.value;
     var html = '';
-    shapes.forEach(function(s, sIdx){
-      if(s.points.length === 0) return;
-      ensureLayerProps(s, sIdx);
-      html += '<div class="coords-shape-group">';
-      html += '  <div class="coords-shape-title"><span class="swatch" style="background:'+s.color+'"></span>'+escapeXml(s.name)+'</div>';
-      s.points.forEach(function(p, i){
-        html += '<div class="coords-pt-row"><span class="n">'+(i+1)+'</span><span class="val">'+formatPoint(p, format)+'</span></div>';
-      });
+    displayEntries().forEach(function(e){
+      var idxs = e.batch ? e.idxs : [e.idx];
+      idxs.forEach(function(i){ ensureLayerProps(shapes[i], i); });
+      var key = e.batch ? 'b:' + e.id : 's:' + e.idx;
+      var total = 0;
+      idxs.forEach(function(i){ total += shapes[i].points.length; });
+      var shown = coordsShown[key];
+      if(shown === undefined) shown = (!e.batch && total <= COORDS_INLINE_MAX) ? total : 0;
+      shown = Math.min(shown, total);
+      var first = shapes[idxs[0]];
+      var title = e.batch ? escapeXml(e.name) + ' <span class="coords-count">· ' + batchKindText(batchStats(idxs)) + '</span>' : escapeXml(first.name);
+      html += '<div class="coords-shape-group" data-key="'+escapeXml(key)+'">';
+      html += '  <div class="coords-shape-title"><span class="swatch" style="background:'+first.color+'"></span>'+title+'</div>';
+      var left = shown;
+      for(var m = 0; m < idxs.length && left > 0; m++){
+        var s = shapes[idxs[m]];
+        if(e.batch) html += '<div class="coords-sub-title">'+escapeXml(s.name)+'</div>';
+        for(var i = 0; i < s.points.length && left > 0; i++, left--){
+          html += '<div class="coords-pt-row"><span class="n">'+(i+1)+'</span><span class="val">'+formatPoint(s.points[i], format)+'</span></div>';
+        }
+      }
+      if(shown < total){
+        html += '<button type="button" class="gs-mini-btn coords-more" data-key="'+escapeXml(key)+'" data-step="'+COORDS_STEP+'">'
+              + (shown === 0 ? 'Солбицол харуулах (' + fmt(total, 0) + ' цэг)' : 'Цааш харуулах (' + fmt(total - shown, 0) + ' үлдсэн)')
+              + '</button>';
+      }
+      if(shown > 0 && (e.batch || total > COORDS_INLINE_MAX)){
+        html += '<button type="button" class="gs-mini-btn coords-less" data-key="'+escapeXml(key)+'">Нуух</button>';
+      }
       html += '</div>';
     });
     list.innerHTML = html;
   }
+  var COORDS_INLINE_MAX = 100, COORDS_STEP = 2000;
+  var coordsShown = {}; // group key -> rows shown (kept across redraws)
+  document.getElementById('coordsList').addEventListener('click', function(ev){
+    var btn = ev.target.closest ? ev.target.closest('.coords-more, .coords-less') : null;
+    if(!btn) return;
+    var key = btn.getAttribute('data-key');
+    if(btn.classList.contains('coords-more')) coordsShown[key] = (coordsShown[key] || 0) + COORDS_STEP;
+    else coordsShown[key] = 0;
+    renderCoordsPanel();
+  });
 
   document.getElementById('btnCopyCoords').addEventListener('click', function(){
     var format = coordsFormatSelect.value;

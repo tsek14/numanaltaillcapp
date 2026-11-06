@@ -1287,3 +1287,11 @@
     border:1px solid var(--border, #cfd8d3); background:transparent; color:inherit;
     font:600 12px/1.4 'JetBrains Mono',monospace; cursor:pointer;
   }
+
+  /* ---- Batches (an imported file with several shapes) ---- */
+  .layer-card.batch-card{ border-left:3px solid var(--teal); }
+  .layer-kind-badge.batch-badge{ color:#062b22; background:var(--teal); }
+  .coords-count{ font-weight:500; color:var(--muted); }
+  .coords-sub-title{ font-size:11px; font-weight:600; color:var(--muted); margin:6px 0 2px; }
+  .coords-more, .coords-less{ margin:6px 6px 0 0; font-size:11px; padding:6px 10px; }
+  .coords-pt-row .n{ width:auto; min-width:18px; padding:0 4px; border-radius:9px; }

@@ -26,7 +26,7 @@
   var exact = null, phrases = null;
 
   var SINGULAR = { points: 'point', lines: 'line', polygons: 'polygon', shapes: 'shape', objects: 'object',
-    licences: 'licence', boundaries: 'boundary', parcels: 'parcel', segments: 'segment', layers: 'layer' };
+    licences: 'licence', boundaries: 'boundary', parcels: 'parcel', segments: 'segment', layers: 'layer', parts: 'part', pieces: 'piece' };
 
   function norm(s) { return s.replace(/\s+/g, ' ').trim(); }
 
@@ -72,7 +72,7 @@
       }
     }
     if (CY.test(out)) (window.I18N_MISSING = window.I18N_MISSING || {})[norm(s)] = 1;
-    if (hit) out = out.replace(/(^|[^\d.,])1 (points|lines|polygons|shapes|objects|licences|boundaries|parcels|segments|layers)\b/g,
+    if (hit) out = out.replace(/(^|[^\d.,])1 (points|lines|polygons|shapes|objects|licences|boundaries|parcels|segments|layers|parts|pieces)\b/g,
       function (m, pre, w) { return pre + '1 ' + SINGULAR[w]; });
     return hit ? out : s;
   }
