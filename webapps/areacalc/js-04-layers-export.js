@@ -5,7 +5,148 @@
   // undefined means hidden for them. Lines keep both shown by default, since
   // a line with nothing drawn would simply vanish.
   function shapeShowsVertices(s){
+    if(s.batchId && s.showVertices === undefined) return false;
     return shapeKind(s) === 'polygon' ? s.showVertices === true : s.showVertices !== false;
+  }
+
+  // ---------- Batches ----------
+  // An imported file with several shapes becomes one batch: its shapes carry
+  // the same batchId / batchName. The panels show a batch as one entry, and
+  // show/hide, colour, opacity, export, split and delete act on all of it.
+  // Batch shapes are drawn on one shared canvas, which is much faster than
+  // one SVG element each when a file holds hundreds of polygons.
+  var batchRenderer = L.canvas({ padding: 0.5 });
+  function newBatchId(){ return 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function batchIdxs(id){
+    var out = [];
+    shapes.forEach(function(s, i){ if(s.batchId === id && s.points.length > 0) out.push(i); });
+    return out;
+  }
+  // What the panels list: single shapes, plus one entry per batch at the
+  // position of its first shape.
+  function displayEntries(){
+    var out = [], seen = {};
+    shapes.forEach(function(s, i){
+      if(s.points.length === 0) return;
+      if(s.batchId){
+        if(seen[s.batchId]){ seen[s.batchId].idxs.push(i); return; }
+        var e = { batch:true, id:s.batchId, name:s.batchName || 'Багц', idxs:[i] };
+        seen[s.batchId] = e;
+        out.push(e);
+      } else {
+        out.push({ batch:false, idx:i, shape:s });
+      }
+    });
+    return out;
+  }
+  function batchStats(idxs){
+    var st = { poly:0, line:0, point:0, area:0, len:0, per:0, pts:0 };
+    idxs.forEach(function(i){
+      var s = shapes[i], k = shapeKind(s);
+      st.pts += s.points.length;
+      if(k === 'polygon'){ st.poly++; st.area += areaSqMeters(s.points); st.per += perimeterMeters(s.points); }
+      else if(k === 'line'){ st.line++; st.len += pathLengthMeters(s.points); }
+      else if(k === 'point') st.point++;
+    });
+    return st;
+  }
+  function batchKindText(st){
+    var p = [];
+    if(st.poly) p.push(st.poly + ' полигон');
+    if(st.line) p.push(st.line + ' шугам');
+    if(st.point) p.push(st.point + ' цэг');
+    return p.join(' · ');
+  }
+  // Removes the shapes at the given indexes, keeping the tap/GPS targets
+  // pointing at the same shapes (or at a fresh empty shape if theirs went).
+  function replaceShapes(newShapes){
+    var tapShape = shapes[tapShapeIndex];
+    var trackShape = (trackActive && trackShapeIndex !== null) ? shapes[trackShapeIndex] : null;
+    shapes = newShapes.length ? newShapes : [ { points: [] } ];
+    tapShapeIndex = shapes.indexOf(tapShape);
+    if(tapShapeIndex < 0){ shapes.push({ points: [] }); tapShapeIndex = shapes.length - 1; }
+    if(trackShape) trackShapeIndex = shapes.indexOf(trackShape);
+  }
+  function deleteBatch(id){
+    var idxs = batchIdxs(id);
+    if(!idxs.length) return;
+    var name = shapes[idxs[0]].batchName;
+    pushUndo();
+    replaceShapes(shapes.filter(function(s){ return s.batchId !== id; }));
+    redrawAll({ noFit:true });
+    toast('"' + name + '" багц устгагдлаа (' + idxs.length + ' дүрс)');
+  }
+  function ungroupBatch(id){
+    var idxs = batchIdxs(id);
+    if(!idxs.length) return;
+    var name = shapes[idxs[0]].batchName;
+    pushUndo();
+    shapes.forEach(function(s){ if(s.batchId === id){ delete s.batchId; delete s.batchName; } });
+    redrawAll({ noFit:true });
+    toast('"' + name + '" багцыг задаллаа — ' + idxs.length + ' тусдаа дүрс');
+  }
+  function exportBatch(id, format){
+    var idxs = batchIdxs(id);
+    if(!idxs.length) return;
+    var name = shapes[idxs[0]].batchName || 'Багц';
+    var entries = idxs.map(function(i){ return { shape: shapes[i], colorIdx: i }; });
+    var base = safeFileName(name);
+    if(format === 'geojson'){
+      downloadTextFile(JSON.stringify(shapesToGeoJSON(entries), null, 2), base+'.geojson', 'application/geo+json;charset=utf-8');
+      toast('"'+name+'" татагдлаа (GEOJSON)');
+    } else if(format === 'kml'){
+      downloadTextFile(generateKML(entries), base+'.kml', 'application/vnd.google-earth.kml+xml;charset=utf-8');
+      toast('"'+name+'" татагдлаа (KML)');
+    } else if(format === 'gpx'){
+      downloadTextFile(generateGPX(entries), base+'.gpx', 'application/gpx+xml;charset=utf-8');
+      toast('"'+name+'" татагдлаа (GPX)');
+    } else if(format === 'shp'){
+      exportShpZip(shapesToGeoJSON(entries), shpBaseName(name, 'batch'), base, '"'+name+'" татагдлаа (SHP)');
+    }
+  }
+  // Clips every polygon of the batch along the chosen boundaries (same
+  // rules as splitting one polygon). Pieces stay in the batch; polygons that
+  // lie fully outside the boundaries are removed; lines and points are kept.
+  function splitBatchByBoundary(id, splitKey){
+    var sourceFeatures = splitBoundarySourceFeatures(splitKey);
+    if(sourceFeatures.length === 0){
+      toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
+      return;
+    }
+    toast('Хувааж байна…');
+    setTimeout(function(){
+      var idxs = batchIdxs(id);
+      if(!idxs.length) return;
+      var first = idxs[0], name = shapes[first].batchName;
+      var members = [], pieceCount = 0, outside = 0, kept = 0, bad = 0;
+      idxs.forEach(function(i){
+        var s = shapes[i];
+        if(shapeKind(s) !== 'polygon'){ members.push(s); kept++; return; }
+        var r = clipShapeByBoundary(s, splitKey, sourceFeatures);
+        if(r.error){ members.push(s); bad++; return; }
+        if(!r.pieces.length){ outside++; return; }
+        r.pieces.forEach(function(p){ p.batchId = id; p.batchName = name; members.push(p); });
+        pieceCount += r.pieces.length;
+      });
+      if(pieceCount === 0){
+        toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхаргатай огтлолцсонгүй — полигон уг давхаргын хамрах хүрээнээс гадуур байж болзошгүй');
+        return;
+      }
+      pushUndo();
+      var out = [];
+      shapes.forEach(function(s, i){
+        if(i === first){ out = out.concat(members); return; }
+        if(s.batchId === id && s.points.length > 0) return;
+        out.push(s);
+      });
+      replaceShapes(out);
+      redrawAll({ noFit:true });
+      var msg = '"' + name + '" багц: ' + pieceCount + ' хэсэг болж тайрагдлаа';
+      if(outside) msg += ', ' + outside + ' полигон хилийн гадна байсан тул хасагдлаа';
+      if(kept) msg += ', ' + kept + ' шугам/цэг хэвээр үлдлээ';
+      if(bad) msg += ', ' + bad + ' полигоныг хувааж чадсангүй';
+      toast(msg);
+    }, 30);
   }
   function shapeShowsOutline(s){
     return shapeKind(s) === 'polygon' ? s.showOutline === true : s.showOutline !== false;
@@ -124,7 +265,8 @@
       } else if(kind === 'line'){
         if(showLine){
           L.polyline(pts.map(function(p){return [p.lat,p.lng];}), {
-            color:color, weight:4, opacity: (shape.opacity===undefined?0.95:shape.opacity)
+            color:color, weight:4, opacity: (shape.opacity===undefined?0.95:shape.opacity),
+            renderer: shape.batchId ? batchRenderer : undefined
           }).addTo(drawLayer);
         }
         totals.lineCount++;
@@ -139,7 +281,8 @@
         var kFill = knockoutFills ? knockoutFills[sIdx] : undefined;
         if(kFill === undefined){
           L.polygon(pts.map(function(p){return [p.lat,p.lng];}), {
-            stroke: showLine, color:color, weight:3, fillColor:color, fillOpacity: fillOp
+            stroke: showLine, color:color, weight:3, fillColor:color, fillOpacity: fillOp,
+            renderer: shape.batchId ? batchRenderer : undefined
           }).addTo(drawLayer);
         } else {
           // Overlap knocked out: fill = only the part no other polygon covers.
@@ -189,8 +332,18 @@
       return;
     }
 
-    var html = '';
+    var html = '', legendBatches = {};
+    visible.forEach(function(s){ if(s.batchId) legendBatches[s.batchId] = (legendBatches[s.batchId] || 0) + 1; });
     visible.forEach(function(s){
+      if(s.batchId){
+        if(legendBatches[s.batchId] === 'done') return;
+        html += '<div class="leg-row">';
+        html += '  <span class="leg-sw" style="background:'+s.color+'33;border-color:'+s.color+'"></span>';
+        html += '  <span class="leg-lbl">'+escapeXml(s.batchName || 'Багц')+' ('+legendBatches[s.batchId]+')</span>';
+        html += '</div>';
+        legendBatches[s.batchId] = 'done';
+        return;
+      }
       var kind = shapeKind(s);
       var shapeClass = kind === 'point' ? 'pt' : '';
       html += '<div class="leg-row">';
@@ -337,7 +490,53 @@
     var scissorsIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>';
 
     var html = '';
-    nonEmpty.forEach(function(entry){
+    var exportMenuHtml = '      <div class="layer-export-menu" data-act="export-menu">'
+          + '        <button type="button" data-fmt="geojson">GeoJSON</button>'
+          + '        <button type="button" data-fmt="kml">KML</button>'
+          + '        <button type="button" data-fmt="gpx">GPX</button>'
+          + '        <button type="button" data-fmt="shp">SHP (zip)</button>'
+          + '      </div>';
+    var ungroupIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><path d="M15 3h6v6M3 15v6h6"/></svg>';
+    displayEntries().forEach(function(entry){
+      if(!entry.batch){ return renderShapeCard(entry); }
+      var first = shapes[entry.idxs[0]], st = batchStats(entry.idxs);
+      var visOn = entry.idxs.some(function(i){ return shapes[i].visible !== false; });
+      var opacityPct = Math.round((first.opacity===undefined?1:first.opacity)*100);
+      var meta = batchKindText(st) + (st.poly ? ' · ' + humanArea(st.area).big : st.line ? ' · ' + humanLen(st.len).big : '');
+      var hasGeo = st.poly || st.line;
+      html += '<div class="layer-card batch-card'+(visOn?'':' hidden-shape')+'" data-batch="'+escapeXml(entry.id)+'">';
+      html += '  <div class="layer-row1">';
+      html += '    <button class="layer-vis'+(visOn?' on':'')+'" data-act="vis" title="Харуулах/нуух">'+eyeOpen+'</button>';
+      html += '    <input type="color" class="layer-color" data-act="color" value="'+(normalizeHexColor(first.color)||'#3388ff')+'" title="Өнгө">';
+      html += '    <input type="text" class="layer-name" data-act="name" value="'+escapeXml(entry.name)+'" title="Нэр өөрчлөх">';
+      html += '    <span class="layer-kind-badge batch-badge">БАГЦ</span>';
+      if(st.poly){
+        html += '    <div class="layer-split">'
+              + '      <button type="button" class="layer-split-btn" data-act="split" title="Багцыг хилээр тайрах">'+scissorsIcon+'</button>'
+              + '      <div class="layer-split-menu" data-act="split-menu"></div>'
+              + '    </div>';
+      }
+      html += '    <div class="layer-export">'
+            + '      <button type="button" class="layer-export-btn" data-act="export" title="Багцыг экспортлох">'+downloadIcon+'</button>'
+            + exportMenuHtml
+            + '    </div>';
+      html += '    <button class="layer-del" data-act="del" title="Багцыг устгах">'+trashIcon+'</button>';
+      html += '  </div>';
+      html += '  <div class="layer-row2">';
+      html += '    <label>ТУНГАЛАГ</label>';
+      html += '    <input type="range" class="layer-opacity" data-act="opacity" min="10" max="100" value="'+opacityPct+'">';
+      html += '    <span class="layer-meta">'+meta+'</span>';
+      html += '  </div>';
+      html += '  <div class="layer-row3">';
+      if(hasGeo){
+        html += '    <button class="layer-geo-toggle'+(shapeShowsVertices(first)?' on':'')+'" data-act="vertices" title="Цэгүүдийг харуулах/нуух">'+vertexIcon+'<span>Цэгүүд</span></button>';
+        html += '    <button class="layer-geo-toggle'+(shapeShowsOutline(first)?' on':'')+'" data-act="outline" title="Хүрээг харуулах/нуух">'+outlineIcon+'<span>Хүрээ</span></button>';
+      }
+      html += '    <button class="layer-geo-toggle" data-act="ungroup" title="Багцыг тусдаа дүрсүүд болгох">'+ungroupIcon+'<span>Задлах</span></button>';
+      html += '  </div>';
+      html += '</div>';
+    });
+    function renderShapeCard(entry){
       var s = entry.shape, idx = entry.idx;
       var kind = shapeKind(s);
       var kindLabel = s.isTrack ? 'GPS' : (kind === 'point' ? 'ЦЭГ' : kind === 'line' ? 'ШУГАМ' : 'ПОЛИГОН');
@@ -386,11 +585,80 @@
         html += '  </div>';
       }
       html += '</div>';
-    });
+    }
     list.innerHTML = html;
 
+    // Batch cards: every control applies to all shapes of the batch.
+    list.querySelectorAll('.batch-card').forEach(function(card){
+      var id = card.getAttribute('data-batch');
+      function each(fn){ batchIdxs(id).forEach(function(i){ fn(shapes[i]); }); }
+      var first = function(){ return shapes[batchIdxs(id)[0]]; };
+      card.querySelector('[data-act="vis"]').addEventListener('click', function(){
+        var on = !batchIdxs(id).some(function(i){ return shapes[i].visible !== false; });
+        each(function(s){ s.visible = on; });
+        redrawAll({ noFit:true });
+      });
+      card.querySelector('[data-act="color"]').addEventListener('input', function(){
+        var c = this.value;
+        each(function(s){ s.color = c; });
+        redrawAll({ noFit:true });
+      });
+      card.querySelector('[data-act="name"]').addEventListener('input', function(){
+        var v = this.value.trim();
+        if(v) each(function(s){ s.batchName = v; });
+        renderLegend();
+      });
+      card.querySelector('[data-act="opacity"]').addEventListener('input', function(){
+        var o = parseInt(this.value, 10) / 100;
+        each(function(s){ s.opacity = o; });
+        redrawAll({ noFit:true });
+      });
+      var vb = card.querySelector('[data-act="vertices"]'), ob = card.querySelector('[data-act="outline"]');
+      if(vb) vb.addEventListener('click', function(){
+        var on = !shapeShowsVertices(first()), outl = shapeShowsOutline(first());
+        each(function(s){
+          s.showVertices = on; s.showOutline = outl;
+          if(shapeKind(s) === 'line' && !on) s.showOutline = true;
+        });
+        redrawAll({ noFit:true });
+      });
+      if(ob) ob.addEventListener('click', function(){
+        var on = !shapeShowsOutline(first()), vert = shapeShowsVertices(first());
+        each(function(s){
+          s.showOutline = on; s.showVertices = vert;
+          if(shapeKind(s) === 'line' && !on) s.showVertices = true;
+        });
+        redrawAll({ noFit:true });
+      });
+      card.querySelector('[data-act="ungroup"]').addEventListener('click', function(){ ungroupBatch(id); });
+      card.querySelector('[data-act="del"]').addEventListener('click', function(){ deleteBatch(id); });
+      var exportBtn = card.querySelector('[data-act="export"]'), exportMenu = card.querySelector('[data-act="export-menu"]');
+      exportBtn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var willOpen = !exportMenu.classList.contains('open');
+        list.querySelectorAll('.layer-export-menu.open, .layer-split-menu.open').forEach(function(m){ m.classList.remove('open'); });
+        if(willOpen) exportMenu.classList.add('open');
+      });
+      exportMenu.querySelectorAll('button[data-fmt]').forEach(function(btn){
+        btn.addEventListener('click', function(e){
+          e.stopPropagation();
+          exportMenu.classList.remove('open');
+          exportBatch(id, btn.getAttribute('data-fmt'));
+        });
+      });
+      var splitBtn = card.querySelector('[data-act="split"]'), splitMenu = card.querySelector('[data-act="split-menu"]');
+      if(splitBtn && splitMenu){
+        splitBtn.addEventListener('click', function(e){
+          e.stopPropagation();
+          var willOpen = !splitMenu.classList.contains('open');
+          list.querySelectorAll('.layer-export-menu.open, .layer-split-menu.open').forEach(function(m){ m.classList.remove('open'); });
+          if(willOpen){ renderSplitMenu(splitMenu, null, id); splitMenu.classList.add('open'); }
+        });
+      }
+    });
+
     // Event delegation for all controls in the list
-    list.querySelectorAll('.layer-card').forEach(function(card){
+    list.querySelectorAll('.layer-card:not(.batch-card)').forEach(function(card){
       var idx = parseInt(card.getAttribute('data-idx'), 10);
       var shape = shapes[idx];
 
@@ -498,7 +766,7 @@
   // that layer hasn't been loaded yet. Rebuilt fresh on every open since
   // layer availability can change between opens (a layer can be loaded
   // after the panel was first rendered).
-  function renderSplitMenu(menu, shapeIdx){
+  function renderSplitMenu(menu, shapeIdx, batchId){
     var items = [
       { key:'aimag', label:'Аймгийн хилээр', ready: adminLoaded, hint:'Захиргааны хил ачаалаагүй байна' },
       { key:'soum',  label:'Сумын хилээр',   ready: adminLoaded, hint:'Захиргааны хил ачаалаагүй байна' },
@@ -520,7 +788,8 @@
       btn.addEventListener('click', function(e){
         e.stopPropagation();
         menu.classList.remove('open');
-        splitShapeByBoundary(shapeIdx, btn.getAttribute('data-split-key'));
+        if(batchId) splitBatchByBoundary(batchId, btn.getAttribute('data-split-key'));
+        else splitShapeByBoundary(shapeIdx, btn.getAttribute('data-split-key'));
       });
     });
   }
@@ -578,26 +847,17 @@
     });
   }
 
-  function splitShapeByBoundary(shapeIdx, splitKey){
-    var shape = shapes[shapeIdx];
-    if(!shape || shapeKind(shape) !== 'polygon'){
-      toast('Зөвхөн полигоныг хуваах боломжтой');
-      return;
-    }
-    var sourceFeatures = splitBoundarySourceFeatures(splitKey);
-    if(sourceFeatures.length === 0){
-      toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
-      return;
-    }
-
+  // Clips one polygon shape against the boundary features. Returns
+  // { pieces:[shape…], names:[boundary name…] }, or { error:true } when the
+  // polygon itself is malformed. Shared by single-shape and batch splitting.
+  function clipShapeByBoundary(shape, splitKey, sourceFeatures){
     var userCoords = shape.points.map(function(p){ return [p.lng, p.lat]; });
     userCoords.push(userCoords[0]);
     var userPoly;
     try{
       userPoly = turf.polygon([userCoords]);
     } catch(e){
-      toast('Энэ полигон буруу хэлбэртэй тул хуваах боломжгүй байна');
-      return;
+      return { error:true, pieces:[], names:[] };
     }
     var userBbox = turf.bbox(userPoly); // [minX,minY,maxX,maxY]
 
@@ -624,6 +884,26 @@
         touchedNames.push(pieceName.split(' — ')[1]);
       }
     }
+    return { error:false, pieces:pieces, names:touchedNames };
+  }
+
+  function splitShapeByBoundary(shapeIdx, splitKey){
+    var shape = shapes[shapeIdx];
+    if(!shape || shapeKind(shape) !== 'polygon'){
+      toast('Зөвхөн полигоныг хуваах боломжтой');
+      return;
+    }
+    var sourceFeatures = splitBoundarySourceFeatures(splitKey);
+    if(sourceFeatures.length === 0){
+      toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
+      return;
+    }
+    var res = clipShapeByBoundary(shape, splitKey, sourceFeatures);
+    if(res.error){
+      toast('Энэ полигон буруу хэлбэртэй тул хуваах боломжгүй байна');
+      return;
+    }
+    var pieces = res.pieces, touchedNames = res.names;
 
     if(pieces.length === 0){
       toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхаргатай огтлолцсонгүй — полигон уг давхаргын хамрах хүрээнээс гадуур байж болзошгүй');
@@ -715,7 +995,31 @@
     // in whichever format is chosen there — repeating them here (and again for
     // single points) just duplicated that list. A lone point has nothing to
     // measure, so it gets no card; it still counts in the summary above.
+    var resultBatchDone = {};
     nonEmpty.forEach(function(entry, idx){
+      if(entry.shape.batchId){
+        var bid = entry.shape.batchId;
+        if(resultBatchDone[bid]) return;
+        resultBatchDone[bid] = true;
+        var bIdxs = batchIdxs(bid), bst = batchStats(bIdxs), bColor = entry.shape.color || '#3388ff';
+        var bHidden = !bIdxs.some(function(i){ return shapes[i].visible !== false; });
+        var bBig = bst.poly ? humanArea(bst.area) : humanLen(bst.len);
+        var bGrid = [{k:'ДҮРС', v: bIdxs.length}, {k:'ОРОЙН ТОО', v: fmt(bst.pts,0)}];
+        if(bst.poly){ bGrid.push({k:'ГА', v: fmt(bst.area/10000,2)}); bGrid.push({k:'М²', v: fmt(bst.area,0)}); }
+        if(bst.line) bGrid.push({k:'УРТ (М)', v: fmt(bst.len,1)});
+        var bKey = 'b:' + bid, bOpen = !!resultRowsOpen[bKey];
+        html += '<div class="result-card result-row'+(bOpen?' open':'')+'" data-idx="'+escapeXml(bKey)+'" style="border:1px solid '+bColor+'55; background:linear-gradient(135deg,'+bColor+'18, transparent)'+(bHidden?';opacity:0.55':'')+'">';
+        html += '<button type="button" class="rr-head" aria-expanded="'+(bOpen?'true':'false')+'">';
+        html +=   '<span class="swatch" style="background:'+bColor+'"></span>';
+        html +=   '<span class="rr-name">'+escapeXml(entry.shape.batchName || 'Багц')+(bHidden?' · нуугдсан':'')+'</span>';
+        html +=   '<span class="rr-type" style="background:'+bColor+'">БАГЦ</span>';
+        html +=   '<span class="rr-big">'+bBig.big+'</span><span class="rr-chev">▾</span>';
+        html += '</button>';
+        html += '<div class="rr-body"><div class="small">'+batchKindText(bst)+'</div><div class="result-grid">';
+        bGrid.forEach(function(g){ html += '<div class="item"><div class="k">'+g.k+'</div><div class="v">'+g.v+'</div></div>'; });
+        html += '</div></div></div>';
+        return;
+      }
       var pts = entry.shape.points;
       var isTrack = !!entry.shape.isTrack;
       var color = entry.shape.color || (isTrack ? '#4285f4' : SHAPE_COLORS[entry.colorIdx % SHAPE_COLORS.length]);

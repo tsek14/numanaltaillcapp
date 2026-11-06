@@ -112,9 +112,29 @@
   var SENTINEL2_DEFAULT_LAYER = 'TRUE_COLOR';
   var SENTINEL2_LOOKBACK_DAYS = 60; // how far back from the chosen date to search for a cloud-filtered scene
   function todayIso(){ return new Date().toISOString().slice(0,10); }
+  // The Sentinel Hub ID ("License Number") is shared with the Wildfire
+  // simulation and Flood risk apps under the 'iid' key, so it only has to be
+  // entered once. An ID saved by an older version of this app is moved there.
+  var SHARED_SENTINEL_ID_KEY = 'iid';
+  function getSentinelId(){
+    try{
+      var v = (localStorage.getItem(SHARED_SENTINEL_ID_KEY) || '').trim();
+      var old = getSetting('sentinelInstanceId', '');
+      if(!v && old){ localStorage.setItem(SHARED_SENTINEL_ID_KEY, old); v = old; }
+      if(old) saveSetting('sentinelInstanceId', '');
+      return v;
+    } catch(e){ return getSetting('sentinelInstanceId', ''); }
+  }
+  function setSentinelId(v){
+    try{
+      if(v) localStorage.setItem(SHARED_SENTINEL_ID_KEY, v); else localStorage.removeItem(SHARED_SENTINEL_ID_KEY);
+      saveSetting('sentinelInstanceId', '');
+    } catch(e){ saveSetting('sentinelInstanceId', v); }
+  }
+  getSentinelId(); // move an ID saved by an older version into the shared key right away
   function getSentinelConfig(){
     return {
-      instanceId: getSetting('sentinelInstanceId', ''),
+      instanceId: getSentinelId(),
       layerId: getSetting('sentinelLayerId', SENTINEL2_DEFAULT_LAYER)
     };
   }
@@ -243,14 +263,14 @@
     var id = sentinelInput.value.trim();
     var layerId = sentinelLayerInput.value.trim() || SENTINEL2_DEFAULT_LAYER;
     if(!id){ toast('License Number оруулна уу'); return; }
-    saveSetting('sentinelInstanceId', id);
+    setSentinelId(id);
     saveSetting('sentinelLayerId', layerId);
     closeSentinelSetupModal();
     setBasemap('sentinel2');
     toast('Sentinel-2 тохиргоо хадгалагдлаа');
   });
   document.getElementById('sentinelSetupClear').addEventListener('click', function(){
-    saveSetting('sentinelInstanceId', '');
+    setSentinelId('');
     sentinelInput.value = '';
     updateSentinelDateSectionVisibility();
     if(currentBasemapId === 'sentinel2'){
