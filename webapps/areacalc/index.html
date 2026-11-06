@@ -594,13 +594,16 @@
   <div id="sentinelSetupModal">
     <div id="sentinelSetupCard">
       <h3>Sentinel-2 тохиргоо <span class="close-x" id="sentinelSetupClose">✕</span></h3>
-      <p>Sentinel-2 хиймэл дагуулын зургийг харахын тулд өөрийн үнэгүй Sentinel Hub (Copernicus Data Space Ecosystem) Instance ID хэрэгтэй.</p>
+      <p>Sentinel-2 хиймэл дагуулын зургийг харахын тулд өөрийн үнэгүй Sentinel Hub (Copernicus Data Space Ecosystem) License Number хэрэгтэй.</p>
       <p>1. <a href="https://dataspace.copernicus.eu/" target="_blank" rel="noopener">dataspace.copernicus.eu</a> дээр үнэгүй бүртгүүлнэ<br>
-         2. Sentinel Hub Dashboard → Configuration Utility → шинэ instance үүсгэнэ (Simple WMS template)<br>
-         3. Instance ID-г доор оруулна уу</p>
+         2. Sentinel Hub Dashboard → Configuration Utility → шинэ configuration үүсгэнэ (Simple WMS template)<br>
+         3. License Number-ээ доор оруулна уу</p>
       <p style="color:var(--accent);">⚠ Энэ тохиргоо зөвхөн одоо ашиглаж буй браузер/төхөөрөмж дээр хадгалагдана (утас ↔ компьютер хооронд автоматаар шилжихгүй). Өөр төхөөрөмж/браузер дээр нэг л удаа дахин оруулна уу.</p>
-      <label>Instance ID</label>
-      <input type="text" id="sentinelInstanceIdInput" placeholder="жишээ: a1b2c3d4-e5f6-7890-abcd-ef1234567890">
+      <label for="sentinelInstanceIdInput">Sentinel Hub License Number</label>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <input type="password" id="sentinelInstanceIdInput" placeholder="••••••••••••" autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true" style="flex:1;">
+        <button type="button" id="sentinelIdEye" class="sd-today" style="flex-shrink:0;" title="Харуулах / нуух" aria-label="Харуулах / нуух">👁</button>
+      </div>
       <label>Layer ID</label>
       <div style="display:flex; gap:6px; align-items:center;">
         <input type="text" id="sentinelLayerIdInput" placeholder="жишээ: TRUE_COLOR" style="flex:1;">
@@ -608,7 +611,7 @@
       </div>
       <select id="sentinelLayerIdSelect" style="display:none; width:100%; margin-top:6px; background:var(--panel-2); border:1px solid var(--line); color:var(--text); border-radius:9px; padding:8px; font-family:'JetBrains Mono',monospace; font-size:12px;"></select>
       <p id="sentinelLayerIdHint" style="font-size:11px; margin-top:4px;">
-        "TRUE_COLOR" гэдэг нь зөвхөн жишээ нэр — таны Sentinel Hub Configuration дотор яг ямар нэртэй давхарга үүсгэсэн байгаагаас хамаарна. Instance ID-гаа оруулаад "Жагсаалт татах" дарж, өөрийн бодит давхаргуудаас сонгоно уу.
+        "TRUE_COLOR" гэдэг нь зөвхөн жишээ нэр — таны Sentinel Hub Configuration дотор яг ямар нэртэй давхарга үүсгэсэн байгаагаас хамаарна. License Number-ээ оруулаад "Жагсаалт татах" дарж, өөрийн бодит давхаргуудаас сонгоно уу.
       </p>
 
       <div id="sentinelDateSection">
@@ -623,7 +626,7 @@
         <p style="color:#ff8a8a; margin-bottom:6px;">⚠ Sentinel-2 зураг ачаалагдсангүй. Доорх холбоос дээр дарж, Sentinel Hub-аас өгсөн бодит алдааны мессежийг шууд харна уу:</p>
         <a id="sentinelDiagLink" href="#" target="_blank" rel="noopener" style="word-break:break-all; font-size:11px; display:block; margin-bottom:6px;">—</a>
         <p style="font-size:11px;">Тухайн хуудсанд юу бичигдэнэ (жишээ шалтгаан):<br>
-          • <b>"Instance ID not found"</b> → ID буруу хуулагдсан эсвэл устгагдсан<br>
+          • <b>"Instance ID not found"</b> → License Number буруу хуулагдсан эсвэл устгагдсан<br>
           • <b>"not authorized"</b> / домэйн тухай зүйл → Sentinel Hub Dashboard дээрх тухайн Configuration-д домэйн хязгаарлалт тавьсан байна (эсвэл file:// зөвшөөрөгдөөгүй)<br>
           • Юу ч бичигдэхгүй, хуудас цоо хоосон/ачаалагдахгүй бол → сүлжээ, firewall, эсвэл ad-blocker өргөтгөл <code>sh.dataspace.copernicus.eu</code> домэйныг блоклож байгаа байж болзошгүй (энэ нь desktop дээр илүү элбэг тохиолддог)</p>
       </div>

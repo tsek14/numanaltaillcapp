@@ -194,9 +194,19 @@
     if(legendPanelEl) legendPanelEl.classList.toggle('below-sentinel-bar', showing);
   }
 
+  // The instance ID is shown in the UI as the "License Number" and kept hidden:
+  // masked input with a show/hide button, and masked in any URL shown as text.
+  function maskSentinelId(s){
+    return String(s).replace(/(\/ogc\/wms\/)[^?\/]+/, '$1••••').replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '••••');
+  }
+  document.getElementById('sentinelIdEye').addEventListener('click', function(){
+    sentinelInput.type = sentinelInput.type === 'password' ? 'text' : 'password';
+  });
+
   function openSentinelSetupModal(){
     var cfg = getSentinelConfig();
     sentinelInput.value = cfg.instanceId;
+    sentinelInput.type = 'password';
     sentinelLayerInput.value = cfg.layerId;
     sentinelLayerIdSelect.style.display = 'none';
     updateSentinelDateSectionVisibility();
@@ -219,7 +229,7 @@
     updateSentinelDateSectionVisibility();
     if(failedUrl){
       sentinelDiagLink.href = failedUrl;
-      sentinelDiagLink.textContent = failedUrl;
+      sentinelDiagLink.textContent = maskSentinelId(failedUrl);
       sentinelDiagPanel.style.display = 'block';
     } else {
       sentinelDiagPanel.style.display = 'none';
@@ -232,7 +242,7 @@
   document.getElementById('sentinelSetupSave').addEventListener('click', function(){
     var id = sentinelInput.value.trim();
     var layerId = sentinelLayerInput.value.trim() || SENTINEL2_DEFAULT_LAYER;
-    if(!id){ toast('Instance ID оруулна уу'); return; }
+    if(!id){ toast('License Number оруулна уу'); return; }
     saveSetting('sentinelInstanceId', id);
     saveSetting('sentinelLayerId', layerId);
     closeSentinelSetupModal();
@@ -247,7 +257,7 @@
       closeSentinelSetupModal();
       setBasemap('esri_imagery');
     }
-    toast('Instance ID устгагдлаа');
+    toast('License Number устгагдлаа');
   });
 
   // ---- Fetch the user's actual layer list via WMS GetCapabilities ----
@@ -261,7 +271,7 @@
 
   function fetchSentinelLayers(){
     var id = sentinelInput.value.trim();
-    if(!id){ toast('Эхлээд Instance ID оруулна уу'); return; }
+    if(!id){ toast('Эхлээд License Number оруулна уу'); return; }
     sentinelFetchLayersBtn.disabled = true;
     sentinelFetchLayersBtn.textContent = 'Ачааллаж байна…';
     var url = 'https://sh.dataspace.copernicus.eu/ogc/wms/' + encodeURIComponent(id) + '?REQUEST=GetCapabilities&SERVICE=WMS&VERSION=1.3.0';
@@ -281,7 +291,7 @@
         if(n && names.indexOf(n) === -1) names.push(n);
       });
       if(names.length === 0){
-        toast('Энэ Instance ID дээр давхарга олдсонгүй. Sentinel Hub Dashboard дээрээ эхлээд давхарга (layer) үүсгэнэ үү.');
+        toast('Энэ License Number дээр давхарга олдсонгүй. Sentinel Hub Dashboard дээрээ эхлээд давхарга (layer) үүсгэнэ үү.');
         sentinelLayerIdSelect.style.display = 'none';
         return;
       }
@@ -304,7 +314,7 @@
       // from a file:// origin where CORS behavior is inconsistent across
       // browsers. Give a manual fallback either way rather than a dead end.
       var msg = (err && err.message) ? err.message : 'алдаа гарлаа';
-      sentinelLayerIdHint.innerHTML = 'Автоматаар татаж чадсангүй (' + escapeXml(msg) + '). Дараах холбоосыг шинэ tab дээр нээгээд, гарч ирэх XML доторх <b>&lt;Layer&gt;&lt;Name&gt;...&lt;/Name&gt;&lt;/Layer&gt;</b> хэсгүүдээс өөрийн давхаргын нэрийг олж, дээрх талбарт гараар бичнэ үү: <a href="'+url+'" target="_blank" rel="noopener" style="word-break:break-all;">'+url+'</a>';
+      sentinelLayerIdHint.innerHTML = 'Автоматаар татаж чадсангүй (' + escapeXml(msg) + '). Дараах холбоосыг шинэ tab дээр нээгээд, гарч ирэх XML доторх <b>&lt;Layer&gt;&lt;Name&gt;...&lt;/Name&gt;&lt;/Layer&gt;</b> хэсгүүдээс өөрийн давхаргын нэрийг олж, дээрх талбарт гараар бичнэ үү: <a href="'+url+'" target="_blank" rel="noopener" style="word-break:break-all;">'+escapeXml(maskSentinelId(url))+'</a>';
       toast('Автоматаар татаж чадсангүй — доорх зааврыг үзнэ үү');
     }).finally(function(){
       sentinelFetchLayersBtn.disabled = false;
