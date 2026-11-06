@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="mn"><head><meta charset="utf-8"><title>Түймрийн симулэшн · Sentinel-2</title>
+<html lang="en"><head><meta charset="utf-8"><title>Түймрийн симулэшн · Sentinel-2</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 :root{color-scheme:dark;--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--ac:#ff7b2e;--pn:#161b22}
@@ -626,7 +626,7 @@ function setLang(l){
  document.title=l=='en'?'Wildfire simulation · Sentinel-2':'Түймрийн симулэшн · Sentinel-2';
  $('mi').alt=l=='en'?'Burned area map':'Шатсан талбайн зураг';
  const t=$('ttl');if(t.value==='Нөмрөг түймэр'||t.value==='Nömrög wildfire')t.value=l=='en'?'Nömrög wildfire':'Нөмрөг түймэр';
- try{localStorage.lang=l}catch(e){}
+ try{localStorage.appLang=l}catch(e){}
  upd();
 }
 $('lang').onchange=()=>setLang($('lang').value);
@@ -641,7 +641,7 @@ $('rst').onclick=()=>{setF(DEF);try{localStorage.removeItem('fs')}catch(e){}setL
  if(mesh){mesh.material.uniforms.g.value=+$('br').value;exag();re()}log(L('Оролтыг анхны утгад буцаалаа.','Inputs reset to defaults.'))};
 try{$('iid').value=localStorage.iid||''}catch(e){}
 $('iid').onchange=()=>{$('lay').innerHTML='';if($('iid').value.trim())lst()};
-{let l='mn';try{l=localStorage.lang||'mn'}catch(e){}setLang(l=='en'?'en':'mn')}
+{let l='en';try{const q=new URLSearchParams(location.search).get('lang');l=q||localStorage.appLang||'en'}catch(e){}setLang(l=='mn'?'mn':'en')}
 try{init()}catch(e){log(e.message,1);$('go').disabled=true}
 if($('iid').value)lst();
 $('eye').onclick=()=>{const i=$('iid');i.type=i.type=='password'?'text':'password'};
