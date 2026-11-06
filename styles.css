@@ -135,3 +135,4 @@ details summary+p{margin-top:8px}
 
 .pc .b{margin:14px 0 0;padding:8px 18px;font-size:14px}
 .tag.soon{background:var(--mint)}
+.pc>a:first-child{display:block;border-radius:8px;overflow:hidden}.pc>a:first-child .im{transition:transform .25s}.pc>a:first-child:hover .im{transform:scale(1.03)}
