@@ -132,6 +132,7 @@ window.I18N_EN = [
 ['дээр үнэгүй бүртгүүлнэ', '— sign up for free'],
 ['2. Sentinel Hub Dashboard → Configuration Utility → шинэ configuration үүсгэнэ (Simple WMS template)', '2. Sentinel Hub Dashboard → Configuration Utility → create a new configuration (Simple WMS template)'],
 ['3. License Number-ээ доор оруулна уу', '3. Enter your License Number below'],
+['Энэ License Number-ийг Түймрийн симулэшн, Үерийн эрсдлийн апп-ууд мөн ашиглана — аль нэгэнд нь оруулахад хангалттай.', 'The Wildfire simulation and Flood risk apps use the same License Number — entering it in any one of them is enough.'],
 ['⚠ Энэ тохиргоо зөвхөн одоо ашиглаж буй браузер/төхөөрөмж дээр хадгалагдана (утас ↔ компьютер хооронд автоматаар шилжихгүй). Өөр төхөөрөмж/браузер дээр нэг л удаа дахин оруулна уу.', '⚠ This setting is saved only in the current browser/device (it does not sync between phone and computer). Enter it once again on any other device or browser.'],
 ['жишээ: TRUE_COLOR', 'e.g. TRUE_COLOR'],
 ['Жагсаалт татах', 'Load list'],

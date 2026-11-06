@@ -192,7 +192,7 @@ en:{
  subtitle:'Any area · SRTM elevation · TWI · slope · JRC surface water — same factors and weights as the Google Earth Engine model',
  demoNote:'Computed in your browser from real data: SRTM elevation (elevation, slope, TWI), JRC Global Surface Water and, when a Sentinel Hub License Number is set in Region settings, Sentinel-2 NDVI. Without it NDVI (5%) is left out and the other weights are scaled up. This is a relative index, not a hydraulic model.',
  ndviTitle:'Sentinel-2 NDVI (optional)',licLabel:'Sentinel Hub License Number',
- licInfo:'The same number as in the Wildfire simulation app — entering it in either app is enough. With it, NDVI (5%) from last summer’s Sentinel-2 imagery is added; leave it empty to calculate without NDVI.',
+ licInfo:'Shared with the Wildfire simulation and Area calculator apps — entering it in any one of them is enough. With it, NDVI (5%) from last summer’s Sentinel-2 imagery is added; leave it empty to calculate without NDVI.',
  ndviOn:y=>`NDVI: Sentinel-2, summer ${y}`,ndviOff:'NDVI: not included',ndviErr:m=>`NDVI could not be loaded (${m}) — calculated without NDVI. Check the Sentinel Hub License Number.`,
  tabMap:'Map & analysis',tabRegion:'Region settings',tabGuide:'Guide',tabHelp:'Help',tabAbout:'About',
  addLocation:'Add a location',geomType:'Geometry type',
@@ -291,7 +291,7 @@ North-east:  Lat (latitude) = larger number,  Lon (longitude) = larger number</p
 <p><b>Why does it say the point is outside the region?</b><br>The coordinates are outside the region boundary. Check the south-west / north-east corner coordinates.</p>
 <p><b>How many points can I add?</b><br>No limit, but more than 20 may slow the map down.</p>
 <p><b>Where does the data come from?</b><br>SRTM elevation and JRC Global Surface Water, downloaded by your browser when the map loads, plus Sentinel-2 NDVI from Sentinel Hub if a License Number is set. The License Number is kept only in this browser.</p>
-<p><b>How do I add NDVI?</b><br>Enter your Sentinel Hub License Number in Region settings and press the update button. If it is already set in the Wildfire simulation app, it is used automatically.</p>
+<p><b>How do I add NDVI?</b><br>Enter your Sentinel Hub License Number in Region settings and press the update button. If it is already set in the Wildfire simulation or Area calculator app, it is used automatically.</p>
 <p><b>Why does the map take a while to load?</b><br>The data is downloaded and the water flow is calculated for the whole area. Larger areas or finer scale take longer.</p>`,
  about:`<h2>About the app</h2>
 <p>A web app that shows a flood risk model developed on Google Earth Engine for any area, and calculates the risk for points, roads and areas you enter.</p>
@@ -309,7 +309,7 @@ mn:{
  subtitle:'Дурын нутагт · SRTM өндөр · TWI · налуу · JRC гадаргын ус — Google Earth Engine загварын хүчин зүйл, жингээр',
  demoNote:'Бодит өгөгдлөөс хөтөч дотор тооцоологдоно: SRTM өндөр (өндөр, налуу, TWI), JRC Global Surface Water, мөн Нутгийн тохиргоонд Sentinel Hub License Number оруулсан бол Sentinel-2 NDVI. Оруулаагүй бол NDVI (5%) орохгүй, бусад жинг өсгөнө. Энэ нь харьцангуй индекс бөгөөд гидравлик загвар биш.',
  ndviTitle:'Sentinel-2 NDVI (заавал биш)',licLabel:'Sentinel Hub License Number',
- licInfo:'Түймрийн симулэшн апптай ижил дугаар — аль нэг апп-д оруулахад хангалттай. Оруулбал өнгөрсөн зуны Sentinel-2 зургаас NDVI (5%) нэмэгдэнэ; хоосон орхивол NDVI-гүй тооцно.',
+ licInfo:'Түймрийн симулэшн, Талбай тооцоологч апп-уудтай нэг — аль нэгэнд нь оруулахад хангалттай. Оруулбал өнгөрсөн зуны Sentinel-2 зургаас NDVI (5%) нэмэгдэнэ; хоосон орхивол NDVI-гүй тооцно.',
  ndviOn:y=>`NDVI: Sentinel-2, ${y} оны зун`,ndviOff:'NDVI: ороогүй',ndviErr:m=>`NDVI ачаалагдсангүй (${m}) — NDVI-гүй тооцлоо. Sentinel Hub License Number-ээ шалгана уу.`,
  tabMap:'Зураг & шинжилгээ',tabRegion:'Нутгийн тохиргоо',tabGuide:'Гарын авлага',tabHelp:'Тусламж',tabAbout:'Тухай',
  addLocation:'Байршил нэмэх',geomType:'Геометрийн төрөл',
@@ -408,7 +408,7 @@ mn:{
 <p><b>Яагаад цэг нутгаас гадна гэж гардаг вэ?</b><br>Оруулсан координат нутгийн хилийн гадна байна. Нутгийн баруун урд / зүүн хойд булангийн координатыг шалгана уу.</p>
 <p><b>Хэдэн цэг нэмж болох вэ?</b><br>Хязгааргүй. Гэхдээ 20-оос дээш бол зураг удаашрах магадлалтай.</p>
 <p><b>Өгөгдөл хаанаас ирдэг вэ?</b><br>SRTM өндөр ба JRC Global Surface Water-ийг зураг ачаалахад таны хөтөч татна. License Number оруулсан бол Sentinel Hub-аас Sentinel-2 NDVI мөн татна. License Number зөвхөн энэ хөтөчид хадгалагдана.</p>
-<p><b>NDVI-г яаж нэмэх вэ?</b><br>Нутгийн тохиргоонд Sentinel Hub License Number-ээ оруулаад шинэчлэх товчийг дарна. Түймрийн симулэшн апп-д аль хэдийн оруулсан бол автоматаар ашиглагдана.</p>
+<p><b>NDVI-г яаж нэмэх вэ?</b><br>Нутгийн тохиргоонд Sentinel Hub License Number-ээ оруулаад шинэчлэх товчийг дарна. Түймрийн симулэшн эсвэл Талбай тооцоологч апп-д аль хэдийн оруулсан бол автоматаар ашиглагдана.</p>
 <p><b>Зураг яагаад удаан ачаалдаг вэ?</b><br>Өгөгдлийг татаж, бүх нутгийн усны урсацыг тооцоолдог. Том нутаг эсвэл нарийн нарийвчлал удаан болно.</p>`,
  about:`<h2>Аппын тухай</h2>
 <p>Google Earth Engine дээр боловсруулсан үерийн эрсдлийн загварыг дурын нутагт харуулах, цэг/зам/дүрс оруулж эрсдлийг тооцоолох вэб апп.</p>
