@@ -476,6 +476,8 @@ window.I18N_EN = [
 ['Шалтгаан: сонгосон давхарга олдсонгүй — «Жагсаалт татах»-аар өөр давхарга сонгоно уу.', 'Reason: the chosen layer was not found — pick another one with «Load list».'],
 ['Шалтгаан: энэ License Number-ийн тохиргоо энэ сайтаас хандахыг зөвшөөрөхгүй байна (домэйн хязгаарлалт эсвэл эрх). Sentinel Hub Dashboard дээр тохиргоогоо шалгана уу.', 'Reason: this License Number’s configuration does not allow access from this site (domain restriction or permissions). Check the configuration in the Sentinel Hub Dashboard.'],
 ['Шалтгааныг доорх серверийн хариунаас үзнэ үү.', 'See the server response below for the reason.'],
+['Шалтгаан: газрын зураг хэт холоос харагдаж байна — Sentinel Hub 200 м-ээс том пикселтэй зураг өгдөггүй. Газрын зургийг ойртуулна уу.', 'Reason: the map is zoomed out too far — Sentinel Hub does not serve images coarser than 200 m per pixel. Zoom in.'],
+['Sentinel-2 зураг ойроос харагдана — ойртуулна уу. Холоос харахад Esri хиймэл дагуулын зургийг харуулж байна.', 'Sentinel-2 imagery shows when zoomed in — zoom in. Zoomed out, Esri satellite imagery is shown instead.'],
 ['Шалтгаан: Sentinel Hub-ын сервер түр алдаатай байна. Хэсэг хугацааны дараа дахин оролдоно уу.', 'Reason: the Sentinel Hub server is having a temporary problem. Try again a little later.'],
 ['Sentinel Hub-ын хариу (HTTP', 'Sentinel Hub response (HTTP'],
 ['Дахин шалгахад зураг ачаалагдлаа — түр зуурын алдаа байсан байж магадгүй. Газрын зургийг шинэчиллээ.', 'The image loaded when checked again — it may have been a temporary error. The map was refreshed.'],
