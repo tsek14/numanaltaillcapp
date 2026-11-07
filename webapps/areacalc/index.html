@@ -47,6 +47,16 @@
       </svg>
     </button>
 
+    <button id="boxZoomBtn" class="toolbtn" title="Талбай сонгож томруулах" aria-label="Талбай сонгож томруулах">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="10" height="10" rx="1" stroke-dasharray="3 2"/>
+        <circle cx="15.5" cy="15.5" r="4.5"/>
+        <line x1="21" y1="21" x2="18.7" y2="18.7"/>
+        <line x1="15.5" y1="13.5" x2="15.5" y2="17.5"/>
+        <line x1="13.5" y1="15.5" x2="17.5" y2="15.5"/>
+      </svg>
+    </button>
+
     <div id="moreWrap">
       <button id="moreBtn" class="toolbtn" title="Бусад хэрэгсэл">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -152,6 +162,19 @@
           </span>
           <span class="more-lbl">Гэрэлтэй горим<br><span style="font-size:9.5px; color:var(--muted); font-weight:400;">Наранд амархан уншигдана</span></span>
           <button id="themeBtn" class="more-toggle" title="Гэрэлтэй/харанхуй горим сэлгэх">Асаах</button>
+        </div>
+
+        <div class="more-row" id="moreRowHeader">
+          <span class="more-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="6" rx="1.5"/>
+              <circle cx="7.5" cy="15.5" r="3"/>
+              <line x1="9.7" y1="17.7" x2="12" y2="20"/>
+              <line x1="14" y1="15.5" x2="21" y2="15.5"/>
+            </svg>
+          </span>
+          <span class="more-lbl">Гарчиг ба хайлт<br><span style="font-size:9.5px; color:var(--muted); font-weight:400;">Апп-ын нэр, хайлтын нүдийг харуулах/нуух</span></span>
+          <button id="headerToggleBtn" class="more-toggle active" title="Апп-ын нэр, хайлтын нүдийг харуулах/нуух">Асаалттай</button>
         </div>
 
         <div class="more-row" id="moreRowPointNum">
@@ -777,5 +800,6 @@
 <script src="js-06-tools-coords-search.js"></script>
 <script src="js-07-cadastre.js"></script>
 <script src="js-08-geojson.js"></script>
+<script src="js-09-view-tools.js"></script>
 </body>
 </html>
