@@ -35,7 +35,9 @@
   document.body.classList.toggle('light-theme', lightThemeOn);
 
   // ---------- Map setup ----------
-  var map = L.map('map', { zoomControl:false, attributionControl:false }).setView([47.9184, 106.9177], 14);
+  // minZoom is set on the map itself: otherwise Leaflet takes the largest
+  // minZoom of its layers (Sentinel-2 has one) and stops the map zooming out.
+  var map = L.map('map', { zoomControl:false, attributionControl:false, minZoom:1 }).setView([47.9184, 106.9177], 14);
   L.control.zoom({ position:'bottomright' }).addTo(map);
   L.control.scale({ position:'bottomleft', metric:true, imperial:false, maxWidth:120 }).addTo(map);
 
@@ -110,6 +112,11 @@
   // Requires the user's own free Sentinel Hub Instance ID — see the modal
   // wired up below. Stored in localStorage like every other setting.
   var SENTINEL2_DEFAULT_LAYER = 'TRUE_COLOR';
+  // Sentinel Hub refuses Sentinel-2 images coarser than 200 m per pixel
+  // ("Pixel size … exceeds the limit 200.00 meters per pixel"). With 512 px
+  // tiles that is every zoom below 10, so Sentinel-2 is only requested from
+  // zoom 10 on; further out, Esri World Imagery is shown in its place.
+  var SENTINEL2_MIN_ZOOM = 10;
   var SENTINEL2_LOOKBACK_DAYS = 60; // how far back from the chosen date to search for a cloud-filtered scene
   function todayIso(){ return new Date().toISOString().slice(0,10); }
   // The Sentinel Hub ID ("License Number") is shared with the Wildfire
@@ -167,6 +174,7 @@
       transparent: false,
       version: '1.3.0',
       maxZoom: 18,
+      minZoom: SENTINEL2_MIN_ZOOM,
       tileSize: 512, // matches Sentinel Hub's PopularWebMercator512 tile grid, avoids soft/blurry tiles
       attribution: 'Sentinel Hub / Copernicus (Sentinel-2)',
       // Custom Sentinel Hub params, passed through as extra WMS query
@@ -254,6 +262,7 @@
     if(/processing unit|quota|insufficient|exceeded|credit/.test(t)) return 'quota';
     if(/instance/.test(t) && /not found|invalid|unknown|does not exist/.test(t)) return 'id';
     if(/layer/.test(t) && /not found|invalid|unknown|does not exist/.test(t)) return 'layer';
+    if(/pixel size|meters per pixel|resolution/.test(t)) return 'zoom';
     if(status >= 500) return 'server';
     if(status === 401 || status === 403 || /not authori|unauthori|forbidden|domain|referer|referrer/.test(t)) return 'auth';
     return 'other';
@@ -264,6 +273,7 @@
     id:    'Шалтгаан: License Number олдсонгүй — буруу хуулагдсан эсвэл устгагдсан байна.',
     layer: 'Шалтгаан: сонгосон давхарга олдсонгүй — «Жагсаалт татах»-аар өөр давхарга сонгоно уу.',
     auth:  'Шалтгаан: энэ License Number-ийн тохиргоо энэ сайтаас хандахыг зөвшөөрөхгүй байна (домэйн хязгаарлалт эсвэл эрх). Sentinel Hub Dashboard дээр тохиргоогоо шалгана уу.',
+    zoom:  'Шалтгаан: газрын зураг хэт холоос харагдаж байна — Sentinel Hub 200 м-ээс том пикселтэй зураг өгдөггүй. Газрын зургийг ойртуулна уу.',
     server: 'Шалтгаан: Sentinel Hub-ын сервер түр алдаатай байна. Хэсэг хугацааны дараа дахин оролдоно уу.',
     other: 'Шалтгааныг доорх серверийн хариунаас үзнэ үү.'
   };
@@ -568,7 +578,28 @@
     watchTileHealth(currentLayer, def.label);
     saveSetting('basemapId', id);
     updateSentinelMapDateBarVisibility();
+    updateSentinelFarView(true);
   }
+
+  // Below SENTINEL2_MIN_ZOOM the Sentinel-2 layer loads nothing, so show
+  // Esri imagery there instead and say why once each time it happens.
+  var sentinelFarLayer = null, sentinelFarShown = false;
+  function updateSentinelFarView(fromBasemapChange){
+    var far = currentBasemapId === 'sentinel2' && map.getZoom() < SENTINEL2_MIN_ZOOM;
+    if(far && !sentinelFarShown){
+      if(!sentinelFarLayer){
+        sentinelFarLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: SENTINEL2_MIN_ZOOM - 1 });
+      }
+      sentinelFarLayer.addTo(map);
+      sentinelFarLayer.bringToBack();
+      sentinelFarShown = true;
+      toast('Sentinel-2 зураг ойроос харагдана — ойртуулна уу. Холоос харахад Esri хиймэл дагуулын зургийг харуулж байна.');
+    } else if(!far && sentinelFarShown){
+      map.removeLayer(sentinelFarLayer);
+      sentinelFarShown = false;
+    }
+  }
+  map.on('zoomend', function(){ updateSentinelFarView(false); });
 
   var layerPanel = document.getElementById('layerPanel');
   function renderLayerPanel(){
