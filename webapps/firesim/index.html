@@ -45,6 +45,7 @@ details[open]{padding-bottom:8px}
 <div class="r"><div><label data-en="North latitude">Хойд өргөрөг</label><div class="r" style="grid-template-columns:1fr 62px"><input id="n" type="number" step="any" min="0" value="48.3"><select id="hn"><option value="N" data-en="N">Хойд</option><option value="S" data-en="S">Урд</option></select></div></div><div><label data-en="South latitude">Урд өргөрөг</label><div class="r" style="grid-template-columns:1fr 62px"><input id="s" type="number" step="any" min="0" value="47.3"><select id="hs"><option value="N" data-en="N">Хойд</option><option value="S" data-en="S">Урд</option></select></div></div><div><label data-en="West longitude">Баруун уртраг</label><div class="r" style="grid-template-columns:1fr 62px"><input id="w" type="number" step="any" min="0" value="119.2"><select id="hw"><option value="E" data-en="E">Зүүн</option><option value="W" data-en="W">Баруун</option></select></div></div><div><label data-en="East longitude">Зүүн уртраг</label><div class="r" style="grid-template-columns:1fr 62px"><input id="e" type="number" step="any" min="0" value="120.6"><select id="he"><option value="E" data-en="E">Зүүн</option><option value="W" data-en="W">Баруун</option></select></div></div></div>
 <label data-en="Pre-fire imagery start · Verification imagery end">Гал гарахаас өмнөх зургийн эхлэл · Баталгаажуулах зургийн төгсгөл</label>
 <div class="r"><input id="start" type="date" value="2026-09-28"><input id="end" type="date" value="2026-10-24"></div>
+<label data-en="Pre-fire imagery end (optional; if spring is snowy pick the previous autumn; empty = ignition day)">Гал гарахаас өмнөх зургийн төгсгөл (заавал биш; хавар цастай бол өмнөх намрыг сонгоно; хоосон = гал гарсан өдөр)</label><input id="pend" type="date">
 <label data-en="Ignition time (Ulaanbaatar, UTC+8)">Гал гарсан цаг (Улаанбаатар, UTC+8)</label><input id="ign" type="datetime-local" value="2026-10-08T11:55">
 <label data-en="Fire out time (later passes only verify)">Түймэр унтарсан цаг (дараах давалтууд зөвхөн баталгаажуулна)</label><input id="fend" type="datetime-local" value="2026-10-16T23:59">
 <div class="r"><div><label data-en="Max cloud cover %">Үүлний дээд хязгаар %</label><input id="cc" type="number" value="70"></div><div><label data-en="Threshold">Босго</label><input id="thr" type="number" step="0.01" value="0.15"></div></div>
@@ -81,15 +82,20 @@ nbr:`//VERSION=3
 function setup(){return{input:[{bands:["B08","B12","SCL","dataMask"]}],mosaicking:"TILE",output:{bands:3,sampleType:"UINT8"}}}
 function preProcessScenes(c){c.scenes.tiles=c.scenes.tiles.sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);return c}
 function evaluatePixel(a){for(const s of a){if(s.dataMask&&![0,1,6,8,9,10,11].includes(s.SCL))return[Math.round((s.B08-s.B12)/(s.B08+s.B12+1e-6)*127.5+127.5),255,Math.min(255,Math.round((s.B08+s.B12)*255))]}return[0,0,0]}`};
-let S={},R,scene,cam,ctl,playing=false,mesh,cum=[],tmax=1,ign0=0,pa=0,C,cumM=[],cumC=[],GJ=[],geoG;
+let cool=0,nRetry=0,rl=null,S={},R,scene,cam,ctl,playing=false,mesh,cum=[],tmax=1,ign0=0,pa=0,C,cumM=[],cumC=[],GJ=[],geoG;
 
 async function proc(from,to,w,h,es){
  let e2=es;
  if(S.noscl)e2=es.replace('"SCL",',es.includes('"B02"')?'':'"B02",').replace(/!\[[\d,]+\]\.includes\(s\.SCL\)/,'s.B02<.25');
- let r;for(let k=0;k<4;k++){
- r=await fetch(OGC+S.iid+'?'+new URLSearchParams({SERVICE:'WMS',VERSION:'1.1.1',REQUEST:'GetMap',LAYERS:S.lay,SRS:'EPSG:4326',BBOX:S.bb.join(','),
-  WIDTH:w,HEIGHT:h,FORMAT:'image/png',TIME:(from+'/'+to).replace(/\.\d+Z/g,'Z'),MAXCC:S.cc,EVALSCRIPT:btoa(e2),SHOWLOGO:'false',TRANSPARENT:'false'}));
- if(r.status<500&&r.status!=429||k==3)break;await new Promise(z=>setTimeout(z,1500*(k+1)));log(L('  дахин оролдож байна (','  retrying (')+r.status+')...')}
+ let r;const sl=z=>new Promise(f=>setTimeout(f,z));
+ for(let k=0;k<8;k++){
+ // all workers pause together while the server is rate-limiting (429)
+ const wt=cool-Date.now();if(wt>0)await sl(wt);
+ try{r=await fetch(OGC+S.iid+'?'+new URLSearchParams({SERVICE:'WMS',VERSION:'1.1.1',REQUEST:'GetMap',LAYERS:S.lay,SRS:'EPSG:4326',BBOX:S.bb.join(','),
+  WIDTH:w,HEIGHT:h,FORMAT:'image/png',TIME:(from+'/'+to).replace(/\.\d+Z/g,'Z'),MAXCC:S.cc,EVALSCRIPT:btoa(e2),SHOWLOGO:'false',TRANSPARENT:'false'}))}catch(e){if(k==7)throw e;await sl(2e3*(k+1));continue}
+ if(r.status<500&&r.status!=429||k==7)break;
+ const ra=+r.headers.get('Retry-After'),d=ra>0?ra*1e3:Math.min(3e4,2e3*2**k);cool=Math.max(cool,Date.now()+d);nRetry++;
+ if(!rl||!rl.isConnected)rl=log('');rl.textContent=L('  Сервер ачаалалтай (','  Server busy (')+r.status+L(') — хүлээгээд дахин оролдож байна: ',') — waiting and retrying: ')+nRetry+'\n'}
  if(!r.ok){
   const tx=(await r.text()).replace(/<!\[CDATA\[|\]\]>/g,' ').replace(/<[^>]+>/g,' ').replace(/&apos;/g,"'").replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
   if(e2.includes('"SCL"')&&/SCL/.test(tx)){if(!S.noscl){S.noscl=true;log(L('Давхарга SCL-гүй (L1C) байна — үүл/цасыг спектрийн босгоор масклана.','Layer has no SCL (L1C) — clouds/snow are masked by spectral thresholds.'))};return proc(from,to,w,h,es)}
@@ -207,6 +213,7 @@ function check(bb,ign){
  if(!(bb[0]<bb[2]))bad('w','Баруун уртраг зүүн уртрагаас бага байх ёстой.','West longitude must be less than east longitude.');
  if(isNaN(ign))bad('ign','Гал гарсан цагийг оруулна уу.','Enter the ignition time.');
  if(!v('start')||Date.parse(v('start')+'T00:00:00Z')>=+ign)bad('start','Өмнөх зургийн эхлэл гал гарахаас өмнө байх ёстой.','Pre-fire start must be before ignition.');
+ if(v('pend')&&(v('pend')<v('start')||Date.parse(v('pend')+'T00:00:00Z')>=+ign))bad('pend','Өмнөх зургийн төгсгөл эхлэлээс хойш, гал гарахаас өмнө байх ёстой.','Pre-fire end must be after the pre-fire start and before ignition.');
  if(!v('end')||Date.parse(v('end')+'T23:59:59Z')<=+ign)bad('end','Баталгаажуулах төгсгөл гал гарснаас хойш байх ёстой.','Verification end must be after ignition.');
  if(v('fend')&&new Date(v('fend')+':00+08:00')<=ign)bad('fend','Унтарсан цаг гал гарснаас хойш байх ёстой.','Fire-out time must be after ignition.');
  if(!(+v('res')>=10))bad('res','Нягтрал 10 м-ээс багагүй байна.','Resolution must be at least 10 m.');
@@ -214,7 +221,7 @@ function check(bb,ign){
 }
 async function run(){
  if($('go').disabled)return;
- $('log').textContent='';busy(true);play(false);
+ $('log').textContent='';busy(true);play(false);cool=0;nRetry=0;rl=null;
  const S0=S,C0=C,g0=ign0;
  try{
   const v=id=>+$(id).value,sg=(a,b)=>($(a).value===''?NaN:v(a))*(($(b).value=='S'||$(b).value=='W')?-1:1),bb=[sg('w','hw'),sg('s','hs'),sg('e','he'),sg('n','hn')],ign=new Date($('ign').value+':00+08:00');
@@ -230,16 +237,21 @@ async function run(){
   try{localStorage.iid=S.iid;localStorage.lay=S.lay}catch(e){}
   const ps=days(ign,$('end').value),t0=$('start').value+'T00:00:00Z';
   log(L('Гал гарахаас өмнөх зураг татаж байна...','Downloading pre-fire imagery...'));busy(L('өмнөх зураг','pre-fire'));
-  const[pre,rgb]=await Promise.all([proc(t0,ign.toISOString(),W,Ht,ES.nbr),proc(t0,ign.toISOString(),W,Ht,ES.rgb)]);
+  const pe=$('pend').value?$('pend').value+'T23:59:59Z':ign.toISOString();
+  const[pre,rgb]=await Promise.all([proc(t0,pe,W,Ht,ES.nbr),proc(t0,pe,W,Ht,ES.rgb)]);
+  {let pv=0;for(let i=1;i<pre.d.length;i+=4)if(pre.d[i])pv++;const pp=Math.round(pv/N*100);
+   log(L('Өмнөх зургийн цэвэр хамрах: ','Pre-fire clear coverage: ')+pp+'%');
+   if(pp<70)log(L('⚠ Өмнөх зураг дутуу (цас/үүл). Зураггүй хэсэгт шатсан талбай тодорхойлогдохгүй. "Өмнөх зургийн төгсгөл"-ийг өмнөх намар болгох эсвэл үүлний хязгаарыг өсгөж үзнэ үү.','⚠ Pre-fire imagery is incomplete (snow/cloud). Burned area cannot be detected where it is missing. Set "Pre-fire imagery end" to the previous autumn or raise the cloud limit.'),1)}
   const Cn={W,Ht,N,ign,rowA,pre:pre.d,ps:[],pxm:dxk*1000/W,hEnd:$('fend').value?(new Date($('fend').value+':00+08:00')-ign)/36e5:1e9};
   let done=0;const pg=log(''),tick=()=>{pg.textContent=L('Давалтууд татаж байна: ','Downloading passes: ')+done+'/'+ps.length+'\n';busy(done+'/'+ps.length)};tick();
-  const got=await pool(ps,3,async p=>{
+  const got=await pool(ps,2,async p=>{
    try{const im=await proc(p.d+'T00:00:00Z',p.d+'T23:59:59Z',W,Ht,ES.nbr);let nv=0;for(let i=1;i<im.d.length;i+=4)if(im.d[i])nv++;
     return{nv,d:nv<N*.03?null:im.d}}catch(e){return{err:e}}finally{done++;tick()}});
   ps.forEach((p,j)=>{const g=got[j];
    if(g.err)return log(p.d+L(' алгассан: ',' skipped: ')+g.err.message.slice(0,90));
    log(p.d+L(' цэвэр зургийн хамрах: ',' clear-pixel coverage: ')+Math.round(g.nv/N*100)+'%'+(g.d?'':L(' — хэт бага, алгассан',' — too low, skipped')));
    if(g.d)Cn.ps.push({t:p.t,im:g.d})});
+  {const ne=got.filter(g=>g.err).length;if(ne)log(L('⚠ ','⚠ ')+ne+L(' давалт серверийн алдаа/хязгаараас болж алгасагдсан. "Нягтрал"-ын утгыг өсгөвөл (жишээ нь 250–300 м) ачаалал багасна.',' pass(es) skipped because of server errors/limits. A larger "Resolution" value (e.g. 250–300 m) reduces the load.'),1)}
   C=Cn;ign0=+ign;
   if(!C.ps.length)throw Error(L('Дагуулын давалт олдсонгүй. Үүлний хязгаар, огноо, давхаргыг шалгана уу.','No satellite passes found. Check the cloud limit, dates and layer.'));
   let dem=null;const dw=Math.min(W,400),dh=Math.round(dw*Ht/W);
@@ -295,6 +307,7 @@ function compute(){
  const LV=bri?[.15,.25,.35,.45]:[.05,.1,.15,.2,.27];
  log(L('Босгын мэдрэмж (шүүлтүүргүй): ','Threshold sensitivity (unfiltered): ')+LV.map(x=>{let s=0;for(let r=0;r<Ht;r++)for(let c=0;c<W;c++)if(mx[r*W+c]>x)s+=rowA[r];return x+'→'+fa(s)}).join(' · '));
  log(L('Ажиглагдсан: ','Observed: ')+Math.round(ob/tot*100)+L('% (үлдсэн хэсэг үүл/цас/зураггүй тул шатсан эсэх тодорхойгүй)','% (the rest is cloud/snow/no imagery, so burn status is unknown)'));
+ if(one&&ob/tot<.7)log(L('⚠ Ажиглагдаагүй завсрууд шатсан талбайг хэсэглэсэн байж болзошгүй. "Зөвхөн үндсэн талбайг үлдээх" асаалттай тул хамгийн том хэсгээс бусад нь хасагдсан байж магадгүй. Унтрааж харьцуулна уу.','⚠ Unobserved gaps may split the burned area. "Keep only the main area" is on, so pieces other than the largest may have been dropped. Turn it off to compare.'),1);
  if(edge>15)log(L('⚠ Шатсан талбай bbox-ийн ирмэгт хүрсэн — дүн дутуу байж болно, bbox-оо томруулна уу.','⚠ The burned area reaches the bbox edge — the total may be incomplete, enlarge the bbox.'));
  C.arr=arr;C.pid=pid;C.pct=Math.round(ob/tot*100);C.tot=cum[cum.length-1];C.bri=bri;C.thr=thr;return a8;
 }
@@ -631,7 +644,7 @@ function setLang(l){
 }
 $('lang').onchange=()=>setLang($('lang').value);
 // remember form inputs between visits
-const FI=['n','hn','s','hs','w','hw','e','he','start','end','ign','fend','cc','thr','idx','one','res','ex','br','xm','bridge','ttl','un'],DEF={},
+const FI=['n','hn','s','hs','w','hw','e','he','start','pend','end','ign','fend','cc','thr','idx','one','res','ex','br','xm','bridge','ttl','un'],DEF={},
  getF=()=>{const o={};FI.forEach(id=>{const el=$(id);o[id]=el.type=='checkbox'?el.checked:el.value});return o},
  setF=o=>FI.forEach(id=>{if(o[id]===undefined)return;const el=$(id);if(el.type=='checkbox')el.checked=!!o[id];else el.value=o[id]});
 Object.assign(DEF,getF());
