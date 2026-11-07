@@ -79,7 +79,15 @@
     setTimeout(function(){ swallowClick = false; }, 400);
     if(Math.abs(p.x - a.x) < 8 || Math.abs(p.y - a.y) < 8) return; // a tap, not a box: keep waiting
     var bounds = L.latLngBounds(map.containerPointToLatLng(a), map.containerPointToLatLng(p));
-    map.fitBounds(bounds);
+    // Fill the part of the map you can see: on phones the bottom panel
+    // covers the lower part of the map, so leave that out.
+    var mr = mapEl.getBoundingClientRect(), padB = 0;
+    var sheet = document.getElementById('sheet');
+    if(sheet && sheet.offsetParent !== null){
+      var sr = sheet.getBoundingClientRect();
+      if(sr.left <= mr.left + 10 && sr.right >= mr.right - 10 && sr.top < mr.bottom) padB = Math.max(0, mr.bottom - sr.top);
+    }
+    map.fitBounds(bounds, { paddingTopLeft:[0, 0], paddingBottomRight:[0, padB] });
     setBoxZoom(false);
   }
   mapEl.addEventListener('pointerup', finishBox, true);

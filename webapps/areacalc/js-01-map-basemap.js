@@ -37,7 +37,9 @@
   // ---------- Map setup ----------
   // minZoom is set on the map itself: otherwise Leaflet takes the largest
   // minZoom of its layers (Sentinel-2 has one) and stops the map zooming out.
-  var map = L.map('map', { zoomControl:false, attributionControl:false, minZoom:1 }).setView([47.9184, 106.9177], 14);
+  // zoomSnap 0 = fractional zoom: a box drawn with the zoom tool fills the
+  // screen exactly, and wheel/pinch zoom changes smoothly instead of in steps.
+  var map = L.map('map', { zoomControl:false, attributionControl:false, minZoom:1, zoomSnap:0 }).setView([47.9184, 106.9177], 14);
   L.control.zoom({ position:'bottomright' }).addTo(map);
   L.control.scale({ position:'bottomleft', metric:true, imperial:false, maxWidth:120 }).addTo(map);
 
@@ -585,7 +587,7 @@
   // Esri imagery there instead and say why once each time it happens.
   var sentinelFarLayer = null, sentinelFarShown = false;
   function updateSentinelFarView(fromBasemapChange){
-    var far = currentBasemapId === 'sentinel2' && map.getZoom() < SENTINEL2_MIN_ZOOM;
+    var far = currentBasemapId === 'sentinel2' && Math.round(map.getZoom()) < SENTINEL2_MIN_ZOOM; // tiles use the rounded zoom
     if(far && !sentinelFarShown){
       if(!sentinelFarLayer){
         sentinelFarLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: SENTINEL2_MIN_ZOOM - 1 });
