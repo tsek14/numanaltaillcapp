@@ -91,8 +91,8 @@ async function proc(from,to,w,h,es){
   WIDTH:w,HEIGHT:h,FORMAT:'image/png',TIME:(from+'/'+to).replace(/\.\d+Z/g,'Z'),MAXCC:S.cc,EVALSCRIPT:btoa(e2),SHOWLOGO:'false',TRANSPARENT:'false'}));
  if(r.status<500&&r.status!=429||k==3)break;await new Promise(z=>setTimeout(z,1500*(k+1)));log(L('  дахин оролдож байна (','  retrying (')+r.status+')...')}
  if(!r.ok){
-  const tx=(await r.text()).replace(/<!\[CDATA\[|\]\]>/g,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
-  if(!S.noscl&&/SCL/.test(tx)){S.noscl=true;log(L('Давхарга SCL-гүй (L1C) байна — үүл/цасыг спектрийн босгоор масклана.','Layer has no SCL (L1C) — clouds/snow are masked by spectral thresholds.'));return proc(from,to,w,h,es)}
+  const tx=(await r.text()).replace(/<!\[CDATA\[|\]\]>/g,' ').replace(/<[^>]+>/g,' ').replace(/&apos;/g,"'").replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
+  if(e2.includes('"SCL"')&&/SCL/.test(tx)){if(!S.noscl){S.noscl=true;log(L('Давхарга SCL-гүй (L1C) байна — үүл/цасыг спектрийн босгоор масклана.','Layer has no SCL (L1C) — clouds/snow are masked by spectral thresholds.'))};return proc(from,to,w,h,es)}
   throw Error('WMS '+r.status+' ['+S.lay+'] '+(tx||L('(хариу хоосон)','(empty response)')).slice(0,300));
  }
  const bm=await createImageBitmap(await r.blob(),{colorSpaceConversion:'none',premultiplyAlpha:'none'});
