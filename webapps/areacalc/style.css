@@ -82,6 +82,18 @@
     width:38px; height:38px; border-radius:10px;
   }
   #fullscreenBtn svg{ width:18px; height:18px; }
+  #boxZoomBtn{ width:38px; height:38px; border-radius:10px; cursor:pointer; }
+  #boxZoomBtn svg{ width:18px; height:18px; }
+  #boxZoomBtn.active{ background:var(--teal); border-color:var(--teal); color:#062b22; }
+  #map.box-zoom-on, #map.box-zoom-on .leaflet-interactive{ cursor:crosshair !important; }
+  .box-zoom-rect{
+    position:absolute; z-index:800; pointer-events:none;
+    border:2px dashed var(--teal); background:rgba(45,212,191,0.15); border-radius:2px;
+  }
+
+  /* Title and search hidden from the ⋮ menu: give the space back to the map/panel */
+  body.header-hidden #topbar, body.header-hidden #searchBar, body.header-hidden #searchResults{ display:none !important; }
+  body.header-hidden #searchWrap{ top:max(10px, env(safe-area-inset-top)); }
   #basemapToggle{
     font-family:'JetBrains Mono',monospace; font-size:11px; padding:7px 10px; border-radius:10px;
     gap:6px;
@@ -1272,6 +1284,8 @@
     #topbar{ z-index:700; }
     #searchWrap{ width:calc(var(--panel-full) - 28px); }
     body:has(#sentinelMapDateBar.show) #sheet{ padding-top:calc(160px + env(safe-area-inset-top)); }
+    body.header-hidden #sheet{ padding-top:calc(14px + env(safe-area-inset-top)); }
+    body.header-hidden:has(#sentinelMapDateBar.show) #sheet{ padding-top:calc(62px + env(safe-area-inset-top)); }
     #panelToggle{ display:block; }
     body.fs-active #panelToggle{ display:none; }
     .leaflet-bottom{ bottom:0; }

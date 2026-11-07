@@ -483,6 +483,12 @@ window.I18N_EN = [
 ['Дахин шалгахад зураг ачаалагдлаа — түр зуурын алдаа байсан байж магадгүй. Газрын зургийг шинэчиллээ.', 'The image loaded when checked again — it may have been a temporary error. The map was refreshed.'],
 ['Sentinel Hub-тай холбогдож чадсангүй — сүлжээ, firewall эсвэл ad-blocker өргөтгөл sh.dataspace.copernicus.eu домэйныг хааж байж болзошгүй.', 'Could not reach Sentinel Hub — your network, a firewall or an ad-blocker may be blocking sh.dataspace.copernicus.eu.'],
 
+// ---- view tools
+['Талбай сонгож томруулах', 'Zoom to an area'],
+['Томруулах талбайг газрын зураг дээр чирж зурна уу', 'Drag on the map to draw the area to zoom to'],
+['Гарчиг ба хайлт', 'Title and search'],
+['Апп-ын нэр, хайлтын нүдийг харуулах/нуух', 'Show/hide the app name and the search box'],
+
 // ---- units (also matched inside longer text)
 ['км²', 'km²'], ['м²', 'm²'], ['га', 'ha'], ['км', 'km'], ['м', 'm']
 ];
