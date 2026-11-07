@@ -121,6 +121,9 @@
       var v = (localStorage.getItem(SHARED_SENTINEL_ID_KEY) || '').trim();
       var old = getSetting('sentinelInstanceId', '');
       if(!v && old){ localStorage.setItem(SHARED_SENTINEL_ID_KEY, old); v = old; }
+      // A different ID saved here before is kept (not deleted) so it can be
+      // restored from the error panel if the shared one does not work here.
+      if(old && old !== v) saveSetting('sentinelInstanceIdPrev', old);
       if(old) saveSetting('sentinelInstanceId', '');
       return v;
     } catch(e){ return getSetting('sentinelInstanceId', ''); }
@@ -240,8 +243,63 @@
   // to the failing tile URL — that's the only way to see Sentinel Hub's
   // actual error text, since a browser <img> load failure never exposes
   // the HTTP status or response body to JavaScript.
+  // Sentinel Hub sends CORS headers, so the failing tile URL can be fetched
+  // again to read the real HTTP status and error text and explain it in the
+  // panel (an <img> error alone says nothing about why).
+  var sentinelDiagResult = document.getElementById('sentinelDiagResult');
+  var sentinelUsePrevId = document.getElementById('sentinelUsePrevId');
+  function sentinelErrorKind(status, text){
+    var t = (text || '').toLowerCase();
+    if(status === 429 || /rate.?limit|too many requests/.test(t)) return 'rate';
+    if(/processing unit|quota|insufficient|exceeded|credit/.test(t)) return 'quota';
+    if(/instance/.test(t) && /not found|invalid|unknown|does not exist/.test(t)) return 'id';
+    if(/layer/.test(t) && /not found|invalid|unknown|does not exist/.test(t)) return 'layer';
+    if(status >= 500) return 'server';
+    if(status === 401 || status === 403 || /not authori|unauthori|forbidden|domain|referer|referrer/.test(t)) return 'auth';
+    return 'other';
+  }
+  var SENTINEL_ERROR_TEXT = {
+    quota: 'Шалтгаан: Sentinel Hub бүртгэлийн боловсруулалтын нэгж (PU) эсвэл эрхийн хугацаа дууссан байна. Copernicus Data Space дээр бүртгэлийнхээ үлдэгдлийг шалгана уу.',
+    rate:  'Шалтгаан: богино хугацаанд хэт олон хүсэлт илгээсэн тул Sentinel Hub түр хязгаарласан байна. Хэдэн минутын дараа дахин оролдоно уу.',
+    id:    'Шалтгаан: License Number олдсонгүй — буруу хуулагдсан эсвэл устгагдсан байна.',
+    layer: 'Шалтгаан: сонгосон давхарга олдсонгүй — «Жагсаалт татах»-аар өөр давхарга сонгоно уу.',
+    auth:  'Шалтгаан: энэ License Number-ийн тохиргоо энэ сайтаас хандахыг зөвшөөрөхгүй байна (домэйн хязгаарлалт эсвэл эрх). Sentinel Hub Dashboard дээр тохиргоогоо шалгана уу.',
+    server: 'Шалтгаан: Sentinel Hub-ын сервер түр алдаатай байна. Хэсэг хугацааны дараа дахин оролдоно уу.',
+    other: 'Шалтгааныг доорх серверийн хариунаас үзнэ үү.'
+  };
+  function diagnoseSentinelUrl(url){
+    sentinelDiagResult.style.display = 'block';
+    sentinelDiagResult.textContent = 'Шалтгааныг шалгаж байна…';
+    fetch(url).then(function(res){
+      var ct = res.headers.get('content-type') || '';
+      if(res.ok && /^image\//.test(ct)){
+        sentinelDiagResult.textContent = 'Дахин шалгахад зураг ачаалагдлаа — түр зуурын алдаа байсан байж магадгүй. Газрын зургийг шинэчиллээ.';
+        if(currentLayer && currentLayer.redraw) currentLayer.redraw();
+        return;
+      }
+      return res.text().then(function(text){
+        var msg = maskSentinelId(text.replace(/<!\[CDATA\[|\]\]>/g, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, 300);
+        var kind = sentinelErrorKind(res.status, msg);
+        sentinelDiagResult.innerHTML = '<b>' + escapeXml(SENTINEL_ERROR_TEXT[kind]) + '</b><br><span style="opacity:.8">Sentinel Hub-ын хариу (HTTP ' + res.status + '): ' + escapeXml(msg || '—') + '</span>';
+      });
+    }).catch(function(){
+      sentinelDiagResult.textContent = 'Sentinel Hub-тай холбогдож чадсангүй — сүлжээ, firewall эсвэл ad-blocker өргөтгөл sh.dataspace.copernicus.eu домэйныг хааж байж болзошгүй.';
+    });
+    var prev = getSetting('sentinelInstanceIdPrev', '');
+    sentinelUsePrevId.style.display = (prev && prev !== getSentinelId()) ? '' : 'none';
+  }
+  sentinelUsePrevId.addEventListener('click', function(){
+    var prev = getSetting('sentinelInstanceIdPrev', '');
+    if(!prev) return;
+    saveSetting('sentinelInstanceIdPrev', getSentinelId());
+    setSentinelId(prev);
+    closeSentinelSetupModal();
+    setBasemap('sentinel2');
+    toast('Sentinel-2 тохиргоо хадгалагдлаа');
+  });
+
   function toastSentinelError(failedUrl){
-    toast('Sentinel-2 ачаалагдсангүй — тохиргооны цонхон дахь холбоос дээр дарж шалтгааныг харна уу.');
+    toast('Sentinel-2 ачаалагдсангүй — шалтгааныг тохиргооны цонхонд харуулж байна.');
     var cfg = getSentinelConfig();
     sentinelInput.value = cfg.instanceId;
     sentinelLayerInput.value = cfg.layerId;
@@ -251,6 +309,7 @@
       sentinelDiagLink.href = failedUrl;
       sentinelDiagLink.textContent = maskSentinelId(failedUrl);
       sentinelDiagPanel.style.display = 'block';
+      diagnoseSentinelUrl(failedUrl);
     } else {
       sentinelDiagPanel.style.display = 'none';
     }

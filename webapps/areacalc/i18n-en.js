@@ -466,6 +466,21 @@ window.I18N_EN = [
 [' үлдсэн)', ' left)'],
 ['Нуух', 'Hide'],
 
+// ---- Sentinel-2 error diagnosis
+['Өмнө нь энэ апп-д хадгалсан License Number-ийг ашиглах', 'Use the License Number saved in this app before'],
+['Sentinel-2 ачаалагдсангүй — шалтгааныг тохиргооны цонхонд харуулж байна.', 'Sentinel-2 did not load — the reason is shown in the settings window.'],
+['Шалтгааныг шалгаж байна…', 'Checking the reason…'],
+['Шалтгаан: Sentinel Hub бүртгэлийн боловсруулалтын нэгж (PU) эсвэл эрхийн хугацаа дууссан байна. Copernicus Data Space дээр бүртгэлийнхээ үлдэгдлийг шалгана уу.', 'Reason: the Sentinel Hub account has run out of processing units (PU) or its subscription has ended. Check the account balance in Copernicus Data Space.'],
+['Шалтгаан: богино хугацаанд хэт олон хүсэлт илгээсэн тул Sentinel Hub түр хязгаарласан байна. Хэдэн минутын дараа дахин оролдоно уу.', 'Reason: too many requests in a short time, so Sentinel Hub is limiting them for now. Try again in a few minutes.'],
+['Шалтгаан: License Number олдсонгүй — буруу хуулагдсан эсвэл устгагдсан байна.', 'Reason: the License Number was not found — it was copied wrongly or deleted.'],
+['Шалтгаан: сонгосон давхарга олдсонгүй — «Жагсаалт татах»-аар өөр давхарга сонгоно уу.', 'Reason: the chosen layer was not found — pick another one with «Load list».'],
+['Шалтгаан: энэ License Number-ийн тохиргоо энэ сайтаас хандахыг зөвшөөрөхгүй байна (домэйн хязгаарлалт эсвэл эрх). Sentinel Hub Dashboard дээр тохиргоогоо шалгана уу.', 'Reason: this License Number’s configuration does not allow access from this site (domain restriction or permissions). Check the configuration in the Sentinel Hub Dashboard.'],
+['Шалтгааныг доорх серверийн хариунаас үзнэ үү.', 'See the server response below for the reason.'],
+['Шалтгаан: Sentinel Hub-ын сервер түр алдаатай байна. Хэсэг хугацааны дараа дахин оролдоно уу.', 'Reason: the Sentinel Hub server is having a temporary problem. Try again a little later.'],
+['Sentinel Hub-ын хариу (HTTP', 'Sentinel Hub response (HTTP'],
+['Дахин шалгахад зураг ачаалагдлаа — түр зуурын алдаа байсан байж магадгүй. Газрын зургийг шинэчиллээ.', 'The image loaded when checked again — it may have been a temporary error. The map was refreshed.'],
+['Sentinel Hub-тай холбогдож чадсангүй — сүлжээ, firewall эсвэл ad-blocker өргөтгөл sh.dataspace.copernicus.eu домэйныг хааж байж болзошгүй.', 'Could not reach Sentinel Hub — your network, a firewall or an ad-blocker may be blocking sh.dataspace.copernicus.eu.'],
+
 // ---- units (also matched inside longer text)
 ['км²', 'km²'], ['м²', 'm²'], ['га', 'ha'], ['км', 'km'], ['м', 'm']
 ];
