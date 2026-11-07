@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="utf-8">
+<script src="../i18n.js"></script>
+<script src="i18n-en.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Цаг агаарын талбайн дундаж</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{--bg:#fff;--fg:#1d2330;--mut:#667085;--bd:#d9dee7;--pn:#f4f7fa;--ac:#1c7ed6}
+@media(prefers-color-scheme:dark){:root{--bg:#14171d;--fg:#e6e9ef;--mut:#98a2b3;--bd:#2c3340;--pn:#1c2029;--ac:#4dabf7}}
+*{box-sizing:border-box}
+body{margin:0 auto;padding:20px;max-width:1200px;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;align-items:flex-start;gap:12px}
+header .sp{flex:1}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:14px;font-weight:600;margin:16px 0 6px}
+.top{display:grid;grid-template-columns:300px 1fr;gap:16px;margin-top:16px}
+@media(max-width:800px){.top{grid-template-columns:1fr}body{padding:14px}}
+.panel{background:var(--pn);border:1px solid var(--bd);border-radius:10px;padding:14px}
+.panel h2:first-child{margin-top:0}
+#map{height:480px;border:1px solid var(--bd);border-radius:10px}
+@media(max-width:800px){#map{height:60vh}}
+.row{display:flex;gap:6px;flex-wrap:wrap}
+button,input,select{font:inherit;padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg)}
+button{cursor:pointer}
+input[type=file]{max-width:100%;padding:4px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+button:disabled{opacity:.5;cursor:default}
+.primary{background:var(--ac);color:#fff;border-color:var(--ac);width:100%;margin-top:14px;padding:9px}
+.lang-switch{font-weight:700;font-size:13px;padding:5px 11px;border-radius:999px}
+.muted{color:var(--mut);font-size:13px;margin:6px 0 0}
+.err{color:#e03131}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:16px 0 8px}
+.card{background:var(--pn);border:1px solid var(--bd);border-radius:10px;padding:10px 14px}
+.card b{display:block;font-size:22px;font-weight:600}
+.card span{font-size:13px;color:var(--mut)}
+.tab.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.bar{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:14px}
+#cw{position:relative;height:280px;margin-top:12px}
+#tw{max-height:420px;overflow:auto;margin-top:12px;border:1px solid var(--bd);border-radius:8px}
+table{border-collapse:collapse;width:100%}
+th,td{padding:5px 10px;text-align:right;border-bottom:1px solid var(--bd);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{position:sticky;top:0;background:var(--pn)}
+footer{margin-top:20px;font-size:12px;color:var(--mut)}
+/* Basemap picker (same pattern as the Area calculator's layer menu) */
+.bm{position:relative}
+.bm-btn{display:flex;align-items:center;gap:8px;padding:7px 11px;border-radius:8px;font-size:12px;font-weight:700;letter-spacing:.03em;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.bm-btn svg{width:15px;height:15px;flex:none}
+.bm-btn .car{font-size:9px;transition:transform .15s}
+.bm.open .bm-btn .car{transform:rotate(180deg)}
+.bm-list{display:none;position:absolute;right:0;top:100%;margin-top:6px;width:230px;max-height:60vh;overflow:auto;background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:5px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.bm.open .bm-list{display:block}
+.bm-opt{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:0;border-radius:7px;background:none;text-align:left;font-size:13px}
+.bm-opt:hover{background:var(--pn)}
+.bm-opt.on{background:var(--pn);color:var(--ac);font-weight:600}
+.bm-opt .dot{width:8px;height:8px;border-radius:50%;background:var(--bd);flex:none}
+.bm-opt.on .dot{background:var(--ac)}
+.bm-sep{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;padding:8px 10px 4px;border-top:1px solid var(--bd);margin-top:4px}
+.bm-chk{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:13px;cursor:pointer}
+.bm-chk input{padding:0;margin:0}
+.leaflet-container{font:inherit}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Цаг агаарын талбайн дундаж</h1>
+    <div class="muted">Газрын зураг дээр polygon зурж, сонгосон хугацааны температур, салхи, хур тунадасны дундаж үзүүлэлтийг тооцно.</div>
+  </div>
+  <span class="sp"></span><span data-lang-switch></span>
+</header>
+
+<div class="top">
+  <div class="panel">
+    <h2>Талбай</h2>
+    <div class="row">
+      <button id="bDraw">Зурж эхлэх</button><button id="bUndo">Буцаах</button>
+      <button id="bFin">Дуусгах</button><button id="bClr">Арилгах</button>
+    </div>
+    <p id="hint" class="muted"></p>
+    <h2>Засаг захиргааны хил</h2>
+    <div class="row"><select id="aim" disabled><option>Аймаг</option></select><select id="sum" disabled><option>Сум</option></select></div>
+    <button id="bAdm" style="margin-top:6px">Хил ачаалах</button>
+    <h2>Файлаас оруулах</h2>
+    <input type="file" id="file" accept=".kml,.kmz,.zip,.geojson,.json">
+    <p class="muted">KML, KMZ, GeoJSON, Shapefile (.zip)</p>
+    <h2>Хугацаа</h2>
+    <div class="row"><input type="date" id="d1" aria-label="Эхлэх огноо"><input type="date" id="d2" aria-label="Дуусах огноо"></div>
+    <h2>Торын алхам</h2>
+    <select id="step">
+      <option value="0.1">0.1° (~11 км)</option>
+      <option value="0.25">0.25° (~25 км)</option>
+      <option value="0.5">0.5° (~55 км)</option>
+    </select>
+    <button id="go" class="primary">Тооцоолох</button>
+    <p id="st" class="muted" role="status"></p>
+  </div>
+  <div id="map"></div>
+</div>
+
+<section id="out" hidden>
+  <div id="cards" class="cards"></div>
+  <div id="info" class="muted"></div>
+  <div class="bar">
+    <div id="tabs" class="row"></div>
+    <div class="row">
+      <select id="cv" aria-label="Графикийн утга"></select>
+      <button id="csv">CSV татах</button>
+    </div>
+  </div>
+  <div id="cw"><canvas id="cc"></canvas></div>
+  <div id="tw"></div>
+</section>
+
+<footer>Цаг агаарын өгөгдөл: Open-Meteo.com (CC BY 4.0), ERA5 / Copernicus. Засаг захиргааны хил: geoBoundaries (CC BY 4.0). Прогноз: Open-Meteo. Суурь зургийн эх сурвалжийг газрын зургийн буланд харуулна.</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/shpjs@3.6.3/dist/shp.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const ymd = d => d.toISOString().slice(0, 10);
+const T = s => window.I18N_tr ? I18N_tr(s) : s; // text drawn outside the DOM (chart, CSV) is translated here
+
+// ---------- Saved settings ----------
+const SK = 'weatherAreaAvg_v1';
+let CFG = {};
+try { CFG = JSON.parse(localStorage.getItem(SK)) || {}; } catch (e) {}
+const save = (k, v) => { CFG[k] = v; try { localStorage.setItem(SK, JSON.stringify(CFG)); } catch (e) {} };
+
+// Default dates (ERA5 lags ~5 days)
+const e0 = new Date(Date.now() - 6 * 864e5);
+$('d2').value = ymd(e0); $('d1').value = ymd(new Date(e0 - 6 * 864e5));
+$('d2').max = ymd(new Date(Date.now() + 15 * 864e5));
+if (CFG.step) $('step').value = CFG.step;
+$('step').onchange = () => save('step', $('step').value);
+
+// ---------- Map ----------
+const map = L.map('map').setView([48.794, 106.817], 8);
+L.control.scale({metric: true, imperial: false}).addTo(map);
+map.createPane('labels').style.cssText = 'z-index:450;pointer-events:none';
+
+const BingLayer = L.TileLayer.extend({
+  getTileUrl(c) {
+    let q = '';
+    for (let i = c.z; i > 0; i--) { const m = 1 << (i - 1); q += ((c.x & m) ? 1 : 0) + ((c.y & m) ? 2 : 0); }
+    return `https://ecn.t${(c.x + c.y) % 4}.tiles.virtualearth.net/tiles/a${q}.jpeg?g=1&n=z`;
+  }
+});
+const G = l => ({u: `https://{s}.google.com/vt/lyrs=${l}&x={x}&y={y}&z={z}`, o: {subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], maxZoom: 21}, a: '© Google'});
+const BASEMAPS = [
+  {id: 'carto', n: 'CARTO Voyager', u: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', o: {subdomains: 'abcd', maxZoom: 20}, a: '© OpenStreetMap, © CARTO'},
+  {id: 'osm', n: 'OpenStreetMap', u: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', o: {maxZoom: 19}, a: '© OpenStreetMap'},
+  {id: 'esri', n: 'ESRI World Imagery', u: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', o: {maxZoom: 20}, a: '© Esri'},
+  {id: 'clarity', n: 'ESRI Clarity (HD)', u: 'https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', o: {maxZoom: 20}, a: '© Esri'},
+  {id: 'bing', n: 'Microsoft Bing Satellite', make: () => new BingLayer('', {maxZoom: 19}), a: '© Microsoft'},
+  {id: 'gsat', n: 'Google Satellite', ...G('s')},
+  {id: 'ghyb', n: 'Google Hybrid', ...G('y')},
+  {id: 'gter', n: 'Google Terrain', ...G('p')},
+  {id: 'topo', n: 'OpenTopoMap', u: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', o: {subdomains: 'abc', maxZoom: 17}, a: '© OpenTopoMap (CC-BY-SA)'}
+];
+const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
+  {subdomains: 'abcd', maxZoom: 20, pane: 'labels', attribution: '© OpenStreetMap, © CARTO'});
+let base = null, baseId = null, tileTimer = null;
+
+const BmControl = L.Control.extend({
+  options: {position: 'topright'},
+  onAdd() {
+    const d = L.DomUtil.create('div', 'bm');
+    d.innerHTML = '<button type="button" class="bm-btn" aria-haspopup="true" aria-expanded="false" title="Суурь зураг">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 13 10 5 10-5"/></svg>' +
+      '<span id="bmName"></span><span class="car">▼</span></button><div class="bm-list" role="menu"></div>';
+    L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
+    const btn = d.firstChild, list = d.lastChild;
+    btn.onclick = () => { const o = d.classList.toggle('open'); btn.setAttribute('aria-expanded', o); };
+    list.innerHTML = BASEMAPS.map(b => `<button type="button" class="bm-opt" role="menuitemradio" data-id="${b.id}"><span class="dot"></span>${b.n}</button>`).join('') +
+      '<div class="bm-sep">Давхарлах давхарга</div><label class="bm-chk"><input type="checkbox" id="lbl"> Нэр, зам (хиймэл дагуулын зураг дээр)</label>';
+    list.onclick = e => { const o = e.target.closest('.bm-opt'); if (o) { setBase(o.dataset.id); d.classList.remove('open'); btn.setAttribute('aria-expanded', false); } };
+    document.addEventListener('click', e => { if (!d.contains(e.target)) { d.classList.remove('open'); btn.setAttribute('aria-expanded', false); } });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && d.classList.contains('open')) { d.classList.remove('open'); btn.focus(); } });
+    return d;
+  }
+});
+new BmControl().addTo(map);
+
+function setBase(id) {
+  const b = BASEMAPS.find(x => x.id === id) || BASEMAPS[0];
+  if (base) map.removeLayer(base);
+  base = (b.make ? b.make() : L.tileLayer(b.u, b.o));
+  base.options.attribution = b.a; // Leaflet shows/hides it with the layer
+  base.addTo(map);
+  baseId = b.id; save('base', b.id);
+  $('bmName').textContent = b.n.toUpperCase();
+  document.querySelectorAll('.bm-opt').forEach(o => { const on = o.dataset.id === b.id; o.classList.toggle('on', on); o.setAttribute('aria-checked', on); });
+  // Warn when a basemap does not load at all (blocked/offline service) instead of leaving a blank map
+  let bad = 0, good = 0; clearTimeout(tileTimer);
+  base.on('tileerror', () => bad++); base.on('tileload', () => good++);
+  tileTimer = setTimeout(() => { if (bad && !good) st(`"${b.n}" суурь зураг ачаалагдсангүй. Өөр суурь зураг сонгоно уу.`, 1); }, 6000);
+}
+setBase(CFG.base || 'carto');
+$('lbl').checked = !!CFG.labels;
+const setLabels = () => { $('lbl').checked ? labels.addTo(map) : map.removeLayer(labels); save('labels', $('lbl').checked); };
+$('lbl').onchange = setLabels; setLabels();
+
+// ---------- Drawing ----------
+let pts = [], fin = false, drawing = false, busy = false, ext = null;
+const extLayer = L.layerGroup().addTo(map), layer = L.layerGroup().addTo(map), gridLayer = L.layerGroup().addTo(map);
+
+// Area on the sphere (km²): outer rings minus holes
+function ringKm2(r) {
+  let s = 0;
+  for (let i = 0; i < r.length; i++) {
+    const [y1, x1] = r[i], [y2, x2] = r[(i + 1) % r.length];
+    s += (x2 - x1) * Math.PI / 180 * (2 + Math.sin(y1 * Math.PI / 180) + Math.sin(y2 * Math.PI / 180));
+  }
+  return Math.abs(s * 6371.0088 ** 2 / 2);
+}
+const areaKm2 = parts => parts.reduce((a, rs) => a + rs.reduce((b, r, i) => b + (i ? -1 : 1) * ringKm2(r), 0), 0);
+const km2 = a => a >= 100 ? Math.round(a).toLocaleString('en-US') : a.toFixed(a >= 1 ? 1 : 3);
+
+function hint(t) {
+  $('hint').textContent = t || (fin ? `Polygon бэлэн (${pts.length} орой). Талбай: ${km2(areaKm2([[pts]]))} км²`
+    : drawing ? `Газрын зураг дээр дарж орой нэмнэ (${pts.length}). Дор хаяж 3 орой тэмдэглээд «Дуусгах» дарна (Enter — дуусгах, Backspace — буцаах).`
+    : '«Зурж эхлэх» дарна уу.');
+}
+function redraw() {
+  layer.clearLayers();
+  pts.forEach(p => L.circleMarker(p, {radius: 4, color: '#1c7ed6'}).addTo(layer));
+  if (pts.length > 1) (fin ? L.polygon : L.polyline)(pts, {color: '#1c7ed6', weight: 2}).addTo(layer);
+  hint();
+}
+function reset() { pts = []; fin = false; ext = null; extLayer.clearLayers(); gridLayer.clearLayers(); redraw(); }
+const stopDraw = () => { drawing = false; map.getContainer().style.cursor = ''; };
+map.on('click', e => { if (drawing && !fin) { pts.push([e.latlng.lat, e.latlng.lng]); redraw(); } });
+$('bDraw').onclick = () => { reset(); drawing = true; map.getContainer().style.cursor = 'crosshair'; hint(); };
+$('bUndo').onclick = () => { if (!fin) { pts.pop(); redraw(); } };
+$('bClr').onclick = () => { stopDraw(); reset(); };
+$('bFin').onclick = () => {
+  if (pts.length < 3) return hint('Дор хаяж 3 орой хэрэгтэй.');
+  fin = true; stopDraw(); redraw();
+  map.fitBounds(L.polygon(pts).getBounds(), {padding: [20, 20]});
+};
+document.addEventListener('keydown', e => {
+  if (!drawing || fin || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (e.key === 'Enter') { e.preventDefault(); $('bFin').click(); }
+  else if (e.key === 'Backspace' || (e.key === 'z' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); $('bUndo').click(); }
+});
+hint();
+
+// ---------- Grid ----------
+function inPoly(lat, lng, P) {
+  let c = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const [yi, xi] = P[i], [yj, xj] = P[j];
+    if ((yi > lat) !== (yj > lat) && lng < (xj - xi) * (lat - yi) / (yj - yi) + xi) c = !c;
+  }
+  return c;
+}
+const inArea = (y, x, parts) => parts.some(rs => rs.reduce((c, P) => c ^ inPoly(y, x, P), 0));
+const lim = (f, a) => a.reduce((m, v) => f(m, v));
+function makeGrid(parts, s) {
+  const all = parts.flat(2), la = all.map(p => p[0]), lo = all.map(p => p[1]), g = [];
+  const y0 = lim(Math.min, la), y1 = lim(Math.max, la), x0 = lim(Math.min, lo), x1 = lim(Math.max, lo);
+  for (let y = Math.floor(y0 / s) * s + s / 2; y <= y1; y += s)
+    for (let x = Math.floor(x0 / s) * s + s / 2; x <= x1; x += s)
+      if (inArea(y, x, parts)) g.push([+y.toFixed(3), +x.toFixed(3)]);
+  if (!g.length) g.push([+((y0 + y1) / 2).toFixed(3), +((x0 + x1) / 2).toFixed(3)]);
+  return g;
+}
+
+// ---------- Data download ----------
+const ARC = 'https://archive-api.open-meteo.com/v1/archive', FC = 'https://api.open-meteo.com/v1/forecast';
+const dayOff = n => ymd(new Date(Date.now() + n * 864e5));
+async function getBatch(api, batch, s, e) {
+  const u = new URL(api);
+  u.search = new URLSearchParams({
+    latitude: batch.map(p => p[0]).join(','), longitude: batch.map(p => p[1]).join(','),
+    start_date: s, end_date: e,
+    hourly: 'temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation',
+    wind_speed_unit: 'ms', timezone: 'Asia/Ulaanbaatar'
+  });
+  for (let t = 0; t < 4; t++) {
+    let r;
+    try { r = await fetch(u); } catch (err) { if (t === 3) throw new Error('Сүлжээний алдаа, эсвэл Open-Meteo-гийн өдрийн хүсэлтийн хязгаар дууссан. Интернэтээ шалгах, эсвэл торын алхмыг томруулах/хугацааг богиносгоод дахин оролдоно уу.'); await sleep(3000 * 2 ** t); continue; }
+    if (r.ok) { const j = await r.json(); return Array.isArray(j) ? j : [j]; }
+    if (r.status !== 429) throw new Error((await r.json().catch(() => ({}))).reason || 'HTTP ' + r.status);
+    st('Хүсэлтийн хязгаар хүрлээ, 20 секунд хүлээнэ…'); await sleep(20000);
+  }
+  throw new Error('Хүсэлтийн хязгаар хэтэрлээ. Түр хүлээгээд дахин оролдоно уу.');
+}
+// The ERA5 archive lags ~5 days, so recent days and the future come from the forecast API
+async function fetchRange(batch, s, e) {
+  const l = dayOff(-6);
+  const A = s <= l ? await getBatch(ARC, batch, s, e < l ? e : l) : null;
+  const F = e > l ? await getBatch(FC, batch, s > l ? s : dayOff(-5), e) : null;
+  if (!A || !F) return A || F;
+  A.forEach((a, i) => { for (const k in a.hourly) a.hourly[k] = a.hourly[k].concat(F[i].hourly[k]); });
+  return A;
+}
+function st(t, bad) { $('st').textContent = t; $('st').className = 'muted' + (bad ? ' err' : ''); }
+
+// ---------- Statistics ----------
+const ok = a => a.filter(x => x != null);
+const mean = a => { a = ok(a); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null; };
+const sum = a => { a = ok(a); return a.length ? a.reduce((x, y) => x + y, 0) : null; };
+const mx = a => { a = ok(a); return a.length ? Math.max(...a) : null; };
+const mn = a => { a = ok(a); return a.length ? Math.min(...a) : null; };
+// Weighted mean: grid cells shrink towards the pole, so each point counts by cos(latitude)
+const wmean = (a, w) => { let s = 0, n = 0; a.forEach((x, i) => { if (x != null) { s += x * w[i]; n += w[i]; } }); return n ? s / n : null; };
+const dirOf = (u, v) => u == null || v == null ? null : (Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360;
+const fmt = (x, d = 1) => x == null ? '—' : x.toFixed(d);
+
+// agg: only meaningful for grouped rows (daily / 24-hour / whole period)
+const V = [
+  {k: 'temp', a: 'temperature_2m', n: 'Температур', u: '°C', d: 1},
+  {k: 'tmin', n: 'Хамгийн бага температур', u: '°C', d: 1, agg: 1},
+  {k: 'tmax', n: 'Хамгийн их температур', u: '°C', d: 1, agg: 1},
+  {k: 'rh', a: 'relative_humidity_2m', n: 'Чийгшил', u: '%', d: 0},
+  {k: 'cloud', a: 'cloud_cover', n: 'Үүлэрхэг', u: '%', d: 0},
+  {k: 'wind', a: 'wind_speed_10m', n: 'Салхины хурд', u: 'м/с', d: 1},
+  {k: 'gust', a: 'wind_gusts_10m', n: 'Салхины шуурга', u: 'м/с', d: 1},
+  {k: 'dir', n: 'Салхины чиглэл', u: '°', d: 0},
+  {k: 'prec', a: 'precipitation', n: 'Хур тунадас', u: 'мм', d: 2}];
+const SC = ['temp', 'rh', 'cloud', 'wind'].map(k => V.find(x => x.k === k));
+const GN = {gust: 'Салхины хамгийн их шуурга'};
+
+// Combine every point into one area value per hour (wind direction through u/v vectors)
+function build(arr, wt) {
+  return arr[0].hourly.time.map((t, i) => {
+    const g = a => arr.map(r => r.hourly[a] ? r.hourly[a][i] : null), w = g('wind_speed_10m'), d = g('wind_direction_10m'), u = [], v = [], uw = [];
+    w.forEach((x, j) => { if (x != null && d[j] != null) { const a = d[j] * Math.PI / 180; u.push(-x * Math.sin(a)); v.push(-x * Math.cos(a)); uw.push(wt[j]); } });
+    const o = {key: t.replace('T', ' '), date: t.slice(0, 10), hr: t.slice(11, 13), u: wmean(u, uw), v: wmean(v, uw),
+      prec: wmean(g('precipitation'), wt), gust: wmean(g('wind_gusts_10m'), wt)};
+    SC.forEach(x => o[x.k] = wmean(g(x.a), wt));
+    o.dir = dirOf(o.u, o.v);
+    return o;
+  });
+}
+function group(rows, keyf, ps) {
+  const m = new Map();
+  rows.forEach(r => { const k = keyf(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r); });
+  return [...m].map(([key, a]) => {
+    const f = k => a.map(r => r[k]);
+    const o = {key, dir: dirOf(mean(f('u')), mean(f('v'))), prec: ps ? sum(f('prec')) : mean(f('prec')),
+      tmin: mn(f('temp')), tmax: mx(f('temp')), gust: mx(f('gust'))};
+    SC.forEach(x => o[x.k] = mean(f(x.k)));
+    return o;
+  });
+}
+
+let R, tab = 'daily', ch;
+$('go').onclick = async () => {
+  if (busy) return;
+  const parts = ext || (fin ? [[pts]] : null);
+  if (!parts) return st('Эхлээд polygon зурах, хил сонгох эсвэл файл оруулна уу.', 1);
+  const s = $('d1').value, e = $('d2').value;
+  const days = Math.round((new Date(e) - new Date(s)) / 864e5) + 1;
+  if (!s || !e || !(days >= 1)) return st('Огноог зөв сонгоно уу.', 1);
+  if (s < '1940-01-01') return st('ERA5 өгөгдөл 1940 оноос эхэлдэг.', 1);
+  if (days > 366) return st('Хугацаа 366 хоногоос ихгүй байх ёстой.', 1);
+  if (e > dayOff(15)) return st('Прогноз ирэх 15 хоног хүртэл боломжтой.', 1);
+  const grid = makeGrid(parts, +$('step').value);
+  if (grid.length > 400) return st(`Тор ${grid.length} цэгтэй байна. Торын алхмыг томруулна уу (дээд тал нь 400 цэг).`, 1);
+  gridLayer.clearLayers();
+  grid.forEach(p => L.circleMarker(p, {radius: 2, color: '#d9480f', weight: 1}).addTo(gridLayer));
+  busy = true; $('go').disabled = true;
+  try {
+    const bs = Math.max(1, Math.min(50, Math.floor(1200 / days))), arr = [];
+    for (let i = 0; i < grid.length; i += bs) {
+      st(`Өгөгдөл татаж байна… ${Math.min(i + bs, grid.length)}/${grid.length} цэг`);
+      arr.push(...await fetchRange(grid.slice(i, i + bs), s, e));
+      if (i + bs < grid.length) await sleep(300);
+    }
+    const H = build(arr, grid.map(p => Math.cos(p[0] * Math.PI / 180))), l = dayOff(-6);
+    R = {hourly: H, daily: group(H, r => r.date, true), diurnal: group(H, r => r.hr + ':00', false), all: group(H, () => 'all', true)[0]};
+    R.area = areaKm2(parts); R.n = grid.length; R.range = s + '_' + e;
+    $('info').textContent = `Талбай ${km2(R.area)} км². Тооцоонд ${grid.length} цэг, ${H.length} цагийн өгөгдөл ашиглав.` +
+      (e > l ? ` ${l}-с хойших хэсэг нь прогноз (Open-Meteo), өмнөх нь ERA5.` : '');
+    tab = 'daily'; show(); st('Дууслаа.');
+  } catch (err) { st('Алдаа: ' + err.message, 1); }
+  finally { busy = false; $('go').disabled = false; }
+};
+
+// ---------- Results ----------
+const TABS = {daily: 'Өдөр бүр', hourly: 'Цаг бүр', diurnal: '24 цагийн дундаж'};
+const PL = {daily: 'Хур тунадас, мм (нийлбэр)', hourly: 'Хур тунадас, мм/ц', diurnal: 'Хур тунадас, мм/ц (дундаж)'};
+const cols = () => V.filter(x => !(tab === 'hourly' && x.agg));
+const head = x => x.k === 'prec' ? PL[tab] : (tab !== 'hourly' && GN[x.k] || x.n) + ', ' + x.u;
+
+function show() {
+  const a = R.all, n = R.daily.length;
+  $('out').hidden = false;
+  $('cards').innerHTML = [...V.filter(x => x.k !== 'prec').map(x => [GN[x.k] || x.n, fmt(a[x.k], x.d) + ' ' + x.u]),
+    ['Нийт хур тунадас', fmt(a.prec) + ' мм'], ['Өдрийн дундаж хур тунадас', fmt(a.prec == null ? null : a.prec / n, 2) + ' мм']
+  ].map(([l, v]) => `<div class="card"><span>${l}</span><b>${v}</b></div>`).join('');
+  fillCv(); draw();
+}
+function fillCv() {
+  const k = $('cv').value;
+  $('cv').innerHTML = cols().map(x => `<option value="${x.k}">${head(x)}</option>`).join('');
+  if (cols().some(x => x.k === k)) $('cv').value = k;
+}
+function draw() {
+  $('tabs').innerHTML = Object.entries(TABS).map(([k, v]) => `<button class="tab${k === tab ? ' on' : ''}" data-k="${k}">${v}</button>`).join('');
+  const kl = tab === 'diurnal' ? 'Цаг' : tab === 'daily' ? 'Огноо' : 'Огноо, цаг', C = cols();
+  $('tw').innerHTML = `<table><thead><tr><th>${kl}</th>${C.map(x => `<th>${head(x)}</th>`).join('')}</tr></thead><tbody>` +
+    R[tab].map(r => `<tr><td>${r.key}</td>${C.map(x => `<td>${fmt(r[x.k], x.d)}</td>`).join('')}</tr>`).join('') + '</tbody></table>';
+  chart();
+}
+function chart() {
+  const k = $('cv').value, rows = R[tab], x = V.find(v => v.k === k);
+  if (ch) ch.destroy();
+  const cs = getComputedStyle(document.body);
+  Chart.defaults.color = cs.color;
+  Chart.defaults.borderColor = cs.getPropertyValue('--bd').trim();
+  ch = new Chart($('cc'), {
+    type: k === 'prec' ? 'bar' : 'line',
+    data: {labels: rows.map(r => r.key), datasets: [{data: rows.map(r => r[k]), borderColor: '#2a7de1', backgroundColor: '#2a7de1aa', pointRadius: rows.length > 60 ? 0 : 3, tension: .25, spanGaps: true}]},
+    options: {maintainAspectRatio: false, animation: rows.length > 2000 ? false : undefined,
+      plugins: {legend: {display: false}, title: {display: true, text: T(head(x)) + ' — ' + T(TABS[tab])},
+        tooltip: {callbacks: {label: c => fmt(c.parsed.y, x.d) + ' ' + T(x.u)}}},
+      scales: {x: {ticks: {maxTicksLimit: 12}}, y: k === 'dir' ? {min: 0, max: 360, ticks: {stepSize: 90}} : {}}}
+  });
+}
+$('tabs').onclick = e => { const k = e.target.dataset.k; if (k) { tab = k; fillCv(); draw(); } };
+$('cv').onchange = chart;
+$('csv').onclick = () => {
+  const C = cols(), q = s => /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  const c = [T(tab === 'diurnal' ? 'Цаг' : tab === 'daily' ? 'Огноо' : 'Огноо, цаг'), ...C.map(x => T(head(x)))].map(q).join(',') + '\n' +
+    R[tab].map(r => [r.key, ...C.map(x => r[x.k])].map(x => x == null ? '' : typeof x === 'number' ? x.toFixed(2) : x).join(',')).join('\n');
+  const a = document.createElement('a'), u = URL.createObjectURL(new Blob(['﻿' + c], {type: 'text/csv'}));
+  a.href = u; a.download = `weather_${tab}_${R.range}.csv`; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 5000);
+};
+
+// ---------- File import and administrative boundaries ----------
+const flip = r => r.map(([x, y]) => [y, x]);
+function geoParts(g) {
+  if (!g) return [];
+  if (Array.isArray(g)) return g.flatMap(geoParts);
+  if (g.type === 'FeatureCollection') return g.features.flatMap(geoParts);
+  if (g.type === 'Feature') return geoParts(g.geometry);
+  if (g.type === 'GeometryCollection') return g.geometries.flatMap(geoParts);
+  if (g.type === 'Polygon') return [g.coordinates.map(flip)];
+  if (g.type === 'MultiPolygon') return g.coordinates.map(p => p.map(flip));
+  return [];
+}
+function kmlParts(txt) {
+  const d = new DOMParser().parseFromString(txt, 'text/xml');
+  const ring = el => el.getElementsByTagName('coordinates')[0].textContent.trim().split(/\s+/).map(c => { const [x, y] = c.split(',').map(Number); return [y, x]; });
+  return [...d.getElementsByTagName('Polygon')].map(p => [ring(p.getElementsByTagName('outerBoundaryIs')[0]),
+    ...[...p.getElementsByTagName('innerBoundaryIs')].map(ring)]);
+}
+function setArea(parts, label) {
+  if (!parts.length) return st('Polygon олдсонгүй.', 1);
+  reset(); stopDraw(); ext = parts;
+  parts.forEach(p => L.polygon(p, {color: '#1c7ed6', weight: 2}).addTo(extLayer));
+  map.fitBounds(L.featureGroup(extLayer.getLayers()).getBounds(), {padding: [20, 20]});
+  hint(`${label} · Талбай: ${km2(areaKm2(parts))} км²`); st('');
+}
+$('file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const n = f.name.toLowerCase(); let parts;
+    if (n.endsWith('.zip')) parts = geoParts(await shp(await f.arrayBuffer()));
+    else if (n.endsWith('.kmz')) {
+      const z = await JSZip.loadAsync(await f.arrayBuffer()), k = Object.keys(z.files).find(x => /\.kml$/i.test(x));
+      if (!k) throw new Error('KMZ дотор KML файл алга.');
+      parts = kmlParts(await z.files[k].async('string'));
+    } else if (n.endsWith('.kml')) parts = kmlParts(await f.text());
+    else parts = geoParts(JSON.parse(await f.text()));
+    setArea(parts, `${f.name}: ${parts.length} polygon оруулав.`);
+  } catch (err) { st('Файл уншиж чадсангүй: ' + err.message, 1); }
+  e.target.value = '';
+};
+
+const GB = 'https://www.geoboundaries.org/api/current/gbOpen/MNG/', adm = {};
+async function loadAdm(l) {
+  if (adm[l]) return adm[l];
+  let m = await (await fetch(GB + l + '/')).json(); if (Array.isArray(m)) m = m[0];
+  const u = (m.simplifiedGeometryGeoJSON || m.gjDownloadURL).replace('https://github.com/wmgeolab/geoBoundaries/raw/', 'https://raw.githubusercontent.com/wmgeolab/geoBoundaries/');
+  return adm[l] = (await (await fetch(u)).json()).features;
+}
+const nm = f => f.properties.shapeName || '?';
+const opts = (a, t) => `<option value="">${t}</option>` + a.map((f, i) => `<option value="${i}">${nm(f)}</option>`).join('');
+// A soum belongs to the province that contains most of its sampled vertices
+const belongs = (s, ap) => {
+  const r = geoParts(s)[0]?.[0] || [], k = Math.max(1, Math.floor(r.length / 7));
+  const q = [[mean(r.map(p => p[0])), mean(r.map(p => p[1]))], ...r.filter((_, i) => i % k === 0)];
+  return q.filter(p => inArea(p[0], p[1], ap)).length * 2 > q.length;
+};
+let A1, A2, sub = [];
+$('bAdm').onclick = async () => {
+  st('Хил ачаалж байна…'); $('bAdm').disabled = true;
+  try {
+    A1 = (await loadAdm('ADM1')).sort((a, b) => nm(a).localeCompare(nm(b))); A2 = await loadAdm('ADM2');
+    $('aim').innerHTML = opts(A1, 'Аймаг'); $('aim').disabled = false;
+    st('Аймгаа сонгоно уу (нэрс латин үсгээр).');
+  } catch (err) { st('Хил ачаалж чадсангүй (' + err.message + '). Хилийг файлаар оруулж болно.', 1); }
+  $('bAdm').disabled = false;
+};
+$('aim').onchange = e => {
+  const f = A1[e.target.value]; sub = [];
+  $('sum').innerHTML = '<option>Сум</option>'; $('sum').disabled = true;
+  if (!f) return;
+  const ap = geoParts(f);
+  setArea(ap, 'Аймаг: ' + nm(f));
+  sub = A2.filter(s => belongs(s, ap)).sort((a, b) => nm(a).localeCompare(nm(b)));
+  $('sum').innerHTML = opts(sub, `Сум (${sub.length})`); $('sum').disabled = false;
+};
+$('sum').onchange = e => { const f = sub[e.target.value]; if (f) setArea(geoParts(f), 'Сум: ' + nm(f)); };
+</script>
+</body>
+</html>
