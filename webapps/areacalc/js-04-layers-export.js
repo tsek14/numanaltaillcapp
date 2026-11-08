@@ -229,10 +229,34 @@
     var d3 = ovOrient(p1, p2, q1), d4 = ovOrient(p1, p2, q2);
     return (d3 > OV_EPS && d4 < -OV_EPS) || (d3 < -OV_EPS && d4 > OV_EPS);
   }
-  // 1 = strictly inside the ring, -1 = outside, 0 = on its boundary.
-  function ovPointClass(pt, ring){
-    var x = pt[0], y = pt[1], inside = false;
-    for(var k=0;k<ring.length-1;k++){
+  // Large outlines get an index of their edges by horizontal band, so a
+  // point test or an edge search only looks at the few edges near it — one
+  // big burned area surrounded by thousands of small patches used to cost
+  // patches × all its vertices.
+  var OV_INDEX_MIN = 65;
+  function ovIndex(it){
+    if(it.ix) return it.ix;
+    var r = it.ring, m = r.length - 1, nb = Math.max(1, Math.min(8192, Math.ceil(m / 8)));
+    var y0 = it.bbox[1], h = (it.bbox[3] - it.bbox[1]) / nb || 1e-12, bands = new Array(nb);
+    for(var b=0;b<nb;b++) bands[b] = [];
+    for(var k=0;k<m;k++){
+      var a = r[k][1], c = r[k+1][1], lo = Math.min(a, c) - 1e-9, hi = Math.max(a, c) + 1e-9;
+      var b0 = Math.max(0, Math.floor((lo - y0) / h)), b1 = Math.min(nb - 1, Math.floor((hi - y0) / h));
+      for(var q=b0;q<=b1;q++) bands[q].push(k);
+    }
+    return (it.ix = { y0:y0, h:h, nb:nb, bands:bands });
+  }
+  // 1 = strictly inside the item's ring, -1 = outside, 0 = on its boundary.
+  function ovPointClass(pt, it){
+    var ring = it.ring, x = pt[0], y = pt[1], inside = false, list = null;
+    if(ring.length > OV_INDEX_MIN){
+      var ix = ovIndex(it), bi = Math.floor((y - ix.y0) / ix.h);
+      if(bi < 0 || bi >= ix.nb) return -1;
+      list = ix.bands[bi];
+    }
+    var cnt = list ? list.length : ring.length - 1;
+    for(var q=0;q<cnt;q++){
+      var k = list ? list[q] : q;
       var a = ring[k], b = ring[k+1], dx = b[0]-a[0], dy = b[1]-a[1], len2 = dx*dx + dy*dy;
       var t = len2 ? ((x-a[0])*dx + (y-a[1])*dy) / len2 : 0;
       t = t < 0 ? 0 : t > 1 ? 1 : t;
@@ -242,26 +266,34 @@
     }
     return inside ? 1 : -1;
   }
-  // 1: some vertex or edge midpoint of r is strictly inside `other`;
-  // 0: all of them lie on its boundary; -1: none inside, some outside.
-  function ovAnyInside(r, other, box){
-    var allOn = true;
+  // 1: some vertex or edge midpoint of A is strictly inside B;
+  // 0: all of them lie on B's boundary; -1: none inside, some outside.
+  function ovAnyInside(A, B){
+    var r = A.ring, box = B.bbox, allOn = true;
     for(var k=0;k<r.length-1;k++){
       var v = r[k], m = [(v[0]+r[k+1][0])/2, (v[1]+r[k+1][1])/2];
       for(var q=0;q<2;q++){
         var pt = q ? m : v;
         if(pt[0] < box[0] || pt[0] > box[2] || pt[1] < box[1] || pt[1] > box[3]){ allOn = false; continue; }
-        var c = ovPointClass(pt, other);
+        var c = ovPointClass(pt, B);
         if(c === 1) return 1;
         if(c === -1) allOn = false;
       }
     }
     return allOn ? 0 : -1;
   }
-  function ovEdgesIn(r, box){
-    var out = [];
-    for(var k=0;k<r.length-1;k++){
-      var a = r[k], b = r[k+1];
+  // Edges of the item's ring whose box meets `box`.
+  function ovEdgesIn(it, box){
+    var r = it.ring, out = [], cand = null;
+    if(r.length > OV_INDEX_MIN){
+      var ix = ovIndex(it), seen = {};
+      var b0 = Math.max(0, Math.floor((box[1] - ix.y0) / ix.h)), b1 = Math.min(ix.nb - 1, Math.floor((box[3] - ix.y0) / ix.h));
+      cand = [];
+      for(var q=b0;q<=b1;q++) ix.bands[q].forEach(function(k){ if(!seen[k]){ seen[k] = 1; cand.push(k); } });
+    }
+    var cnt = cand ? cand.length : r.length - 1;
+    for(var i=0;i<cnt;i++){
+      var k = cand ? cand[i] : i, a = r[k], b = r[k+1];
       if(Math.max(a[0],b[0]) < box[0] || Math.min(a[0],b[0]) > box[2] || Math.max(a[1],b[1]) < box[1] || Math.min(a[1],b[1]) > box[3]) continue;
       out.push(k);
     }
@@ -269,16 +301,24 @@
   }
   // Do the interiors of two polygons overlap?
   function ovRingsOverlap(A, B){
-    var ea = ovEdgesIn(A.ring, B.bbox), eb = ovEdgesIn(B.ring, A.bbox);
+    var ea = ovEdgesIn(A, B.bbox), eb = ovEdgesIn(B, A.bbox);
+    // Two big outlines crossing over a wide area: measure the intersection
+    // with the clipper rather than testing edge against edge.
+    if(ea.length * eb.length > 200000){
+      try{
+        var big = turf.intersect(turf.polygon([A.ring]), turf.polygon([B.ring]));
+        return !!big && turf.area(big) > 0.01;
+      } catch(e){ return false; }
+    }
     for(var i=0;i<ea.length;i++){
       var p1 = A.ring[ea[i]], p2 = A.ring[ea[i]+1];
       for(var j=0;j<eb.length;j++){
         if(ovProperCross(p1, p2, B.ring[eb[j]], B.ring[eb[j]+1])) return true;
       }
     }
-    var a = ovAnyInside(A.ring, B.ring, B.bbox);
+    var a = ovAnyInside(A, B);
     if(a === 1) return true;
-    var b = ovAnyInside(B.ring, A.ring, A.bbox);
+    var b = ovAnyInside(B, A);
     if(b === 1) return true;
     if(a === 0 || b === 0){
       // One polygon lies entirely on the other's boundary (e.g. an exact duplicate): measure it.
@@ -1145,27 +1185,38 @@
     return baseName + ' — ' + label;
   }
 
-  // This app's shapes are a single ring, so a clip result with holes (a
-  // boundary with a hole in it, a GeoJSON "main area" file) is cut into
-  // hole-free pieces along a north–south line through each hole, instead of
-  // dropping the hole and filling it in (which counted that area twice).
+  // This app's shapes are a single ring, so a polygon with holes (a burned
+  // area with unburned islands, a boundary with a hole) is cut into hole-free
+  // pieces instead of dropping the holes and filling them in (which counted
+  // that area twice). Each step cuts along the median hole (alternating
+  // north–south / east–west by the polygon's shape), which opens that hole
+  // and leaves about half of the others on each side, so the work grows with
+  // vertices × log(holes) rather than vertices × holes — a big burned area
+  // with thousands of holes imports in about a second.
   // Returns closed [lng,lat] outer rings.
   function holeFreeRings(geometry){
-    var queue = (geometry.type === 'MultiPolygon' ? geometry.coordinates : [geometry.coordinates]).slice();
+    var stack = (geometry.type === 'MultiPolygon' ? geometry.coordinates : [geometry.coordinates]).slice();
     var out = [], steps = 0;
-    while(queue.length){
-      var poly = queue.shift();
-      if(poly.length <= 1 || ++steps > 5000){ out.push(poly[0]); continue; }
-      var xs = poly[1].map(function(c){ return c[0]; });
-      var x = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2;
-      var feat = turf.polygon(poly), b = turf.bbox(feat), halves = [];
+    while(stack.length){
+      var poly = stack.pop();
+      if(poly.length <= 1 || ++steps > 20000){ out.push(poly[0]); continue; }
+      var feat = turf.polygon(poly), b = turf.bbox(feat), vertical = (b[2] - b[0]) >= (b[3] - b[1]);
+      var centres = poly.slice(1).map(function(h){
+        var lo = Infinity, hi = -Infinity, k = vertical ? 0 : 1;
+        for(var q=0;q<h.length;q++){ if(h[q][k] < lo) lo = h[q][k]; if(h[q][k] > hi) hi = h[q][k]; }
+        return (lo + hi) / 2;
+      }).sort(function(a, c){ return a - c; });
+      var cut = centres[centres.length >> 1], rects = vertical
+        ? [[b[0]-1, b[1]-1, cut, b[3]+1], [cut, b[1]-1, b[2]+1, b[3]+1]]
+        : [[b[0]-1, b[1]-1, b[2]+1, cut], [b[0]-1, cut, b[2]+1, b[3]+1]];
+      var halves = [];
       try{
-        [[b[0]-1, b[1]-1, x, b[3]+1], [x, b[1]-1, b[2]+1, b[3]+1]].forEach(function(bb){
+        rects.forEach(function(bb){
           var r = turf.intersect(feat, turf.bboxPolygon(bb));
           if(r) halves = halves.concat(r.geometry.type === 'MultiPolygon' ? r.geometry.coordinates : [r.geometry.coordinates]);
         });
       } catch(e){ out.push(poly[0]); continue; } // topology edge case: keep the outline as before
-      halves.forEach(function(h){ queue.push(h); });
+      halves.forEach(function(h){ stack.push(h); });
     }
     return out.filter(function(r){ return r.length >= 4 && turf.area(turf.polygon([r])) > 0.01; });
   }
