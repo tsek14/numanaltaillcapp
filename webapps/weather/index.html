@@ -152,9 +152,14 @@ const BingLayer = L.TileLayer.extend({
     return `https://ecn.t${(c.x + c.y) % 4}.tiles.virtualearth.net/tiles/a${q}.jpeg?g=1&n=z`;
   }
 });
+// CARTO Basemaps API key: paste the key between the quotes. Without it CARTO tiles show an
+// "API key required" watermark. Browser tile keys are visible in the page source, so restrict
+// the key to numan.mn in the CARTO dashboard.
+const CARTO_KEY = '';
+const CK = CARTO_KEY ? '?key=' + CARTO_KEY : '';
 const G = l => ({u: `https://{s}.google.com/vt/lyrs=${l}&x={x}&y={y}&z={z}`, o: {subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], maxZoom: 21}, a: '© Google'});
 const BASEMAPS = [
-  {id: 'carto', n: 'CARTO Voyager', u: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', o: {subdomains: 'abcd', maxZoom: 20}, a: '© OpenStreetMap, © CARTO'},
+  {id: 'carto', n: 'CARTO Voyager', u: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png' + CK, o: {subdomains: 'abcd', maxZoom: 20}, a: '© OpenStreetMap, © CARTO'},
   {id: 'osm', n: 'OpenStreetMap', u: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', o: {maxZoom: 19}, a: '© OpenStreetMap'},
   {id: 'esri', n: 'ESRI World Imagery', u: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', o: {maxZoom: 20}, a: '© Esri'},
   {id: 'clarity', n: 'ESRI Clarity (HD)', u: 'https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', o: {maxZoom: 20}, a: '© Esri'},
@@ -164,7 +169,7 @@ const BASEMAPS = [
   {id: 'gter', n: 'Google Terrain', ...G('p')},
   {id: 'topo', n: 'OpenTopoMap', u: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', o: {subdomains: 'abc', maxZoom: 17}, a: '© OpenTopoMap (CC-BY-SA)'}
 ];
-const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
+const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png' + CK,
   {subdomains: 'abcd', maxZoom: 20, pane: 'labels', attribution: '© OpenStreetMap, © CARTO'});
 let base = null, baseId = null, tileTimer = null;
 
