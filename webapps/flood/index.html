@@ -197,7 +197,7 @@ en:{
  tabMap:'Map & analysis',tabRegion:'Region settings',tabGuide:'Guide',tabHelp:'Help',tabAbout:'About',
  addLocation:'Add a location',geomType:'Geometry type',
  typePoint:'Point',typeLine:'Line / Road',typePolygon:'Polygon / Area',
- coordsLabel:'Coordinates (latitude, longitude)',coordsInfo:'Format: lat, lon (one line = one point)',
+ coordsLabel:'Coordinates (latitude, longitude)',coordsInfo:'Format: lat, lon (one line = one point). Or click the map to add the point there.',
  nameLabel:'Name (optional)',namePh:'Ger district, Road 1…',
  add:'Add',clear:'Clear',riskTable:'Risk table',examples:'Example coordinates:',
  ex1:'Point by the river',ex2:'Road line',ex3:'Not safe',ex4:'Low-lying area',
@@ -212,6 +212,9 @@ en:{
  errNoPoint:'Enter the point coordinates.',errPointOut:'The point is outside the region.',
  errLine2:'A line needs at least 2 points.',errLineOut:'The line is outside the region.',
  errPoly3:'A polygon needs at least 3 points.',errPolyOut:'The polygon is outside the region.',
+ autoMove:'This location is outside the current study area, so the area is moving there. Downloading data and calculating…',
+ errFeatBig:'The feature is too large to calculate at once (at most 3° × 3°).',errRange:'Latitude must be between −85 and 85 and longitude between −180 and 180.',
+ mapPicked:'Coordinates taken from the map. Press "Add" to calculate.',
  errParse:'Could not read the coordinates. Example: 47.85, 107.42',
  added:(n,v,c)=>`<b>${n}</b> added — risk: <b>${v}</b> (${c})`,
  cleared:'All features removed.',
@@ -288,7 +291,7 @@ North-east:  Lat (latitude) = larger number,  Lon (longitude) = larger number</p
 <p><b>How is a polygon scored?</b><br>The average of 200 random points inside the area.</p>
 <p><b>What if the coordinates are wrong?</b><br>Check the lat, lon order. For Mongolia, lat ≈ 42–52 and lon ≈ 87–119.</p>
 <p><b>Does the risk map update after changing the region?</b><br>Yes. The map updates when you press "Apply region and update map".</p>
-<p><b>Why does it say the point is outside the region?</b><br>The coordinates are outside the region boundary. Check the south-west / north-east corner coordinates.</p>
+<p><b>Can I calculate anywhere?</b><br>Yes. If a point, line or area is outside the current study area, the app moves the study area there, downloads the data and calculates automatically. Features added earlier keep their scores. You can also type coordinates or click the map.</p>
 <p><b>How many points can I add?</b><br>No limit, but more than 20 may slow the map down.</p>
 <p><b>Where does the data come from?</b><br>SRTM elevation and JRC Global Surface Water, downloaded by your browser when the map loads, plus Sentinel-2 NDVI from Sentinel Hub if a License Number is set. The License Number is kept only in this browser.</p>
 <p><b>How do I add NDVI?</b><br>Enter your Sentinel Hub License Number in Region settings and press the update button. If it is already set in the Wildfire simulation or Area calculator app, it is used automatically.</p>
@@ -314,7 +317,7 @@ mn:{
  tabMap:'Зураг & шинжилгээ',tabRegion:'Нутгийн тохиргоо',tabGuide:'Гарын авлага',tabHelp:'Тусламж',tabAbout:'Тухай',
  addLocation:'Байршил нэмэх',geomType:'Геометрийн төрөл',
  typePoint:'Цэг',typeLine:'Шугам / Зам',typePolygon:'Олон өнцөгт / Дүрс',
- coordsLabel:'Координат (өргөрөг, уртрагаар)',coordsInfo:'Формат: lat, lon (нэг мөр = нэг цэг)',
+ coordsLabel:'Координат (өргөрөг, уртрагаар)',coordsInfo:'Формат: lat, lon (нэг мөр = нэг цэг). Эсвэл газрын зураг дээр дарж цэг нэмнэ.',
  nameLabel:'Нэр (заавал биш)',namePh:'Гэр хороолол, Зам 1...',
  add:'Нэмэх',clear:'Цэвэрлэх',riskTable:'Эрсдлийн хүснэгт',examples:'Жишээ координат:',
  ex1:'Гол дагуух цэг',ex2:'Замын шугам',ex3:'Аюулгүй бус',ex4:'Хотгор талбай',
@@ -329,6 +332,9 @@ mn:{
  errNoPoint:'Цэгийн координат оруулна уу.',errPointOut:'Цэг нутгийн хилээс гадна байна.',
  errLine2:'Шугамд хамгийн багадаа 2 цэг хэрэгтэй.',errLineOut:'Шугам нутгийн хилээс гадна байна.',
  errPoly3:'Олон өнцөгтөд хамгийн багадаа 3 цэг хэрэгтэй.',errPolyOut:'Олон өнцөгт нутгийн хилээс гадна байна.',
+ autoMove:'Энэ байршил одоогийн судалгааны нутгаас гадна байгаа тул нутгийг тийш нь шилжүүлж байна. Өгөгдөл татаж, тооцоолж байна…',
+ errFeatBig:'Дүрс хэт том тул нэг дор тооцоолох боломжгүй (хамгийн ихдээ 3° × 3°).',errRange:'Өргөрөг −85…85, уртраг −180…180 хооронд байх ёстой.',
+ mapPicked:'Координатыг газрын зургаас авлаа. Тооцоолохын тулд "Нэмэх" дарна уу.',
  errParse:'Координат тайлах боломжгүй. Жишээ: 47.85, 107.42',
  added:(n,v,c)=>`<b>${n}</b> нэмэгдлээ — Эрсдэл: <b>${v}</b> (${c})`,
  cleared:'Бүх тэмдэглэл устгагдлаа.',
@@ -405,7 +411,7 @@ mn:{
 <p><b>Олон өнцөгтийн оноо хэрхэн тооцоологддог вэ?</b><br>Талбай доторх 200 санамсаргүй цэгийн дундаж.</p>
 <p><b>Координат алдаатай бол яах вэ?</b><br>lat, lon дарааллыг шалгана уу. Монгол орны хувьд lat ≈ 42–52, lon ≈ 87–119.</p>
 <p><b>Нутгийг өөрчилсний дараа эрсдлийн зураг шинэчлэгддэг үү?</b><br>Тийм. "Нутаг тохируулах ба зураг шинэчлэх" товчийг дарахад зураг шинэчлэгдэнэ.</p>
-<p><b>Яагаад цэг нутгаас гадна гэж гардаг вэ?</b><br>Оруулсан координат нутгийн хилийн гадна байна. Нутгийн баруун урд / зүүн хойд булангийн координатыг шалгана уу.</p>
+<p><b>Дурын газарт тооцоолж болох уу?</b><br>Тийм. Цэг, шугам, талбай одоогийн судалгааны нутгаас гадна байвал апп нутгийг тийш нь шилжүүлж, өгөгдлөө татаад автоматаар тооцоолно. Өмнө нэмсэн тэмдэглэлүүдийн оноо хэвээр үлдэнэ. Координатаа бичих эсвэл газрын зураг дээр дарж болно.</p>
 <p><b>Хэдэн цэг нэмж болох вэ?</b><br>Хязгааргүй. Гэхдээ 20-оос дээш бол зураг удаашрах магадлалтай.</p>
 <p><b>Өгөгдөл хаанаас ирдэг вэ?</b><br>SRTM өндөр ба JRC Global Surface Water-ийг зураг ачаалахад таны хөтөч татна. License Number оруулсан бол Sentinel Hub-аас Sentinel-2 NDVI мөн татна. License Number зөвхөн энэ хөтөчид хадгалагдана.</p>
 <p><b>NDVI-г яаж нэмэх вэ?</b><br>Нутгийн тохиргоонд Sentinel Hub License Number-ээ оруулаад шинэчлэх товчийг дарна. Түймрийн симулэшн эсвэл Талбай тооцоологч апп-д аль хэдийн оруулсан бол автоматаар ашиглагдана.</p>
@@ -650,9 +656,9 @@ function drawFeatures(){
     const[k,col]=riskClass(f.v),vs=f.v==null?'?':f.v.toFixed(1),name=esc(f.name);
     const pop=`<div style="font-family:sans-serif;min-width:160px"><b style="font-size:13px">${name}</b><br><span style="font-size:12px">${T.popupScore}: <b>${vs}</b></span><br><span style="font-size:12px">${T.popupClass}: <b>${T.cls[k]}</b></span></div>`;
     const tag=at=>L.marker(at,{icon:L.divIcon({className:'',html:`<span class="lbl" style="background:${col};${col==='#ffffbf'?'color:#333':''}">${vs}</span>`,iconSize:null})}).bindPopup(pop).addTo(mine);
-    if(f.type==='point')L.circleMarker(f.co[0],{radius:10,color:'#fff',weight:2,fillColor:col,fillOpacity:0.9}).bindPopup(pop).bindTooltip(`${name}: ${vs}`).addTo(mine);
-    else if(f.type==='line'){L.polyline(f.co,{color:col,weight:4,opacity:0.9}).bindPopup(pop).bindTooltip(name).addTo(mine);tag(f.co[Math.floor(f.co.length/2)])}
-    else{L.polygon(f.co,{color:col,weight:3,fillColor:col,fillOpacity:0.25}).bindPopup(pop).bindTooltip(name).addTo(mine);tag([mean(f.co.map(c=>c[0])),mean(f.co.map(c=>c[1]))])}
+    if(f.type==='point')L.circleMarker(f.co[0],{radius:10,color:'#fff',weight:2,fillColor:col,fillOpacity:0.9,bubblingMouseEvents:false}).bindPopup(pop).bindTooltip(`${name}: ${vs}`).addTo(mine);
+    else if(f.type==='line'){L.polyline(f.co,{color:col,weight:4,opacity:0.9,bubblingMouseEvents:false}).bindPopup(pop).bindTooltip(name).addTo(mine);tag(f.co[Math.floor(f.co.length/2)])}
+    else{L.polygon(f.co,{color:col,weight:3,fillColor:col,fillOpacity:0.25,bubblingMouseEvents:false}).bindPopup(pop).bindTooltip(name).addTo(mine);tag([mean(f.co.map(c=>c[0])),mean(f.co.map(c=>c[1]))])}
   });
   const t=document.getElementById('table');
   t.innerHTML=S.features.length?`<table><tr><th>${T.thNo}</th><th>${T.thName}</th><th>${T.thType}</th><th>${T.thScore}</th><th>${T.thClass}</th></tr>`+
@@ -666,16 +672,46 @@ const curType=()=>document.querySelector('input[name=ft]:checked').value;
 const HINT={point:'47.8550, 107.4200',line:'47.8550, 107.4200\n47.8600, 107.4350\n47.8650, 107.4450',polygon:'47.8550, 107.4200\n47.8600, 107.4350\n47.8580, 107.4450\n47.8520, 107.4300'};
 document.querySelectorAll('input[name=ft]').forEach(r=>r.onchange=()=>{$('coords').placeholder=HINT[curType()]});
 
-$('addBtn').onclick=()=>{
-  if(!G)return status($('status'),T.notReady,1);
-  const co=parseCoords($('coords').value);
-  if(!co.length)return status($('status'),T.errParse,1);
-  const type=curType(),r=computeRisk(type,co);
+// The study area that a feature needs: its bounding box with a margin, at least the default size.
+function regionFor(co){
+  const la=co.map(c=>c[0]),lo=co.map(c=>c[1]),a0=Math.min(...la),a1=Math.max(...la),o0=Math.min(...lo),o1=Math.max(...lo);
+  const hy=Math.max((a1-a0)*0.65,(DEF.latMax-DEF.latMin)/2),hx=Math.max((o1-o0)*0.65,(DEF.lonMax-DEF.lonMin)/2),cy=(a0+a1)/2,cx=(o0+o1)/2,r=v=>+v.toFixed(5);
+  return{latMin:r(Math.max(-85,cy-hy)),latMax:r(Math.min(85,cy+hy)),lonMin:r(Math.max(-180,cx-hx)),lonMax:r(Math.min(180,cx+hx)),scale:S.region.scale};
+}
+const inRegion=(co,R)=>co.every(([a,o])=>R.latMin<=a&&a<=R.latMax&&R.lonMin<=o&&o<=R.lonMax);
+const setRegionInputs=R=>{$('swLat').value=R.latMin;$('swLon').value=R.lonMin;$('neLat').value=R.latMax;$('neLon').value=R.lonMax;$('scale').value=R.scale};
+function addFeature(type,co,name){
+  const r=computeRisk(type,co);
   if(r.err)return status($('status'),r.err,1);
-  const name=$('name').value.trim()||`${T.kind[type]} ${S.features.length+1}`;
+  name=name||`${T.kind[type]} ${S.features.length+1}`;
   S.features.push({type,co,name,v:r.v});save();drawFeatures();
   status($('status'),T.added(esc(name),r.v.toFixed(1),T.cls[riskClass(r.v)[0]]));
+}
+$('addBtn').onclick=()=>{
+  const co=parseCoords($('coords').value);
+  if(!co.length)return status($('status'),T.errParse,1);
+  if(co.some(([a,o])=>Math.abs(a)>85||Math.abs(o)>180))return status($('status'),T.errRange,1);
+  const type=curType(),need={point:1,line:2,polygon:3}[type];
+  if(co.length<need)return status($('status'),{point:T.errNoPoint,line:T.errLine2,polygon:T.errPoly3}[type],1);
+  const name=$('name').value.trim();
+  // Outside the current study area: move the area to the feature and calculate there.
+  if(!inRegion(co,S.region)){
+    const R=regionFor(co);
+    if(R.latMax-R.latMin>3||R.lonMax-R.lonMin>3)return status($('status'),T.errFeatBig,1);
+    S.region=R;save();setRegionInputs(R);
+    status($('status'),T.autoMove);
+    refresh(true,()=>addFeature(type,co,name));
+    return;
+  }
+  if(!G)return status($('status'),T.notReady,1);
+  addFeature(type,co,name);
 };
+// Clicking the map fills in the coordinates (a point replaces, a line/polygon adds a vertex).
+map.on('click',e=>{
+  const t=e.latlng.lat.toFixed(5)+', '+e.latlng.lng.toFixed(5),c=$('coords');
+  c.value=curType()==='point'||!c.value.trim()?t:c.value.replace(/\s*$/,'')+'\n'+t;
+  status($('status'),T.mapPicked);
+});
 $('clearBtn').onclick=()=>{S.features=[];save();drawFeatures();status($('status'),T.cleared)};
 
 const EX=[['point','47.8520, 107.4150','exName1'],['line','47.8480, 107.3980\n47.8530, 107.4200\n47.8580, 107.4450\n47.8620, 107.4680','exName2'],
@@ -693,7 +729,7 @@ async function refresh(fit,report){
     G=g;$('ndState').textContent=G.ndYear?T.ndviOn(G.ndYear):T.ndviOff;
     if(G.ndErr){b.textContent=T.ndviErr(G.ndErr);setTimeout(()=>{if(id===loadId)b.style.display='none'},9000)}else b.style.display='none';
     $('elMin').value=Math.round(G.eMin);$('elMax').value=Math.round(G.eMax);
-    S.features.forEach(f=>{const r=computeRisk(f.type,f.co);f.v=r.err?null:r.v});save();
+    S.features.forEach(f=>{if(!inRegion(f.co,S.region))return;const r=computeRisk(f.type,f.co);if(!r.err)f.v=r.v});save();
     drawRegion();drawFeatures();
     if(report)report();
   }catch(e){
@@ -706,7 +742,7 @@ async function refresh(fit,report){
 // region settings
 $('iid').value=getIID();
 $('eye').onclick=()=>{const i=$('iid');i.type=i.type==='password'?'text':'password'};
-const R0=S.region;$('swLat').value=R0.latMin;$('swLon').value=R0.lonMin;$('neLat').value=R0.latMax;$('neLon').value=R0.lonMax;$('scale').value=R0.scale;
+setRegionInputs(S.region);
 $('applyBtn').onclick=()=>{
   const n=id=>parseFloat($(id).value),sa=n('swLat'),so=n('swLon'),na=n('neLat'),no=n('neLon'),sc=n('scale');
   if([sa,so,na,no,sc].some(v=>!isFinite(v)))return status($('regionStatus'),T.errPrefix+T.errNum,1);
