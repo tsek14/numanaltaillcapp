@@ -409,6 +409,8 @@ window.I18N_EN = [
 ['Кадастрын зураг ачаалаагүй байна', 'The cadastre map is not loaded'],
 ['GeoJSON файл ачаалаагүй байна', 'No GeoJSON file is loaded'],
 ['GeoJSON файлд полигон алга', 'The GeoJSON file has no polygons'],
+[' давхцаагүй хэсэг — 2 багц болж тайрагдлаа', ' not overlapping — clipped into 2 batches'],
+[' давхцсан, ', ' overlapping, '],
 ['нэргүй лиценз', 'unnamed licence'],
 ['нэргүй', 'unnamed'],
 ['Зөвхөн полигоныг хуваах боломжтой', 'Only polygons can be split'],
