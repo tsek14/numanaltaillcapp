@@ -109,66 +109,52 @@
   // Clips every polygon of the batch along the chosen boundaries (same
   // rules as splitting one polygon). Pieces stay in the batch; polygons that
   // lie fully outside the boundaries are removed; lines and points are kept.
+  // Same three groups for a batch: the original batch is kept but hidden, and
+  // two new batches hold the pieces inside the boundaries and the rest
+  // (including polygons the boundaries do not touch at all).
   function splitBatchByBoundary(id, splitKey){
     var sourceFeatures = splitBoundarySourceFeatures(splitKey);
     if(sourceFeatures.length === 0){
       toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
       return;
     }
-    var partition = splitKey === 'usergj';
     toast('Хувааж байна…');
     setTimeout(function(){
       var idxs = batchIdxs(id);
       if(!idxs.length) return;
-      var first = idxs[0], name = shapes[first].batchName, color = shapes[first].color;
-      var members = [], inside = [], outsideShapes = [], pieceCount = 0, outside = 0, kept = 0, bad = 0;
+      var first = shapes[idxs[0]], last = idxs[idxs.length - 1], name = first.batchName, color = first.color;
+      var inside = [], outsideShapes = [], kept = 0, bad = 0;
       idxs.forEach(function(i){
         var s = shapes[i];
-        if(shapeKind(s) !== 'polygon'){ members.push(s); kept++; return; }
+        if(shapeKind(s) !== 'polygon'){ kept++; return; }
         var r = clipShapeByBoundary(s, splitKey, sourceFeatures);
-        if(r.error){ members.push(s); bad++; return; }
+        if(r.error){ bad++; return; }
         if(!r.pieces.length){
-          outside++;
-          // GeoJSON: a polygon no feature touches is the "not overlapping" part, not dropped.
-          if(partition) outsideShapes.push(Object.assign({}, s));
+          outsideShapes.push({ points: s.points.map(function(p){ return { lat:p.lat, lng:p.lng }; }), name: s.name,
+            opacity: s.opacity, showVertices: s.showVertices, showOutline: s.showOutline, visible: true });
           return;
         }
         inside = inside.concat(r.pieces);
         outsideShapes = outsideShapes.concat(r.outside);
-        pieceCount += r.pieces.length;
       });
-      if(pieceCount === 0){
+      if(!inside.length){
         toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхаргатай огтлолцсонгүй — полигон уг давхаргын хамрах хүрээнээс гадуур байж болзошгүй');
         return;
       }
-      if(partition){
-        // Two batches: the part inside the file's polygons and the rest. Lines
-        // and points (not clipped) stay in the original batch.
-        var inId = newBatchId(), outId = newBatchId(), oc = otherColor(color);
-        inside.forEach(function(p){ p.batchId = inId; p.batchName = name + ' — ' + overlapLabel(true); p.color = color; });
-        outsideShapes.forEach(function(p){ p.batchId = outId; p.batchName = name + ' — ' + overlapLabel(false); p.color = oc; });
-        members = members.concat(inside, outsideShapes);
-      } else {
-        inside.forEach(function(p){ p.batchId = id; p.batchName = name; });
-        members = members.concat(inside);
-      }
+      var inId = newBatchId(), outId = newBatchId(), oc = otherColor(color);
+      inside.forEach(function(p){ p.batchId = inId; p.batchName = name + ' — ' + overlapLabel(true); p.color = color; });
+      outsideShapes.forEach(function(p){ p.batchId = outId; p.batchName = name + ' — ' + overlapLabel(false); p.color = oc; });
       pushUndo();
+      idxs.forEach(function(i){ shapes[i].visible = false; });
       var out = [];
       shapes.forEach(function(s, i){
-        if(i === first){ out = out.concat(members); return; }
-        if(s.batchId === id && s.points.length > 0) return;
         out.push(s);
+        if(i === last) out = out.concat(inside, outsideShapes);
       });
       replaceShapes(out);
       redrawAll({ noFit:true });
-      var msg;
-      if(partition){
-        msg = '"' + name + '" багц: ' + inside.length + ' давхцсан, ' + outsideShapes.length + ' давхцаагүй хэсэг — 2 багц болж тайрагдлаа';
-      } else {
-        msg = '"' + name + '" багц: ' + pieceCount + ' хэсэг болж тайрагдлаа';
-        if(outside) msg += ', ' + outside + ' полигон хилийн гадна байсан тул хасагдлаа';
-      }
-      if(kept) msg += ', ' + kept + ' шугам/цэг хэвээр үлдлээ';
+      var msg = '"' + name + '" багц: ' + inside.length + ' давхцсан, ' + outsideShapes.length + ' давхцаагүй хэсэг — 2 багц болж тайрагдлаа; анхны багц нуугдсан';
+      if(kept) msg += ', ' + kept + ' шугам/цэг анхны багцад үлдлээ';
       if(bad) msg += ', ' + bad + ' полигоныг хувааж чадсангүй';
       toast(msg);
     }, 30);
@@ -1026,7 +1012,7 @@
     var out = [], steps = 0;
     while(queue.length){
       var poly = queue.shift();
-      if(poly.length <= 1 || ++steps > 400){ out.push(poly[0]); continue; }
+      if(poly.length <= 1 || ++steps > 5000){ out.push(poly[0]); continue; }
       var xs = poly[1].map(function(c){ return c[0]; });
       var x = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2;
       var feat = turf.polygon(poly), b = turf.bbox(feat), halves = [];
@@ -1063,10 +1049,11 @@
   // { pieces:[shape…], names:[boundary name…], outside:[shape…] }, or
   // { error:true } when the polygon itself is malformed. Shared by
   // single-shape and batch splitting.
-  // For a GeoJSON file (partition mode) each part of the polygon goes to one
-  // feature only — the first one in the file that covers it — so features
-  // that overlap each other do not produce duplicate pieces, and what no
-  // feature covers is returned as `outside`.
+  // Each part of the polygon goes to one boundary only — the first one in the
+  // layer that covers it — so boundaries that overlap each other (licences,
+  // protected areas, GeoJSON zones) never produce duplicate pieces, and what
+  // no boundary covers is returned as `outside`. Pieces + outside always add
+  // up to the original area.
   function clipShapeByBoundary(shape, splitKey, sourceFeatures){
     var userCoords = shape.points.map(function(p){ return [p.lng, p.lat]; });
     userCoords.push(userCoords[0]);
@@ -1077,7 +1064,7 @@
       return { error:true, pieces:[], names:[], outside:[] };
     }
     var userBbox = turf.bbox(userPoly); // [minX,minY,maxX,maxY]
-    var partition = splitKey === 'usergj';
+    var partition = true;
     var remaining = userPoly;
 
     var pieces = [];
@@ -1114,7 +1101,7 @@
     return { error:false, pieces:pieces, names:touchedNames, outside:outside };
   }
 
-  // Batch names for a GeoJSON clip: the part inside the file's polygons and the rest.
+  // Batch names after a clip: the part inside the boundaries and the rest.
   function overlapLabel(inside){
     var en = window.APP_LANG === 'en';
     return inside ? (en ? 'overlapping' : 'давхцсан') : (en ? 'not overlapping' : 'давхцаагүй');
@@ -1124,6 +1111,9 @@
     return SHAPE_COLORS[(k < 0 ? 1 : k + 3) % SHAPE_COLORS.length];
   }
 
+  // Clipping leaves three groups: the original polygon (kept, but hidden, so
+  // it is not counted twice), a batch of the pieces inside the boundaries and
+  // a batch of the rest.
   function splitShapeByBoundary(shapeIdx, splitKey){
     var shape = shapes[shapeIdx];
     if(!shape || shapeKind(shape) !== 'polygon'){
@@ -1140,46 +1130,23 @@
       toast('Энэ полигон буруу хэлбэртэй тул хуваах боломжгүй байна');
       return;
     }
-    var pieces = res.pieces, touchedNames = res.names;
-
-    if(pieces.length === 0){
+    if(res.pieces.length === 0){
       toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхаргатай огтлолцсонгүй — полигон уг давхаргын хамрах хүрээнээс гадуур байж болзошгүй');
       return;
     }
-
-    var partition = splitKey === 'usergj';
-    if(partition){
-      // GeoJSON: the overlapping pieces and the rest become two batches.
-      var inId = newBatchId(), outId = newBatchId(), oc = otherColor(shape.color);
-      pieces.forEach(function(p){ p.batchId = inId; p.batchName = shape.name + ' — ' + overlapLabel(true); });
-      res.outside.forEach(function(p){ p.batchId = outId; p.batchName = shape.name + ' — ' + overlapLabel(false); p.color = oc; });
-      pieces = pieces.concat(res.outside);
-    }
+    var inId = newBatchId(), outId = newBatchId(), oc = otherColor(shape.color);
+    res.pieces.forEach(function(p){ p.batchId = inId; p.batchName = shape.name + ' — ' + overlapLabel(true); });
+    res.outside.forEach(function(p){ p.batchId = outId; p.batchName = shape.name + ' — ' + overlapLabel(false); p.color = oc; });
 
     pushUndo();
-    // splice(shapeIdx, 1, pieces[0]) replaces the original shape in place
-    // with the first piece — the array is never emptied, so (unlike the
-    // delete button) there's no need to special-case shape 0's role as the
-    // permanent tap-draw fallback slot.
-    shapes.splice(shapeIdx, 1, pieces[0]);
-    for(var j=1;j<pieces.length;j++){
-      shapes.splice(shapeIdx + j, 0, pieces[j]);
-    }
-    if(partition){
-      // Tap tools (centre point, GPS, remove point) must not edit a batch member.
-      shapes.push({ points: [] });
-      tapShapeIndex = shapes.length - 1;
-    }
-    if(tapShapeIndex >= shapes.length) tapShapeIndex = 0;
+    shape.visible = false;
+    var out = shapes.slice(0, shapeIdx + 1).concat(res.pieces, res.outside, shapes.slice(shapeIdx + 1));
+    replaceShapes(out);
+    // Tap tools (centre point, GPS, remove point) must not edit a batch member.
+    shapes.push({ points: [] });
+    tapShapeIndex = shapes.length - 1;
     redrawAll();
-    if(partition){
-      toast('"' + shape.name + '" → ' + (pieces.length - res.outside.length) + ' давхцсан, ' + res.outside.length + ' давхцаагүй хэсэг — 2 багц болж тайрагдлаа');
-      return;
-    }
-    var namesPreview = touchedNames.length > 6
-      ? touchedNames.slice(0,6).join(', ') + ' +' + (touchedNames.length-6)
-      : touchedNames.join(', ');
-    toast('"'+shape.name+'" → ' + pieces.length + ' хэсэг болж хуваагдлаа (' + namesPreview + ')');
+    toast('"' + shape.name + '" → ' + res.pieces.length + ' давхцсан, ' + res.outside.length + ' давхцаагүй хэсэг — 2 багц болж тайрагдлаа; анхны полигон нуугдсан');
   }
 
 
