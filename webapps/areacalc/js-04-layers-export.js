@@ -773,12 +773,14 @@
       { key:'aimag', label:'Аймгийн хилээр', ready: adminLoaded, hint:'Захиргааны хил ачаалаагүй байна' },
       { key:'soum',  label:'Сумын хилээр',   ready: adminLoaded, hint:'Захиргааны хил ачаалаагүй байна' },
       { key:'bag',   label:'Багийн хилээр',  ready: adminLoaded, hint:'Захиргааны хил ачаалаагүй байна' },
-      { key:'mrpam', label:'MRPAM лицензийн хилээр', ready: mrpamLoaded, hint:'MRPAM лиценз ачаалаагүй байна' }
+      { key:'mrpam', label:'MRPAM лицензийн хилээр', ready: mrpamLoaded, hint:'MRPAM лиценз ачаалаагүй байна' },
+      { key:'cadastre', label:'Кадастрын нэгж талбараар', ready: cadastreReady(), hint:'Кадастрын зураг ачаалаагүй байна' },
+      userGjSplitItem()
     ];
     var html = '';
     var anyReady = items.some(function(it){ return it.ready; });
     if(!anyReady){
-      html += '<div class="lsm-hint">Хуваахын тулд эхлээд "Захиргааны хил" эсвэл "MRPAM лиценз" давхаргыг ачаална уу (⋯ цэснээс)</div>';
+      html += '<div class="lsm-hint">Хуваахын тулд эхлээд "Захиргааны хил", "MRPAM лиценз", "Кадастрын зураг" эсвэл "GeoJSON файл" давхаргыг ачаална уу (⋯ цэснээс)</div>';
     } else {
       items.forEach(function(it, i){
         if(i === 3) html += '<div class="lsm-sep"></div>'; // separates admin levels from MRPAM
@@ -806,17 +808,43 @@
   // hand-rolled clip, since boundary polygons here can have holes, many
   // vertices, and touch the user polygon along partial edges — all cases a
   // simple point-in-polygon split would get wrong.
-  var SPLIT_LEVEL_LABEL = { aimag:'Аймаг', soum:'Сум', bag:'Баг/Хороо', mrpam:'MRPAM' };
+  var SPLIT_LEVEL_LABEL = { aimag:'Аймаг', soum:'Сум', bag:'Баг/Хороо', mrpam:'MRPAM', cadastre:'Кадастр', usergj:'GeoJSON' };
+
+  // The cadastre and GeoJSON layers live in later script files (js-07, js-08),
+  // so they are looked up when the menu opens rather than when this file loads.
+  function isPolygonal(f){
+    var t = f && f.geometry && f.geometry.type;
+    return t === 'Polygon' || t === 'MultiPolygon';
+  }
+  function cadastreReady(){
+    return typeof cadastreLoaded !== 'undefined' && cadastreLoaded && !!cadastreFeatures && cadastreFeatures.length > 0;
+  }
+  function userGjSplitItem(){
+    var loaded = typeof userGjLoaded !== 'undefined' && userGjLoaded && !!userGjFeatures;
+    var hasPoly = loaded && userGjFeatures.some(isPolygonal);
+    return {
+      key:'usergj',
+      label:'GeoJSON файлын хилээр' + (loaded && userGjFileName ? ' (' + escapeXml(userGjFileName) + ')' : ''),
+      ready: hasPoly,
+      hint: loaded ? 'GeoJSON файлд полигон алга' : 'GeoJSON файл ачаалаагүй байна'
+    };
+  }
 
   function splitBoundarySourceFeatures(splitKey){
     if(splitKey === 'mrpam') return mrpamFeatures || [];
+    if(splitKey === 'cadastre') return cadastreReady() ? cadastreFeatures : [];
+    if(splitKey === 'usergj') return (typeof userGjLoaded !== 'undefined' && userGjLoaded && userGjFeatures) || [];
     if(!adminFeatures) return [];
     return adminFeatures.filter(function(f){ return f.properties && f.properties.LEVEL === splitKey; });
   }
 
-  function splitPieceName(baseName, splitKey, props){
+  function splitPieceName(baseName, splitKey, props, idx){
     var label;
-    if(splitKey === 'mrpam'){
+    if(splitKey === 'cadastre'){
+      label = cadastreNameOf(props, idx);
+    } else if(splitKey === 'usergj'){
+      label = userGjNameOf(props, idx);
+    } else if(splitKey === 'mrpam'){
       var name = props && props.name;
       var holder = props && props.holder;
       if(name && holder) label = name + ' / ' + holder;
@@ -867,7 +895,7 @@
     var touchedNames = [];
     for(var i=0;i<sourceFeatures.length;i++){
       var f = sourceFeatures[i];
-      if(!bboxIntersects(f.bbox, userBbox)) continue;
+      if(!isPolygonal(f) || !bboxIntersects(f.bbox, userBbox)) continue; // lines/points in a GeoJSON file cannot clip
       var boundaryPoly;
       try{
         boundaryPoly = f.geometry.type === 'MultiPolygon' ? turf.multiPolygon(f.geometry.coordinates) : turf.polygon(f.geometry.coordinates);
@@ -879,7 +907,7 @@
         clipped = turf.intersect(userPoly, boundaryPoly);
       } catch(e){ continue; } // topology edge case (shared-edge, self-touching) — skip this one boundary
       if(!clipped) continue;
-      var pieceName = splitPieceName(shape.name, splitKey, f.properties);
+      var pieceName = splitPieceName(shape.name, splitKey, f.properties, i);
       var newShapes = turfGeometryToShapes(clipped.geometry, pieceName, shape);
       if(newShapes.length){
         pieces = pieces.concat(newShapes);
