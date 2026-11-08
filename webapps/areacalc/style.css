@@ -783,8 +783,8 @@
   }
   .result-card .big{ font-size:28px; font-weight:700; margin-top:8px; font-family:'JetBrains Mono',monospace; }
   .result-card .small{ font-size:12px; color:var(--muted); margin-top:2px; font-family:'JetBrains Mono',monospace;}
-  .result-grid{ display:flex; gap:8px; margin-top:10px; }
-  .result-grid .item{ flex:1; background:rgba(0,0,0,0.2); border-radius:10px; padding:8px 10px;}
+  .result-grid{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .result-grid .item{ flex:1 1 64px; background:rgba(0,0,0,0.2); border-radius:10px; padding:8px 10px;}
   .result-grid .item .k{ font-size:9px; color:var(--muted); text-transform:uppercase; font-family:'JetBrains Mono',monospace;}
   .result-grid .item .v{ font-size:14px; font-weight:700; font-family:'JetBrains Mono',monospace; margin-top:2px;}
 
