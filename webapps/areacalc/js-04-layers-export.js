@@ -115,24 +115,42 @@
       toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
       return;
     }
+    var partition = splitKey === 'usergj';
     toast('Хувааж байна…');
     setTimeout(function(){
       var idxs = batchIdxs(id);
       if(!idxs.length) return;
-      var first = idxs[0], name = shapes[first].batchName;
-      var members = [], pieceCount = 0, outside = 0, kept = 0, bad = 0;
+      var first = idxs[0], name = shapes[first].batchName, color = shapes[first].color;
+      var members = [], inside = [], outsideShapes = [], pieceCount = 0, outside = 0, kept = 0, bad = 0;
       idxs.forEach(function(i){
         var s = shapes[i];
         if(shapeKind(s) !== 'polygon'){ members.push(s); kept++; return; }
         var r = clipShapeByBoundary(s, splitKey, sourceFeatures);
         if(r.error){ members.push(s); bad++; return; }
-        if(!r.pieces.length){ outside++; return; }
-        r.pieces.forEach(function(p){ p.batchId = id; p.batchName = name; members.push(p); });
+        if(!r.pieces.length){
+          outside++;
+          // GeoJSON: a polygon no feature touches is the "not overlapping" part, not dropped.
+          if(partition) outsideShapes.push(Object.assign({}, s));
+          return;
+        }
+        inside = inside.concat(r.pieces);
+        outsideShapes = outsideShapes.concat(r.outside);
         pieceCount += r.pieces.length;
       });
       if(pieceCount === 0){
         toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхаргатай огтлолцсонгүй — полигон уг давхаргын хамрах хүрээнээс гадуур байж болзошгүй');
         return;
+      }
+      if(partition){
+        // Two batches: the part inside the file's polygons and the rest. Lines
+        // and points (not clipped) stay in the original batch.
+        var inId = newBatchId(), outId = newBatchId(), oc = otherColor(color);
+        inside.forEach(function(p){ p.batchId = inId; p.batchName = name + ' — ' + overlapLabel(true); p.color = color; });
+        outsideShapes.forEach(function(p){ p.batchId = outId; p.batchName = name + ' — ' + overlapLabel(false); p.color = oc; });
+        members = members.concat(inside, outsideShapes);
+      } else {
+        inside.forEach(function(p){ p.batchId = id; p.batchName = name; });
+        members = members.concat(inside);
       }
       pushUndo();
       var out = [];
@@ -143,8 +161,13 @@
       });
       replaceShapes(out);
       redrawAll({ noFit:true });
-      var msg = '"' + name + '" багц: ' + pieceCount + ' хэсэг болж тайрагдлаа';
-      if(outside) msg += ', ' + outside + ' полигон хилийн гадна байсан тул хасагдлаа';
+      var msg;
+      if(partition){
+        msg = '"' + name + '" багц: ' + inside.length + ' давхцсан, ' + outsideShapes.length + ' давхцаагүй хэсэг — 2 багц болж тайрагдлаа';
+      } else {
+        msg = '"' + name + '" багц: ' + pieceCount + ' хэсэг болж тайрагдлаа';
+        if(outside) msg += ', ' + outside + ' полигон хилийн гадна байсан тул хасагдлаа';
+      }
       if(kept) msg += ', ' + kept + ' шугам/цэг хэвээр үлдлээ';
       if(bad) msg += ', ' + bad + ' полигоныг хувааж чадсангүй';
       toast(msg);
@@ -993,19 +1016,40 @@
     return baseName + ' — ' + label;
   }
 
-  // Converts one turf Feature/Geometry (Polygon or MultiPolygon) coming out
-  // of turf.intersect back into this app's shape list. A MultiPolygon
-  // result (the user polygon touches a boundary in two disjoint places)
-  // becomes one shape per constituent ring, since this app's shape model
-  // is single-ring only.
+  // This app's shapes are a single ring, so a clip result with holes (a
+  // boundary with a hole in it, a GeoJSON "main area" file) is cut into
+  // hole-free pieces along a north–south line through each hole, instead of
+  // dropping the hole and filling it in (which counted that area twice).
+  // Returns closed [lng,lat] outer rings.
+  function holeFreeRings(geometry){
+    var queue = (geometry.type === 'MultiPolygon' ? geometry.coordinates : [geometry.coordinates]).slice();
+    var out = [], steps = 0;
+    while(queue.length){
+      var poly = queue.shift();
+      if(poly.length <= 1 || ++steps > 400){ out.push(poly[0]); continue; }
+      var xs = poly[1].map(function(c){ return c[0]; });
+      var x = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2;
+      var feat = turf.polygon(poly), b = turf.bbox(feat), halves = [];
+      try{
+        [[b[0]-1, b[1]-1, x, b[3]+1], [x, b[1]-1, b[2]+1, b[3]+1]].forEach(function(bb){
+          var r = turf.intersect(feat, turf.bboxPolygon(bb));
+          if(r) halves = halves.concat(r.geometry.type === 'MultiPolygon' ? r.geometry.coordinates : [r.geometry.coordinates]);
+        });
+      } catch(e){ out.push(poly[0]); continue; } // topology edge case: keep the outline as before
+      halves.forEach(function(h){ queue.push(h); });
+    }
+    return out.filter(function(r){ return r.length >= 4 && turf.area(turf.polygon([r])) > 0.01; });
+  }
+
+  // Converts one turf geometry (Polygon or MultiPolygon) coming out of a
+  // clip back into this app's shape list: one shape per hole-free piece.
   function turfGeometryToShapes(geometry, name, sourceShape){
-    var polys = geometry.type === 'MultiPolygon' ? geometry.coordinates : [geometry.coordinates];
-    return polys.map(function(poly, i){
-      var ring = poly[0]; // outer ring only — this app's shapes don't model holes
+    var rings = holeFreeRings(geometry);
+    return rings.map(function(ring, i){
       var pts = ring.slice(0, ring.length - 1).map(function(c){ return { lat:c[1], lng:c[0] }; });
       return {
         points: pts,
-        name: polys.length > 1 ? name + ' (' + (i+1) + ')' : name,
+        name: rings.length > 1 ? name + ' (' + (i+1) + ')' : name,
         color: sourceShape.color,
         opacity: sourceShape.opacity,
         showVertices: sourceShape.showVertices,
@@ -1016,8 +1060,13 @@
   }
 
   // Clips one polygon shape against the boundary features. Returns
-  // { pieces:[shape…], names:[boundary name…] }, or { error:true } when the
-  // polygon itself is malformed. Shared by single-shape and batch splitting.
+  // { pieces:[shape…], names:[boundary name…], outside:[shape…] }, or
+  // { error:true } when the polygon itself is malformed. Shared by
+  // single-shape and batch splitting.
+  // For a GeoJSON file (partition mode) each part of the polygon goes to one
+  // feature only — the first one in the file that covers it — so features
+  // that overlap each other do not produce duplicate pieces, and what no
+  // feature covers is returned as `outside`.
   function clipShapeByBoundary(shape, splitKey, sourceFeatures){
     var userCoords = shape.points.map(function(p){ return [p.lng, p.lat]; });
     userCoords.push(userCoords[0]);
@@ -1025,13 +1074,16 @@
     try{
       userPoly = turf.polygon([userCoords]);
     } catch(e){
-      return { error:true, pieces:[], names:[] };
+      return { error:true, pieces:[], names:[], outside:[] };
     }
     var userBbox = turf.bbox(userPoly); // [minX,minY,maxX,maxY]
+    var partition = splitKey === 'usergj';
+    var remaining = userPoly;
 
     var pieces = [];
     var touchedNames = [];
     for(var i=0;i<sourceFeatures.length;i++){
+      if(partition && !remaining) break; // everything is assigned already
       var f = sourceFeatures[i];
       if(!isPolygonal(f) || !bboxIntersects(f.bbox, userBbox)) continue; // lines/points in a GeoJSON file cannot clip
       var boundaryPoly;
@@ -1042,9 +1094,12 @@
       try{
         // Turf 6.5.0 (loaded by this page) takes two geometries directly —
         // turf.intersect(featureCollection) is a v7-only signature.
-        clipped = turf.intersect(userPoly, boundaryPoly);
+        clipped = turf.intersect(partition ? remaining : userPoly, boundaryPoly);
       } catch(e){ continue; } // topology edge case (shared-edge, self-touching) — skip this one boundary
       if(!clipped) continue;
+      if(partition){
+        try{ remaining = turf.difference(remaining, boundaryPoly); } catch(e){}
+      }
       var pieceName = splitPieceName(shape.name, splitKey, f.properties, i);
       var newShapes = turfGeometryToShapes(clipped.geometry, pieceName, shape);
       if(newShapes.length){
@@ -1052,7 +1107,21 @@
         touchedNames.push(pieceName.split(' — ')[1]);
       }
     }
-    return { error:false, pieces:pieces, names:touchedNames };
+    var outside = [];
+    if(partition && pieces.length && remaining){
+      outside = turfGeometryToShapes(remaining.geometry, shape.name + ' — ' + overlapLabel(false), shape);
+    }
+    return { error:false, pieces:pieces, names:touchedNames, outside:outside };
+  }
+
+  // Batch names for a GeoJSON clip: the part inside the file's polygons and the rest.
+  function overlapLabel(inside){
+    var en = window.APP_LANG === 'en';
+    return inside ? (en ? 'overlapping' : 'давхцсан') : (en ? 'not overlapping' : 'давхцаагүй');
+  }
+  function otherColor(c){
+    var k = SHAPE_COLORS.indexOf(c);
+    return SHAPE_COLORS[(k < 0 ? 1 : k + 3) % SHAPE_COLORS.length];
   }
 
   function splitShapeByBoundary(shapeIdx, splitKey){
@@ -1078,6 +1147,15 @@
       return;
     }
 
+    var partition = splitKey === 'usergj';
+    if(partition){
+      // GeoJSON: the overlapping pieces and the rest become two batches.
+      var inId = newBatchId(), outId = newBatchId(), oc = otherColor(shape.color);
+      pieces.forEach(function(p){ p.batchId = inId; p.batchName = shape.name + ' — ' + overlapLabel(true); });
+      res.outside.forEach(function(p){ p.batchId = outId; p.batchName = shape.name + ' — ' + overlapLabel(false); p.color = oc; });
+      pieces = pieces.concat(res.outside);
+    }
+
     pushUndo();
     // splice(shapeIdx, 1, pieces[0]) replaces the original shape in place
     // with the first piece — the array is never emptied, so (unlike the
@@ -1087,8 +1165,17 @@
     for(var j=1;j<pieces.length;j++){
       shapes.splice(shapeIdx + j, 0, pieces[j]);
     }
+    if(partition){
+      // Tap tools (centre point, GPS, remove point) must not edit a batch member.
+      shapes.push({ points: [] });
+      tapShapeIndex = shapes.length - 1;
+    }
     if(tapShapeIndex >= shapes.length) tapShapeIndex = 0;
     redrawAll();
+    if(partition){
+      toast('"' + shape.name + '" → ' + (pieces.length - res.outside.length) + ' давхцсан, ' + res.outside.length + ' давхцаагүй хэсэг — 2 багц болж тайрагдлаа');
+      return;
+    }
     var namesPreview = touchedNames.length > 6
       ? touchedNames.slice(0,6).join(', ') + ' +' + (touchedNames.length-6)
       : touchedNames.join(', ');
