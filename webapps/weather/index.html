@@ -155,7 +155,7 @@ const BingLayer = L.TileLayer.extend({
 // CARTO Basemaps API key: paste the key between the quotes. Without it CARTO tiles show an
 // "API key required" watermark. Browser tile keys are visible in the page source, so restrict
 // the key to numan.mn in the CARTO dashboard.
-const CARTO_KEY = '';
+const CARTO_KEY = 'cb1_54gd_1_484304136f268514778bc2ad';
 const CK = CARTO_KEY ? '?key=' + CARTO_KEY : '';
 const G = l => ({u: `https://{s}.google.com/vt/lyrs=${l}&x={x}&y={y}&z={z}`, o: {subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], maxZoom: 21}, a: '© Google'});
 const BASEMAPS = [
