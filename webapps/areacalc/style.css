@@ -804,6 +804,9 @@
     padding:8px 13px; border-radius:9px; cursor:pointer;
   }
   .export-btn:active{ transform:scale(0.96); }
+  #splitExportRow{ gap:8px; }
+  .ko-exp{ display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; flex-shrink:0; }
+  .ko-exp .export-btn{ padding:6px 8px; font-size:10px; }
 
   .summary-card{
     background:var(--panel-2); border:1px solid var(--line); border-radius:14px;
