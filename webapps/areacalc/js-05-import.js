@@ -17,6 +17,14 @@
       }
       return pts;
     }
+    // Shapes are single-ring: a polygon with holes (e.g. a burned area with
+    // unburned islands) is cut into hole-free pieces so the holes stay empty.
+    // Taking only the outer ring would fill the holes in and overstate the area.
+    function polygonPieces(poly){
+      if(poly.length <= 1) return [ring2pts(poly[0])];
+      try{ return holeFreeRings({ type:'Polygon', coordinates: poly }).map(ring2pts); }
+      catch(e){ return [ring2pts(poly[0])]; }
+    }
     switch(geom.type){
       case 'Point':
         out.push({ name:name, color:color, points:[{ lat:geom.coordinates[1], lng:geom.coordinates[0] }] });
@@ -35,11 +43,15 @@
         });
         break;
       case 'Polygon':
-        out.push({ name:name, color:color, points: ring2pts(geom.coordinates[0]) });
+        polygonPieces(geom.coordinates).forEach(function(pts, k, all){
+          out.push({ name:name+(all.length>1?' ('+(k+1)+')':''), color:color, points: pts });
+        });
         break;
       case 'MultiPolygon':
         geom.coordinates.forEach(function(poly, i){
-          out.push({ name:name+(geom.coordinates.length>1?' '+(i+1):''), color:color, points: ring2pts(poly[0]) });
+          polygonPieces(poly).forEach(function(pts, k, all){
+            out.push({ name:name+(geom.coordinates.length>1?' '+(i+1):'')+(all.length>1?' ('+(k+1)+')':''), color:color, points: pts });
+          });
         });
         break;
       case 'GeometryCollection':
@@ -135,7 +147,20 @@
         var outerEl = polyEl.querySelector('outerBoundaryIs coordinates');
         if(!outerEl) return;
         var pts = dedupeClosingPt(coordsToPts(outerEl.textContent));
-        if(pts.length) results.push({ name: name+(i>0?' '+(i+1):''), color:color, points:pts });
+        if(!pts.length) return;
+        var nm = name+(i>0?' '+(i+1):'');
+        var holes = [].slice.call(polyEl.querySelectorAll('innerBoundaryIs coordinates')).map(function(el){
+          return dedupeClosingPt(coordsToPts(el.textContent));
+        }).filter(function(h){ return h.length >= 3; });
+        if(!holes.length){ results.push({ name: nm, color:color, points:pts }); return; }
+        // Holes are kept by cutting the polygon into hole-free pieces (see polygonPieces above).
+        var closed = function(r){ var c = r.map(function(p){ return [p.lng, p.lat]; }); c.push(c[0]); return c; };
+        var rings;
+        try{ rings = holeFreeRings({ type:'Polygon', coordinates: [closed(pts)].concat(holes.map(closed)) }); }
+        catch(e){ rings = [closed(pts)]; }
+        rings.forEach(function(r, k){
+          results.push({ name: nm+(rings.length>1?' ('+(k+1)+')':''), color:color, points: dedupeClosingPt(r.map(function(c){ return { lat:c[1], lng:c[0] }; })) });
+        });
       });
     });
     return results;

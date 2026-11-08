@@ -203,6 +203,8 @@ window.I18N_EN = [
 ['Полигонууд давхцаагүй тул цоорхой алга', 'The polygons do not overlap, so there are no holes'],
 [' полигон бүхэлдээ давхцсан тул үндсэн талбайн файлд ороогүй, цоорхой файлд бий', ' polygon(s) are fully overlapped, so they are not in the main area file but are in the holes file'],
 ['ДАВХЦАЛ (ГА)', 'OVERLAP (HA)'],
+['Давхцал хассан талбай:', 'Area without overlaps:'],
+['давхцал', 'overlap'],
 ['давхцал хассан', 'overlaps removed'],
 ['Давхцсан хэсгүүд энгийнээр будагдана', 'Overlaps are filled normally'],
 
@@ -409,6 +411,9 @@ window.I18N_EN = [
 ['Кадастрын зураг ачаалаагүй байна', 'The cadastre map is not loaded'],
 ['GeoJSON файл ачаалаагүй байна', 'No GeoJSON file is loaded'],
 ['GeoJSON файлд полигон алга', 'The GeoJSON file has no polygons'],
+[' давхцаагүй хэсэг — 2 багц болж тайрагдлаа; анхны полигон нуугдсан', ' not overlapping — clipped into 2 batches; the original polygon is hidden'],
+[' давхцаагүй хэсэг — 2 багц болж тайрагдлаа; анхны багц нуугдсан', ' not overlapping — clipped into 2 batches; the original batch is hidden'],
+[' шугам/цэг анхны багцад үлдлээ', ' lines/points stay in the original batch'],
 [' давхцаагүй хэсэг — 2 багц болж тайрагдлаа', ' not overlapping — clipped into 2 batches'],
 [' давхцсан, ', ' overlapping, '],
 ['нэргүй лиценз', 'unnamed licence'],
