@@ -471,6 +471,126 @@
     saveSetting('pointNumbersOn', pointNumbersOn);
   });
 
+  // ---------- Export the main (visible) areas and the holes as two files ----------
+  // Main: each visible polygon minus the parts other polygons cover, holes
+  // included (what the "cut out overlaps" fill shows). Holes: every place
+  // where two or more polygons overlap, one polygon per separate patch, with
+  // the names of the polygons that meet there.
+  function round4(v){ return Math.round(v * 10000) / 10000; }
+  function overlapExportData(){
+    var idxs = knockoutPolygonIdxs();
+    if(idxs.length < 2) return null;
+    var fills = computeKnockoutFills() || {};
+    var en = window.APP_LANG === 'en';
+    var items = [];
+    idxs.forEach(function(i){
+      var ring = shapes[i].points.map(function(p){ return [p.lng, p.lat]; });
+      ring.push(ring[0]);
+      try{
+        var feat = turf.polygon([ring]);
+        items.push({ idx:i, name: shapes[i].name || ((en ? 'Polygon ' : 'Полигон ') + (i+1)), color: shapes[i].color, feat: feat, bbox: turf.bbox(feat) });
+      } catch(e){ /* malformed polygon: leave it out */ }
+    });
+    var main = [], covered = 0;
+    items.forEach(function(it){
+      var f = fills[it.idx];
+      if(f === 'empty'){ covered++; return; }
+      var geom = f === undefined ? it.feat.geometry : f;
+      var full = turf.area(it.feat), vis = turf.area(geom);
+      main.push({ type:'Feature', geometry: geom, properties:{
+        NAME: it.name, AREA_HA: round4(vis/10000), AREA_M2: Math.round(vis),
+        FULL_HA: round4(full/10000), CUT_HA: round4((full - vis)/10000), COLOR: it.color || ''
+      }});
+    });
+    var union = null;
+    for(var a=0;a<items.length;a++){
+      for(var b=a+1;b<items.length;b++){
+        if(!bboxIntersects(items[a].bbox, items[b].bbox)) continue;
+        try{
+          var x = turf.intersect(items[a].feat, items[b].feat);
+          if(x) union = union ? turf.union(union, x) : x;
+        } catch(e){ /* topology edge case: skip this pair */ }
+      }
+    }
+    var holes = [];
+    if(union){
+      turf.flatten(union).features.forEach(function(piece){
+        var area = turf.area(piece);
+        if(area < 0.01) return; // polygons that only touch along an edge
+        var pb = turf.bbox(piece);
+        var names = items.filter(function(it){
+          if(!bboxIntersects(it.bbox, pb)) return false;
+          try{ var y = turf.intersect(piece, it.feat); return !!y && turf.area(y) > 0.01; } catch(e){ return false; }
+        }).map(function(it){ return it.name; });
+        holes.push({ type:'Feature', geometry: piece.geometry, properties:{
+          NAME: (en ? 'Hole ' : 'Цоорхой ') + (holes.length + 1),
+          AREA_HA: round4(area/10000), AREA_M2: Math.round(area), POLYGONS: names.join(', ')
+        }});
+      });
+    }
+    return { main: main, holes: holes, covered: covered };
+  }
+
+  function overlapKml(features, docName, isHole){
+    var coords = function(r){ return r.map(function(c){ return c[0].toFixed(7)+','+c[1].toFixed(7)+',0'; }).join(' '); };
+    var placemarks = features.map(function(f){
+      var g = f.geometry, polys = g.type === 'MultiPolygon' ? g.coordinates : [g.coordinates];
+      var geomXml = polys.map(function(p){
+        return '<Polygon><outerBoundaryIs><LinearRing><coordinates>'+coords(p[0])+'</coordinates></LinearRing></outerBoundaryIs>'
+          + p.slice(1).map(function(h){ return '<innerBoundaryIs><LinearRing><coordinates>'+coords(h)+'</coordinates></LinearRing></innerBoundaryIs>'; }).join('')
+          + '</Polygon>';
+      }).join('');
+      var bgr = colorToKmlBgr(isHole ? '#e03131' : (f.properties.COLOR || '#3388ff'));
+      var desc = Object.keys(f.properties).filter(function(k){ return k !== 'NAME' && k !== 'COLOR'; })
+        .map(function(k){ return k + ': ' + f.properties[k]; }).join('\n');
+      return '<Placemark><name>'+escapeXml(f.properties.NAME)+'</name><description>'+escapeXml(desc)+'</description>'
+        + '<Style><LineStyle><color>ff'+bgr+'</color><width>2</width></LineStyle><PolyStyle><color>77'+bgr+'</color></PolyStyle></Style>'
+        + '<MultiGeometry>'+geomXml+'</MultiGeometry></Placemark>';
+    }).join('\n');
+    return '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>'
+      + escapeXml(docName) + '</name>\n' + placemarks + '\n</Document></kml>';
+  }
+
+  function writeOverlapFile(format, features, name, shpName, isHole){
+    // GeoJSON/KML: outer rings counter-clockwise (RFC 7946); Shapefile: outer clockwise.
+    var fc = { type:'FeatureCollection', features: features.map(function(f){ return turf.rewind(f); }) };
+    var base = safeFileName(name);
+    if(format === 'geojson'){
+      downloadTextFile(JSON.stringify(fc, null, 2), base+'.geojson', 'application/geo+json;charset=utf-8');
+      toast('"'+name+'" татагдлаа (GEOJSON)');
+    } else if(format === 'kml'){
+      downloadTextFile(overlapKml(fc.features, name, isHole), base+'.kml', 'application/vnd.google-earth.kml+xml;charset=utf-8');
+      toast('"'+name+'" татагдлаа (KML)');
+    } else if(format === 'shp'){
+      // One Polygon record per part keeps every GIS reader happy.
+      var flat = [];
+      features.forEach(function(f){
+        turf.flatten(f).features.forEach(function(p){ p.properties = f.properties; flat.push(turf.rewind(p, { reverse:true })); });
+      });
+      exportShpZip({ type:'FeatureCollection', features: flat }, shpName, base, '"'+name+'" татагдлаа (SHP)');
+    }
+  }
+
+  function exportOverlapSplit(format){
+    var d = overlapExportData();
+    if(!d) return toast('Хоёр ба түүнээс олон полигон хэрэгтэй');
+    if(!d.holes.length) return toast('Полигонууд давхцаагүй тул цоорхой алга');
+    var en = window.APP_LANG === 'en';
+    var mainName = en ? 'Main area' : 'Үндсэн талбай', holeName = en ? 'Holes' : 'Цоорхой';
+    writeOverlapFile(format, d.main, mainName, 'main_area', false);
+    // A short gap so the browser does not drop the second download.
+    setTimeout(function(){
+      writeOverlapFile(format, d.holes, holeName, 'holes', true);
+      if(d.covered) setTimeout(function(){
+        toast(d.covered + ' полигон бүхэлдээ давхцсан тул үндсэн талбайн файлд ороогүй, цоорхой файлд бий');
+      }, 1800);
+    }, 800);
+  }
+  document.getElementById('splitExportRow').addEventListener('click', function(e){
+    var b = e.target.closest('[data-ko-fmt]');
+    if(b) exportOverlapSplit(b.getAttribute('data-ko-fmt'));
+  });
+
   document.getElementById('knockoutSwitch').addEventListener('click', function(){
     polyKnockoutOn = !polyKnockoutOn;
     saveSetting('polyKnockout', polyKnockoutOn);
@@ -492,6 +612,7 @@
 
     var koRow = document.getElementById('knockoutRow');
     koRow.style.display = knockoutPolygonIdxs().length >= 2 ? 'flex' : 'none';
+    document.getElementById('splitExportRow').style.display = (polyKnockoutOn && koRow.style.display === 'flex') ? 'flex' : 'none';
     document.getElementById('knockoutSwitch').classList.toggle('on', polyKnockoutOn);
 
     if(nonEmpty.length === 0){
