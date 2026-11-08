@@ -203,6 +203,8 @@ window.I18N_EN = [
 ['Полигонууд давхцаагүй тул цоорхой алга', 'The polygons do not overlap, so there are no holes'],
 [' полигон бүхэлдээ давхцсан тул үндсэн талбайн файлд ороогүй, цоорхой файлд бий', ' polygon(s) are fully overlapped, so they are not in the main area file but are in the holes file'],
 ['ДАВХЦАЛ (ГА)', 'OVERLAP (HA)'],
+['Давхцал хассан талбай:', 'Area without overlaps:'],
+['давхцал', 'overlap'],
 ['давхцал хассан', 'overlaps removed'],
 ['Давхцсан хэсгүүд энгийнээр будагдана', 'Overlaps are filled normally'],
 
