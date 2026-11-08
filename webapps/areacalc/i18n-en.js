@@ -193,6 +193,12 @@ window.I18N_EN = [
 ['Хоёр ба түүнээс олон полигон давхцсан хэсэгт аль ч полигоны өнгө харагдахгүй, суурь зураг шууд харагдана', 'Where two or more polygons overlap, no fill is drawn and the base map shows through'],
 ['Давхцсан хэсгийг нэвт цоолох', 'Cut out overlaps'],
 ['Давхцсан хэсгүүд нэвт харагдана', 'Overlaps are cut out'],
+['Хоёр ба түүнээс олон полигон давхцсан хэсэгт аль ч полигоны өнгө харагдахгүй, суурь зураг шууд харагдана. Талбайг давхцлыг хасч, харагдаж буй хэсгээр нь тооцно.', 'Where two or more polygons overlap, no fill is drawn and the base map shows through. Areas count only the visible part, without the overlaps.'],
+['Давхцсан хэсгүүд нэвт харагдана — талбайг давхцлыг хасч тооцно', 'Overlaps are cut out — areas are counted without them'],
+['Давхцсан хэсгүүд энгийнээр будагдана — талбайг бүтнээр нь тооцно', 'Overlaps are filled normally — areas are counted in full'],
+['БҮТЭН ТАЛБАЙ (ГА)', 'FULL AREA (HA)'],
+['ДАВХЦАЛ (ГА)', 'OVERLAP (HA)'],
+['давхцал хассан', 'overlaps removed'],
 ['Давхцсан хэсгүүд энгийнээр будагдана', 'Overlaps are filled normally'],
 
 // ---- coordinates tab

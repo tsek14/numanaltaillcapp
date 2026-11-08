@@ -46,7 +46,7 @@
     idxs.forEach(function(i){
       var s = shapes[i], k = shapeKind(s);
       st.pts += s.points.length;
-      if(k === 'polygon'){ st.poly++; st.area += areaSqMeters(s.points); st.per += perimeterMeters(s.points); }
+      if(k === 'polygon'){ st.poly++; st.area += shownAreaSqMeters(i); st.per += perimeterMeters(s.points); }
       else if(k === 'line'){ st.line++; st.len += pathLengthMeters(s.points); }
       else if(k === 'point') st.point++;
     });
@@ -158,11 +158,12 @@
   // When on, any area covered by two or more visible polygons gets no fill
   // from any of them, so the base map shows straight through. Each polygon's
   // fill becomes "itself minus every other polygon it overlaps" (turf
-  // difference); outlines, vertices, areas and exports are unchanged. The
+  // difference). Areas shown in the app then count only that visible part
+  // (see shownAreaSqMeters); outlines, vertices and exports are unchanged. The
   // result is cached on the polygons' coordinates, so moving a slider or
   // renaming doesn't recompute it.
   var polyKnockoutOn = getSetting('polyKnockout', false);
-  var knockoutCache = { sig:null, fills:null };
+  var knockoutCache = { sig:null, fills:null, areas:null };
 
   function knockoutPolygonIdxs(){
     var out = [];
@@ -189,7 +190,7 @@
       ring.forEach(function(c){ if(c[0]<w) w=c[0]; if(c[0]>e) e=c[0]; if(c[1]<so) so=c[1]; if(c[1]>n) n=c[1]; });
       return { idx:i, feat:turf.polygon([ring]), bbox:[w, so, e, n] };
     });
-    var fills = {};
+    var fills = {}, areas = {};
     items.forEach(function(a){
       var diff = a.feat, touched = false;
       try{
@@ -200,13 +201,27 @@
           diff = turf.difference(diff, b.feat);
           if(!diff) break; // completely covered by others
         }
-        if(touched) fills[a.idx] = diff ? diff.geometry : 'empty';
+        if(touched){
+          fills[a.idx] = diff ? diff.geometry : 'empty';
+          areas[a.idx] = diff ? turf.area(diff) : 0;
+        }
       } catch(err){
         // e.g. a self-intersecting polygon turf can't process — draw that one normally
       }
     });
-    knockoutCache = { sig:sig, fills:fills };
+    knockoutCache = { sig:sig, fills:fills, areas:areas };
     return fills;
+  }
+
+  // Area of a polygon as shown on the map: with "cut out overlaps" on, only the
+  // part no other visible polygon covers (a 10 ha polygon with a 3 ha one
+  // inside it shows 7 ha, and the inner one 0 ha); otherwise the whole polygon.
+  function shownAreaSqMeters(sIdx){
+    var s = shapes[sIdx], full = areaSqMeters(s.points);
+    if(!polyKnockoutOn || s.visible === false) return full;
+    var fills = computeKnockoutFills();
+    if(!fills || !(sIdx in fills)) return full;
+    return knockoutCache.areas[sIdx];
   }
 
   function redrawAll(opts){
@@ -298,7 +313,9 @@
           }
         }
         totals.polyCount++;
-        totals.totalPolyArea += areaSqMeters(pts);
+        var fullA = areaSqMeters(pts), shownA = shownAreaSqMeters(sIdx);
+        totals.totalPolyArea += shownA;
+        if(shownA < fullA - 0.01) totals.cutOverlap = true;
         if(sIdx === 0) tapTypeLabel = 'Полигон';
       }
     });
@@ -459,7 +476,7 @@
     saveSetting('polyKnockout', polyKnockoutOn);
     this.classList.toggle('on', polyKnockoutOn);
     redrawAll({ noFit:true });
-    toast(polyKnockoutOn ? 'Давхцсан хэсгүүд нэвт харагдана' : 'Давхцсан хэсгүүд энгийнээр будагдана');
+    toast(polyKnockoutOn ? 'Давхцсан хэсгүүд нэвт харагдана — талбайг давхцлыг хасч тооцно' : 'Давхцсан хэсгүүд энгийнээр будагдана — талбайг бүтнээр нь тооцно');
   });
 
   // ---------- Layers panel (visibility / color / opacity / rename) ----------
@@ -544,7 +561,7 @@
       var kindLabel = s.isTrack ? 'GPS' : (kind === 'point' ? 'ЦЭГ' : kind === 'line' ? 'ШУГАМ' : 'ПОЛИГОН');
       var visOn = s.visible !== false;
       var opacityPct = Math.round((s.opacity===undefined?1:s.opacity)*100);
-      var meta = kind === 'polygon' ? humanArea(areaSqMeters(s.points)).big
+      var meta = kind === 'polygon' ? humanArea(shownAreaSqMeters(idx)).big
                : kind === 'line' ? humanLen(pathLengthMeters(s.points)).big
                : s.points.length + ' цэг';
       var showVertices = shapeShowsVertices(s);
@@ -1012,7 +1029,7 @@
       html += '<div class="summary-card">';
       html += '<div class="summary-title">Нийт '+nonEmpty.length+' дүрс · '+parts.join(', ')+'</div>';
       if(totals.polyCount){
-        html += '<div class="summary-line">Нийт талбай: <b>'+fmt(totals.totalPolyArea/10000,2)+' га</b> ('+fmt(totals.totalPolyArea,0)+' м²)</div>';
+        html += '<div class="summary-line">Нийт талбай: <b>'+fmt(totals.totalPolyArea/10000,2)+' га</b> ('+fmt(totals.totalPolyArea,0)+' м²)'+(totals.cutOverlap?' · давхцал хассан':'')+'</div>';
       }
       if(totals.lineCount){
         html += '<div class="summary-line">Нийт урт: <b>'+fmt(totals.totalLineLen,1)+' м</b> ('+fmt(totals.totalLineLen/1000,2)+' км)</div>';
@@ -1070,7 +1087,8 @@
         ];
       } else {
         typeLabel = isTrack ? 'GPS ТАЛБАЙ' : 'ПОЛИГОН';
-        var area = areaSqMeters(pts);
+        var fullArea = areaSqMeters(pts);
+        var area = shownAreaSqMeters(entry.colorIdx);
         var per = perimeterMeters(pts);
         var ha = humanArea(area);
         big = ha.big; small = ha.small;
@@ -1080,6 +1098,12 @@
           {k:'ГА', v: fmt(area/10000,2)},
           {k:'М²', v: fmt(area,0)}
         ];
+        // "Cut out overlaps" removed part of this polygon: show what was taken off.
+        if(area < fullArea - 0.01){
+          small += ' · давхцал хассан';
+          grid.push({k:'БҮТЭН ТАЛБАЙ (ГА)', v: fmt(fullArea/10000,2)});
+          grid.push({k:'ДАВХЦАЛ (ГА)', v: fmt((fullArea-area)/10000,2)});
+        }
       }
 
       var isOpen = !!resultRowsOpen[entry.colorIdx];
