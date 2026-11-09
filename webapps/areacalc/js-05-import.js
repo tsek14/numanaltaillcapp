@@ -272,12 +272,19 @@
     });
   }
 
+  // Show a message and let the browser paint it before heavy work, so a big
+  // file reads as "working" rather than as a frozen page.
+  function busyStep(msg){
+    return function(v){ toast(msg); return new Promise(function(res){ setTimeout(function(){ res(v); }, 40); }); };
+  }
+
   function importOneFile(file){
+    toast('Файл уншиж байна…');
     var lowerName = file.name.toLowerCase();
     var ext = lowerName.substring(lowerName.lastIndexOf('.') + 1);
 
     if(ext === 'kml'){
-      return readFileAsText(file).then(function(text){
+      return readFileAsText(file).then(busyStep('Полигонуудыг боловсруулж байна…')).then(function(text){
         commitImportedShapes(parseKML(text), 'KML', file.name);
       });
     }
@@ -305,12 +312,12 @@
           .sort(function(a, b){ return a.split('/').length - b.split('/').length; });
         if(kmlEntries.length === 0) throw new Error('KMZ файлд .kml олдсонгүй');
         return zip.files[kmlEntries[0]].async('text');
-      }).then(function(text){
+      }).then(busyStep('Полигонуудыг боловсруулж байна…')).then(function(text){
         commitImportedShapes(parseKML(text), 'KMZ', file.name);
       });
     }
     if(ext === 'geojson' || ext === 'json'){
-      return readFileAsText(file).then(function(text){
+      return readFileAsText(file).then(busyStep('Полигонуудыг боловсруулж байна…')).then(function(text){
         var data = JSON.parse(text);
         commitImportedShapes(geojsonToImportedShapes(data), 'GeoJSON', file.name);
       });
@@ -325,7 +332,7 @@
         return readFileAsArrayBuffer(file);
       }).then(function(buf){
         return shp(buf);
-      }).then(function(data){
+      }).then(busyStep('Полигонуудыг боловсруулж байна…')).then(function(data){
         // shpjs resolves to a FeatureCollection, or an array of them when the
         // zip bundles multiple layers.
         var all = [];
