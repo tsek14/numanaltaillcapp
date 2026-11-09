@@ -309,7 +309,7 @@
     if(ea.length * eb.length > 200000){
       try{
         var big = turf.intersect(turf.polygon([A.ring]), turf.polygon([B.ring]));
-        return !!big && turf.area(big) > 0.01;
+        return !!big && geoAreaM2(big) > 0.01;
       } catch(e){ return false; }
     }
     for(var i=0;i<ea.length;i++){
@@ -326,7 +326,7 @@
       // One polygon lies entirely on the other's boundary (e.g. an exact duplicate): measure it.
       try{
         var x = turf.intersect(turf.polygon([A.ring]), turf.polygon([B.ring]));
-        return !!x && turf.area(x) > 0.01;
+        return !!x && geoAreaM2(x) > 0.01;
       } catch(e){ return false; }
     }
     return false;
@@ -378,7 +378,7 @@
           if(!diff) break; // completely covered by others
         }
         fills[it.idx] = diff ? diff.geometry : 'empty';
-        areas[it.idx] = diff ? turf.area(diff) : 0;
+        areas[it.idx] = diff ? geoAreaM2(diff) : 0;
       } catch(err){ /* e.g. a self-intersecting polygon turf can't process — draw that one normally */ }
     });
     var res = { fills:fills, areas:areas, pairs: pairs.map(function(p){ return [items[p[0]].idx, items[p[1]].idx]; }) };
@@ -690,7 +690,7 @@
       var f = fills[it.idx];
       if(f === 'empty'){ covered++; return; }
       var geom = f === undefined ? it.feat.geometry : f;
-      var full = turf.area(it.feat), vis = turf.area(geom);
+      var full = geoAreaM2(it.feat), vis = geoAreaM2(geom);
       main.push({ type:'Feature', geometry: geom, properties:{
         NAME: it.name, AREA_HA: round4(vis/10000), AREA_M2: Math.round(vis),
         FULL_HA: round4(full/10000), CUT_HA: round4((full - vis)/10000), COLOR: it.color || ''
@@ -709,12 +709,12 @@
     var holes = [];
     if(union){
       turf.flatten(union).features.forEach(function(piece){
-        var area = turf.area(piece);
+        var area = geoAreaM2(piece);
         if(area < 0.01) return; // polygons that only touch along an edge
         var pb = turf.bbox(piece);
         var names = items.filter(function(it){
           if(!bboxIntersects(it.bbox, pb)) return false;
-          try{ var y = turf.intersect(piece, it.feat); return !!y && turf.area(y) > 0.01; } catch(e){ return false; }
+          try{ var y = turf.intersect(piece, it.feat); return !!y && geoAreaM2(y) > 0.01; } catch(e){ return false; }
         }).map(function(it){ return it.name; });
         holes.push({ type:'Feature', geometry: piece.geometry, properties:{
           NAME: (en ? 'Hole ' : 'Цоорхой ') + (holes.length + 1),
@@ -1272,19 +1272,22 @@
   // This app's shapes are a single ring, so a polygon with holes (a burned
   // area with unburned islands, a boundary with a hole) is cut into hole-free
   // pieces instead of dropping the holes and filling them in (which counted
-  // that area twice). Each step cuts along the median hole (alternating
-  // north–south / east–west by the polygon's shape), which opens that hole
-  // and leaves about half of the others on each side, so the work grows with
-  // vertices × log(holes) rather than vertices × holes — a big burned area
-  // with thousands of holes imports in about a second.
+  // that area twice). Each step cuts along the meridian through the median
+  // hole, which opens that hole and leaves about half of the others on each
+  // side, so the work grows with vertices × log(holes) rather than
+  // vertices × holes — a big burned area with thousands of holes imports in
+  // about a second. Cuts always follow meridians: a meridian is a geodesic,
+  // so the two sides of a cut add up to exactly the original area on the
+  // ellipsoid (see ringAreaEllipsoid), whichever points each side keeps on it.
   // Returns closed [lng,lat] outer rings.
   function holeFreeRings(geometry){
+    geometry = densifyGeometry(geometry); // cut points on long edges then lie on the geodesic
     var stack = (geometry.type === 'MultiPolygon' ? geometry.coordinates : [geometry.coordinates]).slice();
     var out = [], steps = 0;
     while(stack.length){
       var poly = stack.pop();
       if(poly.length <= 1 || ++steps > 20000){ out.push(poly[0]); continue; }
-      var feat = turf.polygon(poly), b = turf.bbox(feat), vertical = (b[2] - b[0]) >= (b[3] - b[1]);
+      var feat = turf.polygon(poly), b = turf.bbox(feat), vertical = true;
       var centres = poly.slice(1).map(function(h){
         var lo = Infinity, hi = -Infinity, k = vertical ? 0 : 1;
         for(var q=0;q<h.length;q++){ if(h[q][k] < lo) lo = h[q][k]; if(h[q][k] > hi) hi = h[q][k]; }
@@ -1302,7 +1305,7 @@
       } catch(e){ out.push(poly[0]); continue; } // topology edge case: keep the outline as before
       halves.forEach(function(h){ stack.push(h); });
     }
-    return out.filter(function(r){ return r.length >= 4 && turf.area(turf.polygon([r])) > 0.01; });
+    return out.filter(function(r){ return r.length >= 4 && geoAreaM2(turf.polygon([r])) > 0.01; });
   }
 
   // Converts one turf geometry (Polygon or MultiPolygon) coming out of a
@@ -1335,6 +1338,7 @@
   function clipShapeByBoundary(shape, splitKey, sourceFeatures){
     var userCoords = shape.points.map(function(p){ return [p.lng, p.lat]; });
     userCoords.push(userCoords[0]);
+    userCoords = densifyRingGeodesic(userCoords); // long edges follow the geodesic, so pieces add up exactly
     var userPoly;
     try{
       userPoly = turf.polygon([userCoords]);
@@ -1353,7 +1357,8 @@
       if(!isPolygonal(f) || !bboxIntersects(f.bbox, userBbox)) continue; // lines/points in a GeoJSON file cannot clip
       var boundaryPoly;
       try{
-        boundaryPoly = f.geometry.type === 'MultiPolygon' ? turf.multiPolygon(f.geometry.coordinates) : turf.polygon(f.geometry.coordinates);
+        var bg = f._dg || (f._dg = densifyGeometry(f.geometry));
+        boundaryPoly = bg.type === 'MultiPolygon' ? turf.multiPolygon(bg.coordinates) : turf.polygon(bg.coordinates);
       } catch(e){ continue; } // skip malformed boundary geometry rather than aborting the whole split
       var clipped;
       try{

@@ -1117,11 +1117,168 @@
     return turf.distance([a.lng,a.lat],[b.lng,b.lat], {units:'kilometers'}) * 1000;
   }
 
+  // ---------- Area on the WGS84 ellipsoid ----------
+  // turf.area treats the Earth as a sphere (radius 6378137 m), which in
+  // Mongolia reads about 0.04–0.05 % smaller than ArcGIS / QGIS, which
+  // measure on the WGS84 ellipsoid. Areas here use the ellipsoid too: on it,
+  // dA = (a²/2) dq dλ with q the authalic-latitude function, so a ring's
+  // area is (a²/4)·|Σ qᵢ (λᵢ₊₁ − λᵢ₋₁)| — the same shoelace sum turf uses,
+  // with 2·sinφ replaced by q(φ).
+  var WGS84_A = 6378137, WGS84_F = 1 / 298.257223563;
+  var WGS84_E2 = WGS84_F * (2 - WGS84_F), WGS84_E = Math.sqrt(WGS84_E2);
+  function authalicQ(latDeg){
+    var s = Math.sin(latDeg * Math.PI / 180), es = WGS84_E * s;
+    return (1 - WGS84_E2) * (s / (1 - es * es) - Math.log((1 - es) / (1 + es)) / (2 * WGS84_E));
+  }
+  // Edges longer than ~1 km are followed along the great circle (as ArcGIS
+  // and QGIS treat edges as geodesics) rather than as a straight line in
+  // degrees; short edges, like those of mapped areas, need no extra points.
+  var AREA_DENSIFY_DEG = 0.01;   // edges longer than this get extra points…
+  var AREA_STEP_DEG = 0.002;     // …about this far apart (≈200 m)
+  // Points along the WGS84 geodesic from a to b (Vincenty's formulae, about
+  // 0.1 mm accurate), dividing it into k equal parts; nearly antipodal ends,
+  // where Vincenty does not converge, fall back to a great circle.
+  var WGS84_B = WGS84_A * (1 - WGS84_F);
+  function vincentyInverse(lat1, lon1, lat2, lon2){
+    var f = WGS84_F, L = lon2 - lon1;
+    var U1 = Math.atan((1 - f) * Math.tan(lat1)), U2 = Math.atan((1 - f) * Math.tan(lat2));
+    var sU1 = Math.sin(U1), cU1 = Math.cos(U1), sU2 = Math.sin(U2), cU2 = Math.cos(U2);
+    var lam = L, lamP, it = 0, sinS, cosS, sig, sinA, cos2A, cos2Sm, sl, cl;
+    do{
+      sl = Math.sin(lam); cl = Math.cos(lam);
+      sinS = Math.sqrt((cU2*sl)*(cU2*sl) + (cU1*sU2 - sU1*cU2*cl)*(cU1*sU2 - sU1*cU2*cl));
+      if(sinS === 0) return { s:0, az:0 };
+      cosS = sU1*sU2 + cU1*cU2*cl;
+      sig = Math.atan2(sinS, cosS);
+      sinA = cU1*cU2*sl / sinS;
+      cos2A = 1 - sinA*sinA;
+      cos2Sm = cos2A !== 0 ? cosS - 2*sU1*sU2/cos2A : 0;
+      var C = f/16 * cos2A * (4 + f*(4 - 3*cos2A));
+      lamP = lam;
+      lam = L + (1 - C) * f * sinA * (sig + C*sinS*(cos2Sm + C*cosS*(-1 + 2*cos2Sm*cos2Sm)));
+    } while(Math.abs(lam - lamP) > 1e-12 && ++it < 200);
+    if(it >= 200) return null;
+    var uSq = cos2A * (WGS84_A*WGS84_A - WGS84_B*WGS84_B) / (WGS84_B*WGS84_B);
+    var A = 1 + uSq/16384*(4096 + uSq*(-768 + uSq*(320 - 175*uSq)));
+    var B = uSq/1024*(256 + uSq*(-128 + uSq*(74 - 47*uSq)));
+    var dS = B*sinS*(cos2Sm + B/4*(cosS*(-1 + 2*cos2Sm*cos2Sm) - B/6*cos2Sm*(-3 + 4*sinS*sinS)*(-3 + 4*cos2Sm*cos2Sm)));
+    return { s: WGS84_B*A*(sig - dS), az: Math.atan2(cU2*sl, cU1*sU2 - sU1*cU2*cl) };
+  }
+  function vincentyDirect(lat1, lon1, az, dist){
+    var f = WGS84_F, sa1 = Math.sin(az), ca1 = Math.cos(az);
+    var tU1 = (1 - f) * Math.tan(lat1), cU1 = 1 / Math.sqrt(1 + tU1*tU1), sU1 = tU1 * cU1;
+    var s1 = Math.atan2(tU1, ca1), sinA = cU1*sa1, cos2A = 1 - sinA*sinA;
+    var uSq = cos2A * (WGS84_A*WGS84_A - WGS84_B*WGS84_B) / (WGS84_B*WGS84_B);
+    var A = 1 + uSq/16384*(4096 + uSq*(-768 + uSq*(320 - 175*uSq)));
+    var B = uSq/1024*(256 + uSq*(-128 + uSq*(74 - 47*uSq)));
+    var sig = dist / (WGS84_B*A), sigP, it = 0, cos2Sm, sinS, cosS;
+    do{
+      cos2Sm = Math.cos(2*s1 + sig); sinS = Math.sin(sig); cosS = Math.cos(sig);
+      var dS = B*sinS*(cos2Sm + B/4*(cosS*(-1 + 2*cos2Sm*cos2Sm) - B/6*cos2Sm*(-3 + 4*sinS*sinS)*(-3 + 4*cos2Sm*cos2Sm)));
+      sigP = sig; sig = dist / (WGS84_B*A) + dS;
+    } while(Math.abs(sig - sigP) > 1e-12 && ++it < 100);
+    var x = sU1*sinS - cU1*cosS*ca1;
+    var lat2 = Math.atan2(sU1*cosS + cU1*sinS*ca1, (1 - f)*Math.sqrt(sinA*sinA + x*x));
+    var lam = Math.atan2(sinS*sa1, cU1*cosS - sU1*sinS*ca1);
+    var C = f/16 * cos2A * (4 + f*(4 - 3*cos2A));
+    var Lr = lam - (1 - C)*f*sinA*(sig + C*sinS*(cos2Sm + C*cosS*(-1 + 2*cos2Sm*cos2Sm)));
+    return [lon1 + Lr, lat2];
+  }
+  function greatCirclePoints(a, b, k){
+    var r = Math.PI / 180, out = [];
+    var inv = vincentyInverse(a[1]*r, a[0]*r, b[1]*r, b[0]*r);
+    if(inv){
+      for(var n=1;n<k;n++){
+        var q = vincentyDirect(a[1]*r, a[0]*r, inv.az, inv.s * n / k);
+        out.push([q[0] / r, q[1] / r]);
+      }
+      return out;
+    }
+    var la1 = a[1]*r, lo1 = a[0]*r, la2 = b[1]*r, lo2 = b[0]*r;
+    var P = [Math.cos(la1)*Math.cos(lo1), Math.cos(la1)*Math.sin(lo1), Math.sin(la1)];
+    var Q = [Math.cos(la2)*Math.cos(lo2), Math.cos(la2)*Math.sin(lo2), Math.sin(la2)];
+    var d = Math.max(-1, Math.min(1, P[0]*Q[0] + P[1]*Q[1] + P[2]*Q[2])), w = Math.acos(d), sw = Math.sin(w);
+    for(var i=1;i<k;i++){
+      var t = i / k, fa = sw ? Math.sin((1-t)*w)/sw : 1-t, fb = sw ? Math.sin(t*w)/sw : t;
+      var x = fa*P[0] + fb*Q[0], y = fa*P[1] + fb*Q[1], z = fa*P[2] + fb*Q[2];
+      var lng = Math.atan2(y, x) / r;
+      while(lng - a[0] > 180) lng -= 360;
+      while(lng - a[0] < -180) lng += 360;
+      out.push([lng, Math.atan2(z, Math.sqrt(x*x + y*y)) / r]);
+    }
+    return out;
+  }
+  // A ring with every edge longer than AREA_DENSIFY_DEG followed along the
+  // geodesic (points AREA_STEP_DEG apart). Meridians are already geodesics
+  // and are left alone. Returns the same array when nothing needs adding.
+  // Clipping uses the densified outlines too, so the points where a clip
+  // cuts a long edge lie on the geodesic and the pieces add up exactly.
+  function densifyRingGeodesic(ring){
+    var n = ring.length, closed = n > 1 && ring[0][0] === ring[n-1][0] && ring[0][1] === ring[n-1][1];
+    if(closed) n--;
+    var need = false;
+    for(var e=0;e<n;e++){
+      var p1 = ring[e], p2 = ring[(e + 1) % n];
+      if(p1[0] !== p2[0] && Math.max(Math.abs(p2[0]-p1[0]), Math.abs(p2[1]-p1[1])) > AREA_DENSIFY_DEG){ need = true; break; }
+    }
+    if(!need) return ring;
+    var out = [];
+    for(var j=0;j<n;j++){
+      var a = ring[j], b = ring[(j + 1) % n], span = Math.max(Math.abs(b[0]-a[0]), Math.abs(b[1]-a[1]));
+      out.push(a);
+      if(j === n - 1 && !closed && n < 3) break;
+      if(a[0] !== b[0] && span > AREA_DENSIFY_DEG){
+        var extra = greatCirclePoints(a, b, Math.min(20000, Math.ceil(span / AREA_STEP_DEG)));
+        for(var x=0;x<extra.length;x++) out.push(extra[x]);
+      }
+    }
+    if(closed) out.push(out[0]);
+    return out;
+  }
+  function densifyGeometry(g){
+    if(!g) return g;
+    if(g.type === 'Polygon') return { type:'Polygon', coordinates: g.coordinates.map(densifyRingGeodesic) };
+    if(g.type === 'MultiPolygon') return { type:'MultiPolygon', coordinates: g.coordinates.map(function(p){ return p.map(densifyRingGeodesic); }) };
+    return g;
+  }
+  // Area (m²) of one ring of [lng, lat] positions, open or closed.
+  function ringAreaEllipsoid(ring){
+    var pts = densifyRingGeodesic(ring), n = pts.length;
+    if(n > 1 && pts[0][0] === pts[n-1][0] && pts[0][1] === pts[n-1][1]) n--;
+    if(n < 3) return 0;
+    var sum = 0;
+    for(var k=0;k<n;k++){
+      var prev = pts[(k + n - 1) % n][0], next = pts[(k + 1) % n][0];
+      sum += (next - prev) * authalicQ(pts[k][1]);
+    }
+    return Math.abs(sum) * (Math.PI / 180) * WGS84_A * WGS84_A / 4;
+  }
+  // Area (m²) of any GeoJSON Polygon / MultiPolygon / Feature / FeatureCollection;
+  // holes are subtracted.
+  function geoAreaM2(g){
+    if(!g) return 0;
+    if(g.type === 'FeatureCollection') return g.features.reduce(function(a, f){ return a + geoAreaM2(f); }, 0);
+    if(g.type === 'Feature') return geoAreaM2(g.geometry);
+    if(g.type === 'GeometryCollection') return (g.geometries || []).reduce(function(a, x){ return a + geoAreaM2(x); }, 0);
+    var polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+    var total = 0;
+    polys.forEach(function(p){
+      p.forEach(function(r, i){ total += (i ? -1 : 1) * ringAreaEllipsoid(r); });
+    });
+    return total;
+  }
+
+  // Memoised per points array: a redraw asks for the same areas several times,
+  // and the check value catches points edited in place.
+  var areaMemo = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
   function areaSqMeters(pts){
-    var coords = pts.map(function(p){return [p.lng,p.lat];});
-    coords.push(coords[0]);
-    var poly = turf.polygon([coords]);
-    return turf.area(poly);
+    var chk = pts.length;
+    for(var i=0;i<pts.length;i++) chk = (chk * 31 + pts[i].lat * 1e7 + pts[i].lng * 3e7) % 1e15;
+    var m = areaMemo && areaMemo.get(pts);
+    if(m && m.chk === chk) return m.area;
+    var area = ringAreaEllipsoid(pts.map(function(p){ return [p.lng, p.lat]; }));
+    if(areaMemo) areaMemo.set(pts, { chk:chk, area:area });
+    return area;
   }
 
   function perimeterMeters(pts){
