@@ -114,9 +114,9 @@
   // two new batches hold the pieces inside the boundaries and the rest
   // (including polygons the boundaries do not touch at all).
   function splitBatchByBoundary(id, splitKey){
-    var sourceFeatures = splitBoundarySourceFeatures(splitKey);
+    var src = splitSource(splitKey), sourceFeatures = src.features;
     if(sourceFeatures.length === 0){
-      toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
+      toast(src.typing ? 'Идэвхтэй төрөл алга — давхаргын тохиргооноос төрлөө идэвхжүүлнэ үү' : SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
       return;
     }
     toast('Хувааж байна…');
@@ -142,9 +142,11 @@
         toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхаргатай огтлолцсонгүй — полигон уг давхаргын хамрах хүрээнээс гадуур байж болзошгүй');
         return;
       }
-      var inId = newBatchId(), outId = newBatchId(), oc = otherColor(color);
-      inside.forEach(function(p){ p.batchId = inId; p.batchName = name + ' — ' + overlapLabel(true); p.color = color; });
+      var outId = newBatchId(), oc = otherColor(color);
+      var groups = batchPiecesByType(inside, name, color, src.typing);
       outsideShapes.forEach(function(p){ p.batchId = outId; p.batchName = name + ' — ' + overlapLabel(false); p.color = oc; });
+      inside = [];
+      groups.forEach(function(g){ inside = inside.concat(g.list); });
       pushUndo();
       idxs.forEach(function(i){ shapes[i].visible = false; });
       var out = [];
@@ -154,7 +156,7 @@
       });
       replaceShapes(out);
       redrawAll({ noFit:true });
-      var msg = '"' + name + '" багц: ' + inside.length + ' давхцсан, ' + outsideShapes.length + ' давхцаагүй хэсэг — 2 багц болж тайрагдлаа; анхны багц нуугдсан';
+      var msg = '"' + name + '" → ' + groupsText(groups, outsideShapes.length) + '; анхны багц нуугдсан';
       if(kept) msg += ', ' + kept + ' шугам/цэг анхны багцад үлдлээ';
       if(bad) msg += ', ' + bad + ' полигоныг хувааж чадсангүй';
       toast(msg);
@@ -1107,6 +1109,17 @@
       { key:'cadastre', label:'Кадастрын нэгж талбараар', ready: cadastreReady(), hint:'Кадастрын зураг ачаалаагүй байна' },
       userGjSplitItem()
     ];
+    // Layers coloured by type clip into one batch per switched-on type.
+    items.forEach(function(it){
+      if(!it.ready || ['mrpam','cadastre','usergj'].indexOf(it.key) < 0) return;
+      var src = splitSource(it.key);
+      if(!src.typing) return;
+      var on = {};
+      src.features.forEach(function(f){ if(isPolygonal(f)) on[f._t] = 1; });
+      var n = Object.keys(on).length;
+      if(!n){ it.ready = false; it.hint = 'Идэвхтэй төрөл алга — давхаргын тохиргооноос төрлөө идэвхжүүлнэ үү'; return; }
+      it.label += ' — ' + n + ' төрлөөр';
+    });
     var html = '';
     var anyReady = items.some(function(it){ return it.ready; });
     if(!anyReady){
@@ -1158,6 +1171,77 @@
       ready: hasPoly,
       hint: loaded ? 'GeoJSON файлд полигон алга' : 'GeoJSON файл ачаалаагүй байна'
     };
+  }
+
+  // The layer's own "colour by type" setting (⋯ menu → layer settings), if it
+  // has one: GeoJSON and cadastre use the property chosen there, MRPAM its
+  // licence type. Clipping then makes one batch per type that is switched
+  // on, and leaves switched-off types out entirely.
+  function splitTyping(splitKey){
+    if(splitKey === 'usergj' && typeof userGjTypeKey !== 'undefined' && userGjTypeKey){
+      return { key:userGjTypeKey, typeOf:userGjTypeOf, hidden:isUserGjTypeHidden, order:userGjTypeOrder, color:function(t){ return userGjTypeColors[t]; } };
+    }
+    if(splitKey === 'cadastre' && typeof cadastreTypeKey !== 'undefined' && cadastreTypeKey){
+      return { key:cadastreTypeKey, typeOf:cadastreTypeOf, hidden:isCadastreTypeHidden, order:cadastreTypeOrder, color:function(t){ return cadastreTypeColors[t]; } };
+    }
+    if(splitKey === 'mrpam' && typeof mrpamTypeColors !== 'undefined' && Object.keys(mrpamTypeColors).length){
+      return {
+        key:'type',
+        typeOf:function(props){ var t = props && props.type; return (t === undefined || t === null || t === '') ? null : String(t); },
+        hidden:function(t){ return t !== null && !!mrpamTypesHidden[t]; },
+        order:Object.keys(mrpamTypeColors),
+        color:function(t){ return mrpamTypeColors[t]; }
+      };
+    }
+    return null;
+  }
+  // Boundaries to clip with, as { bbox, geometry, properties, _i (index in
+  // the layer), _t (type or null) }: switched-off types removed, and ordered
+  // by the type list so that where two types overlap, the one listed first
+  // in the layer settings gets the area (no area is counted twice).
+  function splitSource(splitKey){
+    var raw = splitBoundarySourceFeatures(splitKey), typing = splitTyping(splitKey), out = [];
+    var rank = {};
+    if(typing) typing.order.forEach(function(t, k){ rank[t] = k; });
+    for(var i=0;i<raw.length;i++){
+      var f = raw[i], t = typing ? typing.typeOf(f.properties) : null;
+      if(typing && typing.hidden(t)) continue;
+      out.push({ bbox:f.bbox, geometry:f.geometry, properties:f.properties, _i:i, _t:t });
+    }
+    if(typing){
+      out.sort(function(a, b){
+        var ra = a._t in rank ? rank[a._t] : 1e9, rb = b._t in rank ? rank[b._t] : 1e9;
+        return ra - rb || a._i - b._i;
+      });
+    }
+    return { features: out, typing: typing };
+  }
+  // Puts clipped pieces into batches: one per type (in the type list's order)
+  // when the layer is coloured by type, otherwise a single "overlapping" one.
+  // Returns [{ label, count }] for the message.
+  function batchPiecesByType(pieces, baseName, color, typing){
+    var groups = [], byKey = {};
+    pieces.forEach(function(p){
+      var k = p.splitType === undefined || p.splitType === null ? '' : p.splitType;
+      if(!byKey[k]){
+        byKey[k] = { key:k, id:newBatchId(), label: k || overlapLabel(true), color: (k && typing && typing.color(k)) || color, list:[] };
+        groups.push(byKey[k]);
+      }
+      byKey[k].list.push(p);
+    });
+    if(typing){
+      var rank = {}; typing.order.forEach(function(t, k){ rank[t] = k; });
+      groups.sort(function(a, b){ return (a.key in rank ? rank[a.key] : 1e9) - (b.key in rank ? rank[b.key] : 1e9); });
+    }
+    groups.forEach(function(g){
+      g.list.forEach(function(p){ p.batchId = g.id; p.batchName = baseName + ' — ' + g.label; p.color = g.color; delete p.splitType; });
+    });
+    return groups;
+  }
+  function groupsText(groups, outsideCount){
+    var parts = groups.map(function(g){ return g.label + ' (' + g.list.length + ')'; });
+    if(outsideCount) parts.push(overlapLabel(false) + ' (' + outsideCount + ')');
+    return parts.length + ' багц: ' + parts.join(', ');
   }
 
   function splitBoundarySourceFeatures(splitKey){
@@ -1281,8 +1365,9 @@
       if(partition){
         try{ remaining = turf.difference(remaining, boundaryPoly); } catch(e){}
       }
-      var pieceName = splitPieceName(shape.name, splitKey, f.properties, i);
+      var pieceName = splitPieceName(shape.name, splitKey, f.properties, f._i === undefined ? i : f._i);
       var newShapes = turfGeometryToShapes(clipped.geometry, pieceName, shape);
+      if(f._t !== undefined) newShapes.forEach(function(ns){ ns.splitType = f._t; });
       if(newShapes.length){
         pieces = pieces.concat(newShapes);
         touchedNames.push(pieceName.split(' — ')[1]);
@@ -1314,9 +1399,9 @@
       toast('Зөвхөн полигоныг хуваах боломжтой');
       return;
     }
-    var sourceFeatures = splitBoundarySourceFeatures(splitKey);
+    var src = splitSource(splitKey), sourceFeatures = src.features;
     if(sourceFeatures.length === 0){
-      toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
+      toast(src.typing ? 'Идэвхтэй төрөл алга — давхаргын тохиргооноос төрлөө идэвхжүүлнэ үү' : SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
       return;
     }
     var res = clipShapeByBoundary(shape, splitKey, sourceFeatures);
@@ -1328,19 +1413,21 @@
       toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхаргатай огтлолцсонгүй — полигон уг давхаргын хамрах хүрээнээс гадуур байж болзошгүй');
       return;
     }
-    var inId = newBatchId(), outId = newBatchId(), oc = otherColor(shape.color);
-    res.pieces.forEach(function(p){ p.batchId = inId; p.batchName = shape.name + ' — ' + overlapLabel(true); });
+    var outId = newBatchId(), oc = otherColor(shape.color);
+    var groups = batchPiecesByType(res.pieces, shape.name, shape.color, src.typing);
     res.outside.forEach(function(p){ p.batchId = outId; p.batchName = shape.name + ' — ' + overlapLabel(false); p.color = oc; });
+    var ordered = [];
+    groups.forEach(function(g){ ordered = ordered.concat(g.list); });
 
     pushUndo();
     shape.visible = false;
-    var out = shapes.slice(0, shapeIdx + 1).concat(res.pieces, res.outside, shapes.slice(shapeIdx + 1));
+    var out = shapes.slice(0, shapeIdx + 1).concat(ordered, res.outside, shapes.slice(shapeIdx + 1));
     replaceShapes(out);
     // Tap tools (centre point, GPS, remove point) must not edit a batch member.
     shapes.push({ points: [] });
     tapShapeIndex = shapes.length - 1;
     redrawAll();
-    toast('"' + shape.name + '" → ' + res.pieces.length + ' давхцсан, ' + res.outside.length + ' давхцаагүй хэсэг — 2 багц болж тайрагдлаа; анхны полигон нуугдсан');
+    toast('"' + shape.name + '" → ' + groupsText(groups, res.outside.length) + '; анхны полигон нуугдсан');
   }
 
 
