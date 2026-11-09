@@ -114,9 +114,9 @@
   // two new batches hold the pieces inside the boundaries and the rest
   // (including polygons the boundaries do not touch at all).
   function splitBatchByBoundary(id, splitKey){
-    var sourceFeatures = splitBoundarySourceFeatures(splitKey);
+    var src = splitSource(splitKey), sourceFeatures = src.features;
     if(sourceFeatures.length === 0){
-      toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
+      toast(src.typing ? 'Идэвхтэй төрөл алга — давхаргын тохиргооноос төрлөө идэвхжүүлнэ үү' : SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
       return;
     }
     toast('Хувааж байна…');
@@ -142,9 +142,11 @@
         toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхаргатай огтлолцсонгүй — полигон уг давхаргын хамрах хүрээнээс гадуур байж болзошгүй');
         return;
       }
-      var inId = newBatchId(), outId = newBatchId(), oc = otherColor(color);
-      inside.forEach(function(p){ p.batchId = inId; p.batchName = name + ' — ' + overlapLabel(true); p.color = color; });
+      var outId = newBatchId(), oc = otherColor(color);
+      var groups = batchPiecesByType(inside, name, color, src.typing);
       outsideShapes.forEach(function(p){ p.batchId = outId; p.batchName = name + ' — ' + overlapLabel(false); p.color = oc; });
+      inside = [];
+      groups.forEach(function(g){ inside = inside.concat(g.list); });
       pushUndo();
       idxs.forEach(function(i){ shapes[i].visible = false; });
       var out = [];
@@ -154,7 +156,7 @@
       });
       replaceShapes(out);
       redrawAll({ noFit:true });
-      var msg = '"' + name + '" багц: ' + inside.length + ' давхцсан, ' + outsideShapes.length + ' давхцаагүй хэсэг — 2 багц болж тайрагдлаа; анхны багц нуугдсан';
+      var msg = '"' + name + '" → ' + groupsText(groups, outsideShapes.length) + '; анхны багц нуугдсан';
       if(kept) msg += ', ' + kept + ' шугам/цэг анхны багцад үлдлээ';
       if(bad) msg += ', ' + bad + ' полигоныг хувааж чадсангүй';
       toast(msg);
@@ -307,7 +309,7 @@
     if(ea.length * eb.length > 200000){
       try{
         var big = turf.intersect(turf.polygon([A.ring]), turf.polygon([B.ring]));
-        return !!big && turf.area(big) > 0.01;
+        return !!big && geoAreaM2(big) > 0.01;
       } catch(e){ return false; }
     }
     for(var i=0;i<ea.length;i++){
@@ -324,7 +326,7 @@
       // One polygon lies entirely on the other's boundary (e.g. an exact duplicate): measure it.
       try{
         var x = turf.intersect(turf.polygon([A.ring]), turf.polygon([B.ring]));
-        return !!x && turf.area(x) > 0.01;
+        return !!x && geoAreaM2(x) > 0.01;
       } catch(e){ return false; }
     }
     return false;
@@ -376,7 +378,7 @@
           if(!diff) break; // completely covered by others
         }
         fills[it.idx] = diff ? diff.geometry : 'empty';
-        areas[it.idx] = diff ? turf.area(diff) : 0;
+        areas[it.idx] = diff ? geoAreaM2(diff) : 0;
       } catch(err){ /* e.g. a self-intersecting polygon turf can't process — draw that one normally */ }
     });
     var res = { fills:fills, areas:areas, pairs: pairs.map(function(p){ return [items[p[0]].idx, items[p[1]].idx]; }) };
@@ -688,7 +690,7 @@
       var f = fills[it.idx];
       if(f === 'empty'){ covered++; return; }
       var geom = f === undefined ? it.feat.geometry : f;
-      var full = turf.area(it.feat), vis = turf.area(geom);
+      var full = geoAreaM2(it.feat), vis = geoAreaM2(geom);
       main.push({ type:'Feature', geometry: geom, properties:{
         NAME: it.name, AREA_HA: round4(vis/10000), AREA_M2: Math.round(vis),
         FULL_HA: round4(full/10000), CUT_HA: round4((full - vis)/10000), COLOR: it.color || ''
@@ -707,12 +709,12 @@
     var holes = [];
     if(union){
       turf.flatten(union).features.forEach(function(piece){
-        var area = turf.area(piece);
+        var area = geoAreaM2(piece);
         if(area < 0.01) return; // polygons that only touch along an edge
         var pb = turf.bbox(piece);
         var names = items.filter(function(it){
           if(!bboxIntersects(it.bbox, pb)) return false;
-          try{ var y = turf.intersect(piece, it.feat); return !!y && turf.area(y) > 0.01; } catch(e){ return false; }
+          try{ var y = turf.intersect(piece, it.feat); return !!y && geoAreaM2(y) > 0.01; } catch(e){ return false; }
         }).map(function(it){ return it.name; });
         holes.push({ type:'Feature', geometry: piece.geometry, properties:{
           NAME: (en ? 'Hole ' : 'Цоорхой ') + (holes.length + 1),
@@ -1107,6 +1109,17 @@
       { key:'cadastre', label:'Кадастрын нэгж талбараар', ready: cadastreReady(), hint:'Кадастрын зураг ачаалаагүй байна' },
       userGjSplitItem()
     ];
+    // Layers coloured by type clip into one batch per switched-on type.
+    items.forEach(function(it){
+      if(!it.ready || ['mrpam','cadastre','usergj'].indexOf(it.key) < 0) return;
+      var src = splitSource(it.key);
+      if(!src.typing) return;
+      var on = {};
+      src.features.forEach(function(f){ if(isPolygonal(f)) on[f._t] = 1; });
+      var n = Object.keys(on).length;
+      if(!n){ it.ready = false; it.hint = 'Идэвхтэй төрөл алга — давхаргын тохиргооноос төрлөө идэвхжүүлнэ үү'; return; }
+      it.label += ' — ' + n + ' төрлөөр';
+    });
     var html = '';
     var anyReady = items.some(function(it){ return it.ready; });
     if(!anyReady){
@@ -1160,6 +1173,77 @@
     };
   }
 
+  // The layer's own "colour by type" setting (⋯ menu → layer settings), if it
+  // has one: GeoJSON and cadastre use the property chosen there, MRPAM its
+  // licence type. Clipping then makes one batch per type that is switched
+  // on, and leaves switched-off types out entirely.
+  function splitTyping(splitKey){
+    if(splitKey === 'usergj' && typeof userGjTypeKey !== 'undefined' && userGjTypeKey){
+      return { key:userGjTypeKey, typeOf:userGjTypeOf, hidden:isUserGjTypeHidden, order:userGjTypeOrder, color:function(t){ return userGjTypeColors[t]; } };
+    }
+    if(splitKey === 'cadastre' && typeof cadastreTypeKey !== 'undefined' && cadastreTypeKey){
+      return { key:cadastreTypeKey, typeOf:cadastreTypeOf, hidden:isCadastreTypeHidden, order:cadastreTypeOrder, color:function(t){ return cadastreTypeColors[t]; } };
+    }
+    if(splitKey === 'mrpam' && typeof mrpamTypeColors !== 'undefined' && Object.keys(mrpamTypeColors).length){
+      return {
+        key:'type',
+        typeOf:function(props){ var t = props && props.type; return (t === undefined || t === null || t === '') ? null : String(t); },
+        hidden:function(t){ return t !== null && !!mrpamTypesHidden[t]; },
+        order:Object.keys(mrpamTypeColors),
+        color:function(t){ return mrpamTypeColors[t]; }
+      };
+    }
+    return null;
+  }
+  // Boundaries to clip with, as { bbox, geometry, properties, _i (index in
+  // the layer), _t (type or null) }: switched-off types removed, and ordered
+  // by the type list so that where two types overlap, the one listed first
+  // in the layer settings gets the area (no area is counted twice).
+  function splitSource(splitKey){
+    var raw = splitBoundarySourceFeatures(splitKey), typing = splitTyping(splitKey), out = [];
+    var rank = {};
+    if(typing) typing.order.forEach(function(t, k){ rank[t] = k; });
+    for(var i=0;i<raw.length;i++){
+      var f = raw[i], t = typing ? typing.typeOf(f.properties) : null;
+      if(typing && typing.hidden(t)) continue;
+      out.push({ bbox:f.bbox, geometry:f.geometry, properties:f.properties, _i:i, _t:t });
+    }
+    if(typing){
+      out.sort(function(a, b){
+        var ra = a._t in rank ? rank[a._t] : 1e9, rb = b._t in rank ? rank[b._t] : 1e9;
+        return ra - rb || a._i - b._i;
+      });
+    }
+    return { features: out, typing: typing };
+  }
+  // Puts clipped pieces into batches: one per type (in the type list's order)
+  // when the layer is coloured by type, otherwise a single "overlapping" one.
+  // Returns [{ label, count }] for the message.
+  function batchPiecesByType(pieces, baseName, color, typing){
+    var groups = [], byKey = {};
+    pieces.forEach(function(p){
+      var k = p.splitType === undefined || p.splitType === null ? '' : p.splitType;
+      if(!byKey[k]){
+        byKey[k] = { key:k, id:newBatchId(), label: k || overlapLabel(true), color: (k && typing && typing.color(k)) || color, list:[] };
+        groups.push(byKey[k]);
+      }
+      byKey[k].list.push(p);
+    });
+    if(typing){
+      var rank = {}; typing.order.forEach(function(t, k){ rank[t] = k; });
+      groups.sort(function(a, b){ return (a.key in rank ? rank[a.key] : 1e9) - (b.key in rank ? rank[b.key] : 1e9); });
+    }
+    groups.forEach(function(g){
+      g.list.forEach(function(p){ p.batchId = g.id; p.batchName = baseName + ' — ' + g.label; p.color = g.color; delete p.splitType; });
+    });
+    return groups;
+  }
+  function groupsText(groups, outsideCount){
+    var parts = groups.map(function(g){ return g.label + ' (' + g.list.length + ')'; });
+    if(outsideCount) parts.push(overlapLabel(false) + ' (' + outsideCount + ')');
+    return parts.length + ' багц: ' + parts.join(', ');
+  }
+
   function splitBoundarySourceFeatures(splitKey){
     if(splitKey === 'mrpam') return mrpamFeatures || [];
     if(splitKey === 'cadastre') return cadastreReady() ? cadastreFeatures : [];
@@ -1188,19 +1272,22 @@
   // This app's shapes are a single ring, so a polygon with holes (a burned
   // area with unburned islands, a boundary with a hole) is cut into hole-free
   // pieces instead of dropping the holes and filling them in (which counted
-  // that area twice). Each step cuts along the median hole (alternating
-  // north–south / east–west by the polygon's shape), which opens that hole
-  // and leaves about half of the others on each side, so the work grows with
-  // vertices × log(holes) rather than vertices × holes — a big burned area
-  // with thousands of holes imports in about a second.
+  // that area twice). Each step cuts along the meridian through the median
+  // hole, which opens that hole and leaves about half of the others on each
+  // side, so the work grows with vertices × log(holes) rather than
+  // vertices × holes — a big burned area with thousands of holes imports in
+  // about a second. Cuts always follow meridians: a meridian is a geodesic,
+  // so the two sides of a cut add up to exactly the original area on the
+  // ellipsoid (see ringAreaEllipsoid), whichever points each side keeps on it.
   // Returns closed [lng,lat] outer rings.
   function holeFreeRings(geometry){
+    geometry = densifyGeometry(geometry); // cut points on long edges then lie on the geodesic
     var stack = (geometry.type === 'MultiPolygon' ? geometry.coordinates : [geometry.coordinates]).slice();
     var out = [], steps = 0;
     while(stack.length){
       var poly = stack.pop();
       if(poly.length <= 1 || ++steps > 20000){ out.push(poly[0]); continue; }
-      var feat = turf.polygon(poly), b = turf.bbox(feat), vertical = (b[2] - b[0]) >= (b[3] - b[1]);
+      var feat = turf.polygon(poly), b = turf.bbox(feat), vertical = true;
       var centres = poly.slice(1).map(function(h){
         var lo = Infinity, hi = -Infinity, k = vertical ? 0 : 1;
         for(var q=0;q<h.length;q++){ if(h[q][k] < lo) lo = h[q][k]; if(h[q][k] > hi) hi = h[q][k]; }
@@ -1218,7 +1305,7 @@
       } catch(e){ out.push(poly[0]); continue; } // topology edge case: keep the outline as before
       halves.forEach(function(h){ stack.push(h); });
     }
-    return out.filter(function(r){ return r.length >= 4 && turf.area(turf.polygon([r])) > 0.01; });
+    return out.filter(function(r){ return r.length >= 4 && geoAreaM2(turf.polygon([r])) > 0.01; });
   }
 
   // Converts one turf geometry (Polygon or MultiPolygon) coming out of a
@@ -1251,6 +1338,7 @@
   function clipShapeByBoundary(shape, splitKey, sourceFeatures){
     var userCoords = shape.points.map(function(p){ return [p.lng, p.lat]; });
     userCoords.push(userCoords[0]);
+    userCoords = densifyRingGeodesic(userCoords); // long edges follow the geodesic, so pieces add up exactly
     var userPoly;
     try{
       userPoly = turf.polygon([userCoords]);
@@ -1269,7 +1357,8 @@
       if(!isPolygonal(f) || !bboxIntersects(f.bbox, userBbox)) continue; // lines/points in a GeoJSON file cannot clip
       var boundaryPoly;
       try{
-        boundaryPoly = f.geometry.type === 'MultiPolygon' ? turf.multiPolygon(f.geometry.coordinates) : turf.polygon(f.geometry.coordinates);
+        var bg = f._dg || (f._dg = densifyGeometry(f.geometry));
+        boundaryPoly = bg.type === 'MultiPolygon' ? turf.multiPolygon(bg.coordinates) : turf.polygon(bg.coordinates);
       } catch(e){ continue; } // skip malformed boundary geometry rather than aborting the whole split
       var clipped;
       try{
@@ -1281,8 +1370,9 @@
       if(partition){
         try{ remaining = turf.difference(remaining, boundaryPoly); } catch(e){}
       }
-      var pieceName = splitPieceName(shape.name, splitKey, f.properties, i);
+      var pieceName = splitPieceName(shape.name, splitKey, f.properties, f._i === undefined ? i : f._i);
       var newShapes = turfGeometryToShapes(clipped.geometry, pieceName, shape);
+      if(f._t !== undefined) newShapes.forEach(function(ns){ ns.splitType = f._t; });
       if(newShapes.length){
         pieces = pieces.concat(newShapes);
         touchedNames.push(pieceName.split(' — ')[1]);
@@ -1314,9 +1404,9 @@
       toast('Зөвхөн полигоныг хуваах боломжтой');
       return;
     }
-    var sourceFeatures = splitBoundarySourceFeatures(splitKey);
+    var src = splitSource(splitKey), sourceFeatures = src.features;
     if(sourceFeatures.length === 0){
-      toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
+      toast(src.typing ? 'Идэвхтэй төрөл алга — давхаргын тохиргооноос төрлөө идэвхжүүлнэ үү' : SPLIT_LEVEL_LABEL[splitKey] + ' давхарга ачаалагдаагүй байна');
       return;
     }
     var res = clipShapeByBoundary(shape, splitKey, sourceFeatures);
@@ -1328,19 +1418,21 @@
       toast(SPLIT_LEVEL_LABEL[splitKey] + ' давхаргатай огтлолцсонгүй — полигон уг давхаргын хамрах хүрээнээс гадуур байж болзошгүй');
       return;
     }
-    var inId = newBatchId(), outId = newBatchId(), oc = otherColor(shape.color);
-    res.pieces.forEach(function(p){ p.batchId = inId; p.batchName = shape.name + ' — ' + overlapLabel(true); });
+    var outId = newBatchId(), oc = otherColor(shape.color);
+    var groups = batchPiecesByType(res.pieces, shape.name, shape.color, src.typing);
     res.outside.forEach(function(p){ p.batchId = outId; p.batchName = shape.name + ' — ' + overlapLabel(false); p.color = oc; });
+    var ordered = [];
+    groups.forEach(function(g){ ordered = ordered.concat(g.list); });
 
     pushUndo();
     shape.visible = false;
-    var out = shapes.slice(0, shapeIdx + 1).concat(res.pieces, res.outside, shapes.slice(shapeIdx + 1));
+    var out = shapes.slice(0, shapeIdx + 1).concat(ordered, res.outside, shapes.slice(shapeIdx + 1));
     replaceShapes(out);
     // Tap tools (centre point, GPS, remove point) must not edit a batch member.
     shapes.push({ points: [] });
     tapShapeIndex = shapes.length - 1;
     redrawAll();
-    toast('"' + shape.name + '" → ' + res.pieces.length + ' давхцсан, ' + res.outside.length + ' давхцаагүй хэсэг — 2 багц болж тайрагдлаа; анхны полигон нуугдсан');
+    toast('"' + shape.name + '" → ' + groupsText(groups, res.outside.length) + '; анхны полигон нуугдсан');
   }
 
 
