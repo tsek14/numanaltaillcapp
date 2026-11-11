@@ -964,6 +964,7 @@
   var mode = 'tap'; // 'tap' | 'layers' | 'coords'
   var tapDrawActive = false;
   var tapShapeIndex = 0; // which shapes[] entry tap-draw currently edits
+  var shapeEditActive = false; // vertex editing of an existing shape (js-10-edit.js)
   // Tap tools write into shapes[tapShapeIndex]; never let that be a shape of an imported batch.
   if(shapes[0] && shapes[0].batchId){
     shapes.push({ points: [] });
@@ -992,7 +993,7 @@
   var UNDO_MAX_POINTS = 1500000;
   function snapshotPoints(snap){
     var n = 0;
-    snap.shapes.forEach(function(s){ n += s.points.length; });
+    snap.shapes.forEach(function(s){ n += s.points.length; (s.holes || []).forEach(function(h){ n += h.length; }); });
     return n;
   }
   function pushUndo(){
@@ -1281,6 +1282,53 @@
     return area;
   }
 
+  // ---------- Polygons with holes ----------
+  // A polygon shape is { points:[outer ring], holes:[[ring], …] } (holes are
+  // optional). Rings are stored open, as {lat,lng} points.
+  function closedRing(pts){
+    var r = pts.map(function(p){ return [p.lng, p.lat]; });
+    if(r.length) r.push(r[0]);
+    return r;
+  }
+  function shapeHoles(shape){ return shape.holes && shape.holes.length ? shape.holes : []; }
+  // Closed [lng,lat] rings: outer first, then the holes.
+  function shapeRings(shape){
+    return [closedRing(shape.points)].concat(shapeHoles(shape).map(closedRing));
+  }
+  function shapeGeometry(shape){ return { type:'Polygon', coordinates: shapeRings(shape) }; }
+  // Area with the holes taken out.
+  function shapeAreaM2(shape){
+    var a = areaSqMeters(shape.points), hs = shapeHoles(shape);
+    for(var i=0;i<hs.length;i++) a -= areaSqMeters(hs[i]);
+    return a > 0 ? a : 0;
+  }
+  // Length of the outline including the holes' outlines (as GIS reports it).
+  function shapePerimeterM(shape){
+    var t = perimeterMeters(shape.points), hs = shapeHoles(shape);
+    for(var i=0;i<hs.length;i++) t += perimeterMeters(hs[i]);
+    return t;
+  }
+  function shapeVertexCount(shape){
+    var n = shape.points.length, hs = shapeHoles(shape);
+    for(var i=0;i<hs.length;i++) n += hs[i].length;
+    return n;
+  }
+  // Rings from a GeoJSON Polygon's coordinates -> { points, holes } (rings opened).
+  function ringsToShapeParts(rings){
+    var open = function(r){
+      var pts = r.map(function(c){ return { lat:c[1], lng:c[0] }; });
+      if(pts.length > 1){
+        var a = pts[0], b = pts[pts.length-1];
+        if(Math.abs(a.lat-b.lat) < 1e-12 && Math.abs(a.lng-b.lng) < 1e-12) pts.pop();
+      }
+      return pts;
+    };
+    var out = { points: open(rings[0]) };
+    var holes = rings.slice(1).map(open).filter(function(h){ return h.length >= 3; });
+    if(holes.length) out.holes = holes;
+    return out;
+  }
+
   function perimeterMeters(pts){
     var total = 0;
     for(var i=0;i<pts.length;i++){
@@ -1362,10 +1410,14 @@
         // large imported files still fit in the browser's storage quota.
         var packed = shapes.map(function(s){
           var o = {}, k;
-          for(k in s){ if(k !== 'points') o[k] = s[k]; }
-          var flat = new Array(s.points.length * 2);
-          s.points.forEach(function(p, i){ flat[2*i] = +p.lat.toFixed(7); flat[2*i+1] = +p.lng.toFixed(7); });
-          o.p = flat;
+          for(k in s){ if(k !== 'points' && k !== 'holes' && k.charAt(0) !== '_') o[k] = s[k]; }
+          var pack = function(pts){
+            var flat = new Array(pts.length * 2);
+            pts.forEach(function(p, i){ flat[2*i] = +p.lat.toFixed(7); flat[2*i+1] = +p.lng.toFixed(7); });
+            return flat;
+          };
+          o.p = pack(s.points);
+          if(s.holes && s.holes.length) o.h = s.holes.map(pack);
           return o;
         });
         try{
@@ -1388,18 +1440,26 @@
       var restored = JSON.parse(raw);
       if(!Array.isArray(restored) || !restored.length) return null;
       restored.forEach(function(s){
-        if(s && Array.isArray(s.p) && !s.points){
+        var unpack = function(flat){
           var pts = [];
-          for(var i=0;i+1<s.p.length;i+=2) pts.push({ lat:s.p[i], lng:s.p[i+1] });
-          s.points = pts;
+          for(var i=0;i+1<flat.length;i+=2) pts.push({ lat:flat[i], lng:flat[i+1] });
+          return pts;
+        };
+        if(s && Array.isArray(s.p) && !s.points){
+          s.points = unpack(s.p);
           delete s.p;
+        }
+        if(s && Array.isArray(s.h)){
+          s.holes = s.h.filter(Array.isArray).map(unpack).filter(function(h){ return h.length >= 3; });
+          if(!s.holes.length) delete s.holes;
+          delete s.h;
         }
       });
       // Basic shape validation so corrupted/foreign data can't crash the app.
       var valid = restored.every(function(s){
-        return s && Array.isArray(s.points) && s.points.every(function(p){
-          return typeof p.lat === 'number' && typeof p.lng === 'number';
-        });
+        var okPt = function(p){ return p && typeof p.lat === 'number' && typeof p.lng === 'number'; };
+        return s && Array.isArray(s.points) && s.points.every(okPt)
+          && (!s.holes || (Array.isArray(s.holes) && s.holes.every(function(h){ return Array.isArray(h) && h.every(okPt); })));
       });
       return valid ? restored : null;
     } catch(e){

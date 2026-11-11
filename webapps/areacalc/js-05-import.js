@@ -17,14 +17,6 @@
       }
       return pts;
     }
-    // Shapes are single-ring: a polygon with holes (e.g. a burned area with
-    // unburned islands) is cut into hole-free pieces so the holes stay empty.
-    // Taking only the outer ring would fill the holes in and overstate the area.
-    function polygonPieces(poly){
-      if(poly.length <= 1) return [ring2pts(poly[0])];
-      try{ return holeFreeRings({ type:'Polygon', coordinates: poly }).map(ring2pts); }
-      catch(e){ return [ring2pts(poly[0])]; }
-    }
     switch(geom.type){
       case 'Point':
         out.push({ name:name, color:color, points:[{ lat:geom.coordinates[1], lng:geom.coordinates[0] }] });
@@ -42,16 +34,20 @@
           out.push({ name:name+(geom.coordinates.length>1?' '+(i+1):''), color:color, isLine:true, points: line.map(function(c){ return { lat:c[1], lng:c[0] }; }) });
         });
         break;
+      // Holes (e.g. unburned islands in a burned area) are kept on the shape.
       case 'Polygon':
-        polygonPieces(geom.coordinates).forEach(function(pts, k, all){
-          out.push({ name:name+(all.length>1?' ('+(k+1)+')':''), color:color, points: pts });
-        });
+        if(geom.coordinates.length && geom.coordinates[0].length){
+          var one = ringsToShapeParts(geom.coordinates);
+          one.name = name; one.color = color;
+          out.push(one);
+        }
         break;
       case 'MultiPolygon':
         geom.coordinates.forEach(function(poly, i){
-          polygonPieces(poly).forEach(function(pts, k, all){
-            out.push({ name:name+(geom.coordinates.length>1?' '+(i+1):'')+(all.length>1?' ('+(k+1)+')':''), color:color, points: pts });
-          });
+          if(!poly.length || !poly[0].length) return;
+          var part = ringsToShapeParts(poly);
+          part.name = name+(geom.coordinates.length>1?' '+(i+1):''); part.color = color;
+          out.push(part);
         });
         break;
       case 'GeometryCollection':
@@ -152,15 +148,9 @@
         var holes = [].slice.call(polyEl.querySelectorAll('innerBoundaryIs coordinates')).map(function(el){
           return dedupeClosingPt(coordsToPts(el.textContent));
         }).filter(function(h){ return h.length >= 3; });
-        if(!holes.length){ results.push({ name: nm, color:color, points:pts }); return; }
-        // Holes are kept by cutting the polygon into hole-free pieces (see polygonPieces above).
-        var closed = function(r){ var c = r.map(function(p){ return [p.lng, p.lat]; }); c.push(c[0]); return c; };
-        var rings;
-        try{ rings = holeFreeRings({ type:'Polygon', coordinates: [closed(pts)].concat(holes.map(closed)) }); }
-        catch(e){ rings = [closed(pts)]; }
-        rings.forEach(function(r, k){
-          results.push({ name: nm+(rings.length>1?' ('+(k+1)+')':''), color:color, points: dedupeClosingPt(r.map(function(c){ return { lat:c[1], lng:c[0] }; })) });
-        });
+        var kmlShape = { name: nm, color:color, points:pts };
+        if(holes.length) kmlShape.holes = holes;
+        results.push(kmlShape);
       });
     });
     return results;
@@ -233,6 +223,7 @@
     var batchColor = isBatch ? SHAPE_COLORS[shapes.length % SHAPE_COLORS.length] : null;
     imported.forEach(function(s){
       var shape = { points: s.points };
+      if(s.holes && s.holes.length) shape.holes = s.holes;
       if(s.name) shape.name = s.name;
       if(s.color) shape.color = s.color;
       if(s.isLine && s.points.length > 1) shape.isLine = true;

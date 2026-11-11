@@ -45,8 +45,8 @@
     var st = { poly:0, line:0, point:0, area:0, len:0, per:0, pts:0 };
     idxs.forEach(function(i){
       var s = shapes[i], k = shapeKind(s);
-      st.pts += s.points.length;
-      if(k === 'polygon'){ st.poly++; st.area += shownAreaSqMeters(i); st.per += perimeterMeters(s.points); }
+      st.pts += shapeVertexCount(s);
+      if(k === 'polygon'){ st.poly++; st.area += shownAreaSqMeters(i); st.per += shapePerimeterM(s); }
       else if(k === 'line'){ st.line++; st.len += pathLengthMeters(s.points); }
       else if(k === 'point') st.point++;
     });
@@ -131,8 +131,10 @@
         var r = clipShapeByBoundary(s, splitKey, sourceFeatures);
         if(r.error){ bad++; return; }
         if(!r.pieces.length){
-          outsideShapes.push({ points: s.points.map(function(p){ return { lat:p.lat, lng:p.lng }; }), name: s.name,
-            opacity: s.opacity, showVertices: s.showVertices, showOutline: s.showOutline, visible: true });
+          var copy = { points: s.points.map(function(p){ return { lat:p.lat, lng:p.lng }; }), name: s.name,
+            opacity: s.opacity, showVertices: s.showVertices, showOutline: s.showOutline, visible: true };
+          if(s.holes && s.holes.length) copy.holes = s.holes.map(function(h){ return h.map(function(p){ return { lat:p.lat, lng:p.lng }; }); });
+          outsideShapes.push(copy);
           return;
         }
         inside = inside.concat(r.pieces);
@@ -198,11 +200,15 @@
   function geomHash(idxs){
     var h = idxs.length | 0;
     for(var a=0;a<idxs.length;a++){
-      var pts = shapes[idxs[a]].points;
+      var sh = shapes[idxs[a]], lists = [sh.points].concat(sh.holes || []);
       h = (h * 31 + idxs[a]) | 0;
-      for(var k=0;k<pts.length;k++){
-        h = (h * 31 + Math.round(pts[k].lat * 1e7)) | 0;
-        h = (h * 31 + Math.round(pts[k].lng * 1e7)) | 0;
+      for(var q=0;q<lists.length;q++){
+        var pts = lists[q];
+        h = (h * 31 + pts.length) | 0;
+        for(var k=0;k<pts.length;k++){
+          h = (h * 31 + Math.round(pts[k].lat * 1e7)) | 0;
+          h = (h * 31 + Math.round(pts[k].lng * 1e7)) | 0;
+        }
       }
     }
     return h;
@@ -219,7 +225,17 @@
         if(x<w) w=x; if(x>e) e=x; if(y<so) so=y; if(y>n) n=y;
       }
       ring[pts.length] = ring[0];
-      out.push({ idx:i, ring:ring, bbox:[w, so, e, n] });
+      var item = { idx:i, ring:ring, bbox:[w, so, e, n], rings:[ring] };
+      var hs = shapes[i].holes;
+      if(hs && hs.length){
+        item.holes = hs.map(function(h){
+          var r = closedRing(h), b = [Infinity, Infinity, -Infinity, -Infinity];
+          r.forEach(function(c){ if(c[0]<b[0]) b[0]=c[0]; if(c[0]>b[2]) b[2]=c[0]; if(c[1]<b[1]) b[1]=c[1]; if(c[1]>b[3]) b[3]=c[1]; });
+          return { ring:r, bbox:b };
+        });
+        item.rings = [ring].concat(item.holes.map(function(h){ return h.ring; }));
+      }
+      out.push(item);
     });
     return out;
   }
@@ -271,15 +287,22 @@
   // 1: some vertex or edge midpoint of A is strictly inside B;
   // 0: all of them lie on B's boundary; -1: none inside, some outside.
   function ovAnyInside(A, B){
-    var r = A.ring, box = B.bbox, allOn = true;
-    for(var k=0;k<r.length-1;k++){
+    var r = A.ring, box = B.bbox, allOn = true, cand = null;
+    // A big outline: only its edges near B can have points inside B.
+    if(r.length > OV_INDEX_MIN){
+      cand = ovEdgesIn(A, box);
+      if(cand.length < r.length - 1) allOn = false; // the rest of A lies outside B's box
+    }
+    var cnt = cand ? cand.length : r.length - 1;
+    for(var c=0;c<cnt;c++){
+      var k = cand ? cand[c] : c;
       var v = r[k], m = [(v[0]+r[k+1][0])/2, (v[1]+r[k+1][1])/2];
-      for(var q=0;q<2;q++){
-        var pt = q ? m : v;
+      for(var q=0;q<(cand ? 3 : 2);q++){
+        var pt = q === 0 ? v : q === 1 ? m : r[k+1];
         if(pt[0] < box[0] || pt[0] > box[2] || pt[1] < box[1] || pt[1] > box[3]){ allOn = false; continue; }
-        var c = ovPointClass(pt, B);
-        if(c === 1) return 1;
-        if(c === -1) allOn = false;
+        var cls = ovPointClass(pt, B);
+        if(cls === 1) return 1;
+        if(cls === -1) allOn = false;
       }
     }
     return allOn ? 0 : -1;
@@ -301,14 +324,41 @@
     }
     return out;
   }
-  // Do the interiors of two polygons overlap?
+  // A lies entirely inside one of B's holes (an unburned island's own
+  // polygon, say), so the two do not overlap at all.
+  function ovInsideHole(A, B){
+    if(!B.holes) return false;
+    for(var q=0;q<B.holes.length;q++){
+      var h = B.holes[q], hb = h.bbox;
+      if(A.bbox[0] < hb[0] || A.bbox[2] > hb[2] || A.bbox[1] < hb[1] || A.bbox[3] > hb[3]) continue;
+      var ea = ovEdgesIn(A, hb), eh = ovEdgesIn(h, A.bbox), cross = false;
+      for(var i=0;i<ea.length && !cross;i++){
+        for(var j=0;j<eh.length;j++){
+          if(ovProperCross(A.ring[ea[i]], A.ring[ea[i]+1], h.ring[eh[j]], h.ring[eh[j]+1])){ cross = true; break; }
+        }
+      }
+      if(cross) continue;
+      var allIn = true;
+      for(var k=0;k<A.ring.length-1;k++){
+        if(ovPointClass(A.ring[k], h) === -1){ allIn = false; break; }
+      }
+      if(allIn) return true;
+    }
+    return false;
+  }
+  // Do the interiors of two polygons (holes included) overlap?
+  function ovPolysOverlap(A, B){
+    if(!ovRingsOverlap(A, B)) return false;
+    return !(ovInsideHole(A, B) || ovInsideHole(B, A));
+  }
+  // Do the interiors of two outer rings overlap?
   function ovRingsOverlap(A, B){
     var ea = ovEdgesIn(A, B.bbox), eb = ovEdgesIn(B, A.bbox);
     // Two big outlines crossing over a wide area: measure the intersection
     // with the clipper rather than testing edge against edge.
     if(ea.length * eb.length > 200000){
       try{
-        var big = turf.intersect(turf.polygon([A.ring]), turf.polygon([B.ring]));
+        var big = turf.intersect(turf.polygon(A.rings), turf.polygon(B.rings));
         return !!big && geoAreaM2(big) > 0.01;
       } catch(e){ return false; }
     }
@@ -325,7 +375,7 @@
     if(a === 0 || b === 0){
       // One polygon lies entirely on the other's boundary (e.g. an exact duplicate): measure it.
       try{
-        var x = turf.intersect(turf.polygon([A.ring]), turf.polygon([B.ring]));
+        var x = turf.intersect(turf.polygon(A.rings), turf.polygon(B.rings));
         return !!x && geoAreaM2(x) > 0.01;
       } catch(e){ return false; }
     }
@@ -353,7 +403,7 @@
       var A = items[a].bbox, B = items[b].bbox;
       // boxes must share some area, not just an edge
       if(Math.min(A[2], B[2]) - Math.max(A[0], B[0]) <= 1e-12 || Math.min(A[3], B[3]) - Math.max(A[1], B[1]) <= 1e-12) return;
-      if(ovRingsOverlap(items[a], items[b])) pairs.push(a < b ? [a, b] : [b, a]);
+      if(ovPolysOverlap(items[a], items[b])) pairs.push(a < b ? [a, b] : [b, a]);
     }
     grid.forEach(function(list){
       for(var i=0;i<list.length;i++) for(var j=i+1;j<list.length;j++) consider(list[i], list[j]);
@@ -372,9 +422,9 @@
     Object.keys(nb).forEach(function(k){
       var it = items[k];
       try{
-        var diff = turf.polygon([it.ring]);
+        var diff = turf.polygon(it.rings);
         for(var j=0;j<nb[k].length;j++){
-          diff = turf.difference(diff, turf.polygon([items[nb[k][j]].ring]));
+          diff = turf.difference(diff, turf.polygon(items[nb[k][j]].rings));
           if(!diff) break; // completely covered by others
         }
         fills[it.idx] = diff ? diff.geometry : 'empty';
@@ -402,7 +452,7 @@
   // part no other visible polygon covers (a 10 ha polygon with a 3 ha one
   // inside it shows 7 ha, and the inner one 0 ha); otherwise the whole polygon.
   function shownAreaSqMeters(sIdx){
-    var s = shapes[sIdx], full = areaSqMeters(s.points);
+    var s = shapes[sIdx], full = shapeAreaM2(s);
     if(!polyKnockoutOn || s.visible === false || !knockoutCache.areas) return full;
     return (sIdx in knockoutCache.areas) ? knockoutCache.areas[sIdx] : full;
   }
@@ -411,11 +461,49 @@
   // overlap counted for none of them, as the "cut out overlaps" view shows).
   function batchNetArea(idxs){
     var polys = idxs.filter(function(i){ return shapeKind(shapes[i]) === 'polygon'; }), full = 0, net = 0;
-    polys.forEach(function(i){ full += areaSqMeters(shapes[i].points); });
+    polys.forEach(function(i){ full += shapeAreaM2(shapes[i]); });
     if(polys.length < 2) return { full:full, net:full };
     var r = computeOverlapFills(polys);
-    polys.forEach(function(i){ net += (i in r.areas) ? r.areas[i] : areaSqMeters(shapes[i].points); });
+    polys.forEach(function(i){ net += (i in r.areas) ? r.areas[i] : shapeAreaM2(shapes[i]); });
     return { full:full, net:net };
+  }
+
+  // A whole batch as one polygon layer. Leaflet rounds vertices to whole
+  // pixels; smoothFactor 0.01 then only drops repeated and exactly collinear
+  // points (real simplification would pull shared edges apart), and rings
+  // that collapse to a line at the current zoom are skipped — zoomed out,
+  // most pieces of a big cut-up area do, which keeps drawing fast.
+  var BatchPolygon = L.Polygon.extend({
+    _simplifyPoints: function(){
+      L.Polygon.prototype._simplifyPoints.call(this);
+      this._parts = this._parts.filter(function(r){
+        if(r.length < 3) return false;
+        var x0 = r[0].x, y0 = r[0].y, dx = false, dy = false;
+        for(var i=1;i<r.length;i++){
+          if(r[i].x !== x0) dx = true;
+          if(r[i].y !== y0) dy = true;
+          if(dx && dy) return true;
+        }
+        return false;
+      });
+    }
+  });
+
+  // [lat,lng] ring wound one way for outlines and the other way for holes, so
+  // that 'nonzero' filling fills the outlines and leaves the holes empty.
+  function sameWinding(pts, hole){
+    var sum = 0, n = pts.length, ring = new Array(n);
+    for(var i=0;i<n;i++){
+      var a = pts[i], b = pts[(i + 1) % n];
+      sum += (b.lng - a.lng) * (b.lat + a.lat);
+      ring[i] = [a.lat, a.lng];
+    }
+    return (sum < 0) !== !!hole ? ring.reverse() : ring;
+  }
+  // Leaflet latlngs of a polygon shape: [outer, hole, hole, …].
+  function shapeLatLngs(shape){
+    var ll = function(pts){ return pts.map(function(p){ return [p.lat, p.lng]; }); };
+    return [ll(shape.points)].concat(shapeHoles(shape).map(ll));
   }
 
   function redrawAll(opts){
@@ -424,6 +512,7 @@
     document.getElementById('tapCount').textContent = shapes[tapShapeIndex] ? shapes[tapShapeIndex].points.length : 0;
 
     var totals = { totalPolyArea:0, totalLineLen:0, polyCount:0, lineCount:0, pointCount:0 };
+    var batchDraw = {}, batchDrawOrder = [];
     var allLatLngs = [];
     var tapTypeLabel = '—';
 
@@ -490,10 +579,15 @@
         var op = (shape.opacity===undefined ? 1 : shape.opacity);
         var fillOp = op * (showLine ? 0.22 : 0.45);
         var kFill = knockoutFills ? knockoutFills[sIdx] : undefined;
-        if(kFill === undefined){
-          L.polygon(pts.map(function(p){return [p.lat,p.lng];}), {
-            stroke: showLine, color:color, weight:3, fillColor:color, fillOpacity: fillOp,
-            renderer: shape.batchId ? batchRenderer : undefined
+        if(kFill === undefined && shape.batchId){
+          // Batch members are drawn together, one path per batch (see below).
+          var gk = shape.batchId + '|' + color + '|' + fillOp + '|' + showLine;
+          if(!batchDraw[gk]){ batchDraw[gk] = { rings:[], color:color, fillOp:fillOp, showLine:showLine }; batchDrawOrder.push(gk); }
+          batchDraw[gk].rings.push(sameWinding(pts));
+          shapeHoles(shape).forEach(function(h){ batchDraw[gk].rings.push(sameWinding(h, true)); });
+        } else if(kFill === undefined){
+          L.polygon(shapeLatLngs(shape), {
+            stroke: showLine, color:color, weight:3, fillColor:color, fillOpacity: fillOp
           }).addTo(drawLayer);
         } else {
           // Overlap knocked out: fill = only the part no other polygon covers.
@@ -501,17 +595,31 @@
             L.geoJSON(kFill, { style:{ stroke:false, fillColor:color, fillOpacity:fillOp } }).addTo(drawLayer);
           }
           if(showLine){
-            L.polygon(pts.map(function(p){return [p.lat,p.lng];}), {
+            L.polygon(shapeLatLngs(shape), {
               color:color, weight:3, fill:false
             }).addTo(drawLayer);
           }
         }
         totals.polyCount++;
-        var fullA = areaSqMeters(pts), shownA = shownAreaSqMeters(sIdx);
+        var fullA = shapeAreaM2(shape), shownA = shownAreaSqMeters(sIdx);
         totals.totalPolyArea += shownA;
         if(shownA < fullA - 0.01) totals.cutOverlap = true;
         if(sIdx === 0) tapTypeLabel = 'Полигон';
       }
+    });
+
+    // One path per batch. Pieces of a cut-up polygon (holes opened along
+    // meridians, clip results) touch along shared edges; drawn one by one, each
+    // piece blurs its own edges, which shows as stripes, and pieces thinner
+    // than a pixel fade out when zoomed out. In a single path the shared
+    // edges cancel, so the fill is seamless at every zoom. 'nonzero' with one
+    // winding direction fills overlapping members instead of punching holes.
+    batchDrawOrder.forEach(function(gk){
+      var g = batchDraw[gk];
+      new BatchPolygon(g.rings, {
+        stroke: g.showLine, color:g.color, weight:3, fillColor:g.color, fillOpacity:g.fillOp,
+        fillRule:'nonzero', smoothFactor:0.01, interactive:false, renderer: batchRenderer
+      }).addTo(drawLayer);
     });
 
     document.getElementById('tapType').textContent = tapTypeLabel;
@@ -520,7 +628,9 @@
     if(mode === 'coords') renderCoordsPanel();
     renderLegend();
 
-    if(allLatLngs.length && !trackActive && !tapDrawActive && !(opts && opts.noFit)){
+    if(shapeEditActive && typeof refreshEditHandles === 'function') refreshEditHandles();
+
+    if(allLatLngs.length && !trackActive && !tapDrawActive && !shapeEditActive && !(opts && opts.noFit)){
       map.fitBounds(L.latLngBounds(allLatLngs), { padding:[60,60], maxZoom:18 });
     }
 
@@ -678,10 +788,8 @@
     var en = window.APP_LANG === 'en';
     var items = [];
     idxs.forEach(function(i){
-      var ring = shapes[i].points.map(function(p){ return [p.lng, p.lat]; });
-      ring.push(ring[0]);
       try{
-        var feat = turf.polygon([ring]);
+        var feat = turf.polygon(shapeRings(shapes[i]));
         items.push({ idx:i, name: shapes[i].name || ((en ? 'Polygon ' : 'Полигон ') + (i+1)), color: shapes[i].color, feat: feat, bbox: turf.bbox(feat) });
       } catch(e){ /* malformed polygon: leave it out */ }
     });
@@ -821,6 +929,7 @@
     var vertexIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="19" r="2.3" fill="currentColor" stroke="none"/><circle cx="19" cy="19" r="2.3" fill="currentColor" stroke="none"/><circle cx="12" cy="5" r="2.3" fill="currentColor" stroke="none"/></svg>';
     var outlineIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 4 20 19 4 19"/></svg>';
     var downloadIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+    var pencilIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
     var scissorsIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>';
 
     var html = '';
@@ -850,6 +959,7 @@
               + '      <div class="layer-split-menu" data-act="split-menu"></div>'
               + '    </div>';
       }
+      html += '    <button type="button" class="layer-export-btn" data-act="edit" title="Багцын дүрсийг засах — дараа нь газрын зураг дээр дүрсээ товшино">'+pencilIcon+'</button>';
       html += '    <div class="layer-export">'
             + '      <button type="button" class="layer-export-btn" data-act="export" title="Багцыг экспортлох">'+downloadIcon+'</button>'
             + exportMenuHtml
@@ -896,6 +1006,7 @@
               + '      <div class="layer-split-menu" data-act="split-menu"></div>'
               + '    </div>';
       }
+      html += '    <button type="button" class="layer-export-btn'+(shapeEditActive && s === editShape ? ' on' : '')+'" data-act="edit" title="Оройг засах: зөөх, нэмэх, устгах">'+pencilIcon+'</button>';
       html += '    <div class="layer-export">'
             + '      <button type="button" class="layer-export-btn" data-act="export" title="Энэ дүрсийг экспортлох">'+downloadIcon+'</button>'
             + '      <div class="layer-export-menu" data-act="export-menu">'
@@ -965,6 +1076,7 @@
         redrawAll({ noFit:true });
       });
       card.querySelector('[data-act="ungroup"]').addEventListener('click', function(){ ungroupBatch(id); });
+      card.querySelector('[data-act="edit"]').addEventListener('click', function(){ startShapeEditPick(); });
       card.querySelector('[data-act="del"]').addEventListener('click', function(){ deleteBatch(id); });
       var exportBtn = card.querySelector('[data-act="export"]'), exportMenu = card.querySelector('[data-act="export-menu"]');
       exportBtn.addEventListener('click', function(e){
@@ -995,6 +1107,10 @@
     list.querySelectorAll('.layer-card:not(.batch-card)').forEach(function(card){
       var idx = parseInt(card.getAttribute('data-idx'), 10);
       var shape = shapes[idx];
+
+      card.querySelector('[data-act="edit"]').addEventListener('click', function(){
+        if(shapeEditActive && shape === editShape) stopShapeEdit(); else startShapeEdit(idx);
+      });
 
       card.querySelector('[data-act="vis"]').addEventListener('click', function(){
         shape.visible = !(shape.visible !== false);
@@ -1046,6 +1162,7 @@
         // removing it from the array, so tap mode always has somewhere to write.
         if(idx === 0 || shapes.length === 1){
           shapes[idx].points = [];
+          delete shapes[idx].holes;
           shapes[idx].visible = true;
           shapes[idx].color = null;
           shapes[idx].name = null;
@@ -1189,7 +1306,7 @@
         key:'type',
         typeOf:function(props){ var t = props && props.type; return (t === undefined || t === null || t === '') ? null : String(t); },
         hidden:function(t){ return t !== null && !!mrpamTypesHidden[t]; },
-        order:Object.keys(mrpamTypeColors),
+        order:applyTypeOrder('mrpam', Object.keys(mrpamTypeColors)),
         color:function(t){ return mrpamTypeColors[t]; }
       };
     }
@@ -1269,60 +1386,20 @@
     return baseName + ' — ' + label;
   }
 
-  // This app's shapes are a single ring, so a polygon with holes (a burned
-  // area with unburned islands, a boundary with a hole) is cut into hole-free
-  // pieces instead of dropping the holes and filling them in (which counted
-  // that area twice). Each step cuts along the meridian through the median
-  // hole, which opens that hole and leaves about half of the others on each
-  // side, so the work grows with vertices × log(holes) rather than
-  // vertices × holes — a big burned area with thousands of holes imports in
-  // about a second. Cuts always follow meridians: a meridian is a geodesic,
-  // so the two sides of a cut add up to exactly the original area on the
-  // ellipsoid (see ringAreaEllipsoid), whichever points each side keeps on it.
-  // Returns closed [lng,lat] outer rings.
-  function holeFreeRings(geometry){
-    geometry = densifyGeometry(geometry); // cut points on long edges then lie on the geodesic
-    var stack = (geometry.type === 'MultiPolygon' ? geometry.coordinates : [geometry.coordinates]).slice();
-    var out = [], steps = 0;
-    while(stack.length){
-      var poly = stack.pop();
-      if(poly.length <= 1 || ++steps > 20000){ out.push(poly[0]); continue; }
-      var feat = turf.polygon(poly), b = turf.bbox(feat), vertical = true;
-      var centres = poly.slice(1).map(function(h){
-        var lo = Infinity, hi = -Infinity, k = vertical ? 0 : 1;
-        for(var q=0;q<h.length;q++){ if(h[q][k] < lo) lo = h[q][k]; if(h[q][k] > hi) hi = h[q][k]; }
-        return (lo + hi) / 2;
-      }).sort(function(a, c){ return a - c; });
-      var cut = centres[centres.length >> 1], rects = vertical
-        ? [[b[0]-1, b[1]-1, cut, b[3]+1], [cut, b[1]-1, b[2]+1, b[3]+1]]
-        : [[b[0]-1, b[1]-1, b[2]+1, cut], [b[0]-1, cut, b[2]+1, b[3]+1]];
-      var halves = [];
-      try{
-        rects.forEach(function(bb){
-          var r = turf.intersect(feat, turf.bboxPolygon(bb));
-          if(r) halves = halves.concat(r.geometry.type === 'MultiPolygon' ? r.geometry.coordinates : [r.geometry.coordinates]);
-        });
-      } catch(e){ out.push(poly[0]); continue; } // topology edge case: keep the outline as before
-      halves.forEach(function(h){ stack.push(h); });
-    }
-    return out.filter(function(r){ return r.length >= 4 && geoAreaM2(turf.polygon([r])) > 0.01; });
-  }
-
   // Converts one turf geometry (Polygon or MultiPolygon) coming out of a
-  // clip back into this app's shape list: one shape per hole-free piece.
+  // clip back into this app's shapes: one shape per polygon, holes kept.
   function turfGeometryToShapes(geometry, name, sourceShape){
-    var rings = holeFreeRings(geometry);
-    return rings.map(function(ring, i){
-      var pts = ring.slice(0, ring.length - 1).map(function(c){ return { lat:c[1], lng:c[0] }; });
-      return {
-        points: pts,
-        name: rings.length > 1 ? name + ' (' + (i+1) + ')' : name,
-        color: sourceShape.color,
-        opacity: sourceShape.opacity,
-        showVertices: sourceShape.showVertices,
-        showOutline: sourceShape.showOutline,
-        visible: true
-      };
+    var polys = (geometry.type === 'MultiPolygon' ? geometry.coordinates : [geometry.coordinates])
+      .filter(function(p){ return p[0] && p[0].length >= 4 && geoAreaM2({ type:'Polygon', coordinates:p }) > 0.01; });
+    return polys.map(function(poly, i){
+      var sh = ringsToShapeParts(poly);
+      sh.name = polys.length > 1 ? name + ' (' + (i+1) + ')' : name;
+      sh.color = sourceShape.color;
+      sh.opacity = sourceShape.opacity;
+      sh.showVertices = sourceShape.showVertices;
+      sh.showOutline = sourceShape.showOutline;
+      sh.visible = true;
+      return sh;
     });
   }
 
@@ -1336,12 +1413,10 @@
   // no boundary covers is returned as `outside`. Pieces + outside always add
   // up to the original area.
   function clipShapeByBoundary(shape, splitKey, sourceFeatures){
-    var userCoords = shape.points.map(function(p){ return [p.lng, p.lat]; });
-    userCoords.push(userCoords[0]);
-    userCoords = densifyRingGeodesic(userCoords); // long edges follow the geodesic, so pieces add up exactly
     var userPoly;
     try{
-      userPoly = turf.polygon([userCoords]);
+      // long edges follow the geodesic, so pieces add up exactly
+      userPoly = turf.polygon(shapeRings(shape).map(densifyRingGeodesic));
     } catch(e){
       return { error:true, pieces:[], names:[], outside:[] };
     }
@@ -1497,7 +1572,7 @@
           var koIdxs = knockoutPolygonIdxs();
           if(koIdxs.length >= 2){
             var ov = computeOverlapFills(koIdxs), cut = 0;
-            Object.keys(ov.areas).forEach(function(i){ cut += areaSqMeters(shapes[i].points) - ov.areas[i]; });
+            Object.keys(ov.areas).forEach(function(i){ cut += shapeAreaM2(shapes[i]) - ov.areas[i]; });
             if(cut > 0.01) html += '<div class="summary-line">Давхцал хассан талбай: <b>'+fmt((totals.totalPolyArea-cut)/10000,2)+' га</b> (давхцал '+fmt(cut/10000,2)+' га)</div>';
           }
         }
@@ -1567,17 +1642,18 @@
         ];
       } else {
         typeLabel = isTrack ? 'GPS ТАЛБАЙ' : 'ПОЛИГОН';
-        var fullArea = areaSqMeters(pts);
+        var fullArea = shapeAreaM2(entry.shape);
         var area = shownAreaSqMeters(entry.colorIdx);
-        var per = perimeterMeters(pts);
+        var per = shapePerimeterM(entry.shape), nHoles = shapeHoles(entry.shape).length;
         var ha = humanArea(area);
         big = ha.big; small = ha.small;
         grid = [
-          {k:'ОРОЙН ТОО', v: pts.length},
+          {k:'ОРОЙН ТОО', v: shapeVertexCount(entry.shape)},
           {k:'ТОЙРОГ (М)', v: fmt(per,1)},
           {k:'ГА', v: fmt(area/10000,2)},
           {k:'М²', v: fmt(area,0)}
         ];
+        if(nHoles) grid.push({k:'ЦООРХОЙ', v: nHoles});
         // "Cut out overlaps" removed part of this polygon: show what was taken off.
         if(area < fullArea - 0.01){
           small += ' · давхцал хассан';
@@ -1642,16 +1718,34 @@
         geometry = { type:'LineString', coordinates: pts.map(function(p){ return [p.lng, p.lat]; }) };
       } else {
         props.TYPE = 'polygon';
-        var area = areaSqMeters(pts);
+        var area = shapeAreaM2(entry.shape);
         props.AREA_M2 = Math.round(area);
         props.AREA_HA = Math.round(area/10000 * 10000) / 10000;
-        var ring = pts.map(function(p){ return [p.lng, p.lat]; });
-        ring.push(ring[0]);
-        geometry = { type:'Polygon', coordinates:[ring] };
+        // RFC 7946: outer ring counter-clockwise, holes clockwise.
+        geometry = { type:'Polygon', coordinates: orientRings(shapeRings(entry.shape), true) };
       }
       return { type:'Feature', properties: props, geometry: geometry };
     });
     return { type:'FeatureCollection', features: features };
+  }
+
+  // Rings of one polygon with the outer ring counter-clockwise (GeoJSON, KML)
+  // or clockwise (Shapefile), and the holes the other way round.
+  function orientRings(rings, outerCcw){
+    return rings.map(function(r, i){
+      var sum = 0;
+      for(var k=0;k<r.length-1;k++) sum += (r[k+1][0] - r[k][0]) * (r[k+1][1] + r[k][1]);
+      var ccw = sum < 0, want = i === 0 ? outerCcw : !outerCcw;
+      return ccw === want ? r : r.slice().reverse();
+    });
+  }
+  function orientGeoJSON(fc, outerCcw){
+    return { type:'FeatureCollection', features: fc.features.map(function(f){
+      var g = f.geometry;
+      if(g && g.type === 'Polygon') g = { type:'Polygon', coordinates: orientRings(g.coordinates, outerCcw) };
+      else if(g && g.type === 'MultiPolygon') g = { type:'MultiPolygon', coordinates: g.coordinates.map(function(p){ return orientRings(p, outerCcw); }) };
+      return { type:'Feature', properties: f.properties, geometry: g };
+    }) };
   }
 
   function colorToKmlBgr(hex){
@@ -1684,10 +1778,12 @@
         desc = 'Урт: '+fmt(d,1)+' м';
         geomXml = '<LineString><tessellate>1</tessellate><coordinates>'+toKmlCoords(pts,false)+'</coordinates></LineString>';
       } else {
-        var area = areaSqMeters(pts);
+        var area = shapeAreaM2(entry.shape);
         name += ' (Полигон)';
         desc = 'Талбай: '+fmt(area,0)+' м\u00b2 ('+fmt(area/10000,2)+' га)';
-        geomXml = '<Polygon><outerBoundaryIs><LinearRing><coordinates>'+toKmlCoords(pts,true)+'</coordinates></LinearRing></outerBoundaryIs></Polygon>';
+        geomXml = '<Polygon><outerBoundaryIs><LinearRing><coordinates>'+toKmlCoords(pts,true)+'</coordinates></LinearRing></outerBoundaryIs>'
+          + shapeHoles(entry.shape).map(function(h){ return '<innerBoundaryIs><LinearRing><coordinates>'+toKmlCoords(h,true)+'</coordinates></LinearRing></innerBoundaryIs>'; }).join('')
+          + '</Polygon>';
       }
       return '<Placemark><name>'+escapeXml(name)+'</name>'
         + (desc ? '<description>'+escapeXml(desc)+'</description>' : '')
@@ -1712,13 +1808,16 @@
         wpts += '<wpt lat="'+pts[0].lat.toFixed(7)+'" lon="'+pts[0].lng.toFixed(7)+'"><name>'+escapeXml(name+' (Цэг)')+'</name></wpt>\n';
       } else {
         var closed = shapeKind(entry.shape) === 'polygon';
-        var segPts = pts.slice();
-        if(closed) segPts.push(pts[0]);
-        var trkptsXml = segPts.map(function(p){
-          return '<trkpt lat="'+p.lat.toFixed(7)+'" lon="'+p.lng.toFixed(7)+'"></trkpt>';
-        }).join('\n');
+        // A polygon's holes follow its outline as further segments of the same track.
+        var segsXml = [pts].concat(closed ? shapeHoles(entry.shape) : []).map(function(ringPts){
+          var segPts = ringPts.slice();
+          if(closed) segPts.push(ringPts[0]);
+          return '<trkseg>\n' + segPts.map(function(p){
+            return '<trkpt lat="'+p.lat.toFixed(7)+'" lon="'+p.lng.toFixed(7)+'"></trkpt>';
+          }).join('\n') + '\n</trkseg>';
+        }).join('');
         var label = closed ? ' (Полигон)' : ' (Шугам)';
-        trks += '<trk><name>'+escapeXml(name+label)+'</name><trkseg>\n'+trkptsXml+'\n</trkseg></trk>\n';
+        trks += '<trk><name>'+escapeXml(name+label)+'</name>'+segsXml+'</trk>\n';
       }
     });
     return '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -1773,7 +1872,32 @@
       'https://cdn.jsdelivr.net/npm/@mapbox/shp-write@0.4.3/shpwrite.js'
     ], function(){ return typeof shpwrite !== 'undefined'; }).then(function(){
       toast('SHP бэлтгэж байна…');
-      return shpwrite.zip(geojson, { outputType:'blob', filename:shpName });
+      // Shapefile: outer rings clockwise, holes counter-clockwise.
+      var fc = orientGeoJSON(geojson, false);
+      // The writer stores one byte per character, which turned Cyrillic names
+      // into garbage. Text is handed over as UTF-8 bytes instead, and a .cpg
+      // file (added below) tells GIS software the attribute table is UTF-8.
+      fc.features.forEach(function(f){
+        var props = {};
+        Object.keys(f.properties || {}).forEach(function(k){
+          var v = f.properties[k];
+          props[k] = typeof v === 'string' ? unescape(encodeURIComponent(v)) : v;
+        });
+        f.properties = props;
+      });
+      return shpwrite.zip(fc, { outputType:'blob', filename:shpName });
+    }).then(function(blob){
+      return loadScriptWithFallback([
+        'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+        'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'
+      ], function(){ return typeof JSZip !== 'undefined'; }).then(function(){
+        return JSZip.loadAsync(blob);
+      }).then(function(zip){
+        Object.keys(zip.files).forEach(function(name){
+          if(/\.dbf$/i.test(name)) zip.file(name.replace(/\.dbf$/i, '.cpg'), 'UTF-8');
+        });
+        return zip.generateAsync({ type:'blob', compression:'DEFLATE' });
+      }).catch(function(){ return blob; }); // without the .cpg the file still opens
     }).then(function(blob){
       if(typeof saveAs === 'function'){
         saveAs(blob, downloadName+'.zip');

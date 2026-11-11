@@ -174,6 +174,8 @@
     var overrides = cadastreColorOverrides[cadastreTypeKey] || {};
     cadastreTypeColors = {};
     cadastreTypeOrder.forEach(function(t, i){ cadastreTypeColors[t] = overrides[t] || cadastreTypeColorAt(i); });
+    // Colours stay tied to the by-count order; the list itself follows the person's own order.
+    cadastreTypeOrder = applyTypeOrder('cadastre|' + cadastreTypeKey, cadastreTypeOrder);
   }
 
   function isCadastreTypeHidden(t){
@@ -506,6 +508,10 @@
     caTypeEmpty.style.display = 'none';
     // Same row as MRPAM's type list: name, color picker, show/hide checkbox.
     renderTypeFilterRows(caTypeList, cadastreTypeOrder, {
+      onMoveUp: function(t){
+        cadastreTypeOrder = moveTypeUp('cadastre|' + cadastreTypeKey, cadastreTypeOrder, t);
+        renderCadastreTypeUi(); renderLegend();
+      },
       colorOf: function(t){ return cadastreTypeColors[t]; },
       isHidden: function(t){ return isCadastreTypeHidden(t); },
       onColor: function(t, value){
