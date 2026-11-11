@@ -1,0 +1,18 @@
+[general]
+name=Газрын зураг бэлтгэгч (Numan Map Maker)
+qgisMinimumVersion=3.28
+qgisMaximumVersion=4.99
+description=Газрын зургийг автоматаар бэлдэж, урьдчилан харж, тохируулж, засварлаж, өндөр чанартайгаар экспортлоно.
+about=Төсөлд нээлттэй давхаргуудаас гарчиг, таних тэмдэг, солбицлын тор, хойд зүгийн сум, масштабын шугам, талбайн хүснэгт, фото зураг бүхий хэвлэлийн газрын зургийг нэг цонхноос угсарна. Урьдчилан харах талбарт элементийг шууд чирж зөөж, PNG / JPEG / TIFF / PDF / SVG хэлбэрээр хүссэн нягтралаар экспортлох эсвэл Layout Designer-т нээж үргэлжлүүлэн засварлана. Automatic print-map composer with live preview, drag editing and high-resolution export (UI in Mongolian).
+version=1.0.0
+author=Numan-Altai LLC
+email=info@numan.mn
+tags=layout,map,print,export,legend,mongolia
+category=Plugins
+icon=icon.svg
+experimental=False
+deprecated=False
+hasProcessingProvider=no
+homepage=https://github.com/tsek14/numanaltaillcapp
+tracker=https://github.com/tsek14/numanaltaillcapp/issues
+repository=https://github.com/tsek14/numanaltaillcapp
