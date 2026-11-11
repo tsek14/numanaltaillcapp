@@ -13,6 +13,7 @@ from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
     QgsDistanceArea,
+    QgsEmbeddedSymbolRenderer,
     QgsExpression,
     QgsExpressionContext,
     QgsExpressionContextUtils,
@@ -34,10 +35,12 @@ from qgis.core import (
     QgsLayoutSize,
     QgsLegendStyle,
     QgsLineSymbol,
+    QgsPathResolver,
     QgsPointXY,
     QgsProject,
     QgsRasterLayer,
     QgsRectangle,
+    QgsSymbolLayerUtils,
     QgsTableCell,
     QgsTextFormat,
     QgsUnitTypes,
@@ -103,18 +106,22 @@ DEFAULTS = {
     "legend_out_width": 62.0,
     "legend_cols": 1,
     "legend_font_size": 8.0,
-    "legend_filter": True,
+    "legend_filter": False,
     "legend_skip_basemap": True,
     "legend_bg": True,
+    "legend_titles": {},  # {layer_id: таних тэмдэг дэх давхаргын нэр}
+    "legend_order": [],   # [layer_id] — хоосон бол давхаргын модны дарааллаар
+    "legend_hidden": [],  # [layer_id] — таних тэмдэгт оруулахгүй давхаргууд
+    "legend_kml": True,   # KML-ийн объект бүрийн загварыг таних тэмдэгт гаргах
     # Хойд зүгийн сум
     "north": True,
     "north_pos": "TR",
     "north_size": 16.0,
-    "north_svg": "",
+    "north_svg": "arrows/NorthArrow_10.svg",  # "" = QGIS-ийн үндсэн сум
     # Масштабын шугам
     "scalebar": True,
     "scalebar_pos": "BR",
-    "scalebar_style": "Single Box",
+    "scalebar_style": "Double Box",
     "scalebar_segments": 4,
     "scale_text": False,
     # Талбайн хүснэгт
@@ -574,6 +581,22 @@ def _map_to_layout(map_item, rect, x, y):
     return QPointF(rect.left() + fx * rect.width(), rect.top() + fy * rect.height())
 
 
+def refresh_map_bounds(map_item):
+    """Торны хүрээний гаднах солбицлын тоонд зай гаргаж, дахин зуруулна.
+
+    Зургийн элементийн зурагдах муж (bounding rect) тор тохируулсны дараа
+    шинэчлэгдээгүй бол урьдчилан харалтад гаднах тоонууд тайрагдаж харагдахгүй.
+    """
+    if map_item is None:
+        return
+    try:
+        map_item.updateBoundingRect()
+        map_item.invalidateCache()
+        map_item.update()
+    except (RuntimeError, AttributeError):
+        pass
+
+
 def build(layout, settings, canvas_extent=None, overrides=None, extent_override=None):
     """Layout-ыг цэвэрлээд тохиргооны дагуу дахин угсарна.
 
@@ -737,7 +760,7 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
             north = QgsLayoutItemPicture(layout)
             north.setId("nm_north")
             layout.addLayoutItem(north)
-            path = s["north_svg"] or DEFAULT_NORTH_ARROW
+            path = resolve_svg(s["north_svg"])
             if not path.startswith(":") and not os.path.exists(path):
                 path = DEFAULT_NORTH_ARROW
             north.setPicturePath(path)
@@ -822,8 +845,34 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
                     parent = node.parent()
                     if parent is not None:
                         parent.removeChildNode(node)
+            hidden = set(s.get("legend_hidden") or [])
+            for node in list(root.findLayers()):
+                if node.layerId() in hidden and node.parent() is not None:
+                    node.parent().removeChildNode(node)
             _prune_empty_groups(root)
-            legend.setLegendFilterByMapEnabled(bool(s["legend_filter"]))
+            order = list(s.get("legend_order") or [])
+            if order:
+                # Хэрэглэгчийн дараалал: бүлгийг задалж нэг жагсаалт болгоно.
+                # Жагсаалтад байхгүй (шинээр нэмэгдсэн) давхарга төгсгөлд орно.
+                rank = {lid: i for i, lid in enumerate(order)}
+                lyrs = [n.layer() for n in root.findLayers() if n.layer() is not None]
+                lyrs.sort(key=lambda l: rank.get(l.id(), len(rank)))
+                root.removeAllChildren()
+                for lyr in lyrs:
+                    root.addLayer(lyr)
+            embedded = False
+            for node in root.findLayers():
+                if has_embedded_symbols(node.layer()):
+                    embedded = True
+            titles = s.get("legend_titles") or {}
+            for node in root.findLayers():
+                t = (titles.get(node.layerId()) or "").strip()
+                if t:
+                    node.setCustomProperty("legend/title-label", t)
+            # KML зэрэг объект бүр өөрийн загвартай давхаргыг QGIS-ийн «зурагт
+            # харагдаж буйг шүүх» горим таних тэмдгээс хасдаг тул тийм давхарга
+            # байвал шүүлтүүрийг хэрэглэхгүй: харагдаж буй давхарга бүр орно.
+            legend.setLegendFilterByMapEnabled(bool(s["legend_filter"]) and not embedded)
             legend.updateLegend()
             legend.adjustBoxSize()
             items["nm_legend"] = legend
@@ -936,7 +985,27 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
     finally:
         stack.blockCommands(False)
     layout.refresh()
+    refresh_map_bounds(items.get("nm_map"))
     return items
+
+
+def resolve_svg(name):
+    """Хойд зүгийн сумын SVG-ийн замыг олно (QGIS-ийн SVG хавтаснаас нэрээр нь)."""
+    if not name:
+        return DEFAULT_NORTH_ARROW
+    if name.startswith(":") or (os.path.isabs(name) and os.path.exists(name)):
+        return name
+    for cand in (name, "arrows/" + os.path.basename(name)):
+        path = QgsSymbolLayerUtils.svgSymbolNameToPath(cand, QgsPathResolver())
+        if path and os.path.exists(path):
+            return path
+    return DEFAULT_NORTH_ARROW
+
+
+def has_embedded_symbols(layer):
+    """KML зэрэг объект бүр өөрийн загвартай (Embedded Symbols) давхарга эсэх."""
+    return isinstance(layer, QgsVectorLayer) and isinstance(
+        layer.renderer(), QgsEmbeddedSymbolRenderer)
 
 
 def _layer_visible(project, layer):

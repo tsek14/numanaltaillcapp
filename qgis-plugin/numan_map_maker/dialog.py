@@ -3,7 +3,7 @@
 import json
 import os
 
-from qgis.PyQt.QtCore import Qt, QTimer, QUrl
+from qgis.PyQt.QtCore import QSize, Qt, QTimer, QUrl
 from qgis.PyQt.QtGui import QDesktopServices, QKeySequence
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
@@ -33,6 +33,8 @@ from qgis.PyQt.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QToolButton,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -47,6 +49,8 @@ from qgis.core import (
     QgsProject,
     QgsRectangle,
     QgsSettings,
+    QgsStyle,
+    QgsSymbolLayerUtils,
 )
 from qgis.gui import (
     QgsColorButton,
@@ -57,11 +61,18 @@ from qgis.gui import (
     QgsLayoutViewToolSelect,
     QgsMapLayerComboBox,
     QgsScaleWidget,
+    QgsSymbolSelectorDialog,
 )
 
-from . import basemaps, composer
+from . import basemaps, composer, legend_edit
+from .version import plugin_version
 
 SETTINGS_KEY = "numan_map_maker/last_settings"
+PROJECT_SCOPE = "numan_map_maker"
+TITLES_KEY = "legend_titles"
+ORDER_KEY = "legend_order"
+HIDDEN_KEY = "legend_hidden"
+SETTINGS_VERSION = 3  # анхдагч утга өөрчлөгдөх бүрд нэмнэ
 
 POSITIONS = [("Зүүн дээд", "TL"), ("Баруун дээд", "TR"),
              ("Зүүн доод", "BL"), ("Баруун доод", "BR")]
@@ -108,7 +119,7 @@ class MapMakerDialog(QDialog):
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
-        self.setWindowTitle("Газрын зураг бэлтгэгч — Нуман-Алтай")
+        self.setWindowTitle(f"Газрын зураг бэлтгэгч — Нуман-Алтай · v{plugin_version()}")
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint
                             | Qt.WindowType.WindowMinimizeButtonHint)
         self.resize(1360, 820)
@@ -122,6 +133,15 @@ class MapMakerDialog(QDialog):
         self._overrides = {}
         self._extent_override = None
         self._first_build = True
+        self._conns = []             # (signal, slot) — shutdown() үед салгана
+        self._legend_titles = {}     # layer_id -> таних тэмдэг дэх давхаргын нэр
+        self._legend_order = []      # [layer_id] — хэрэглэгчийн тогтоосон дараалал
+        self._legend_hidden = []     # [layer_id] — таних тэмдэгт оруулахгүй
+        self._style_backup = {}      # layer_id -> анхны renderer (буцаахад)
+        self._legend_busy = False    # засвар хийж байх үед жагсаалтыг дахин зурахгүй
+        self._legend_dirty = True
+        self._legend_cbs = {}
+        self._legend_btns = {}
 
         self.layout_ = QgsPrintLayout(QgsProject.instance())
         self.layout_.initializeDefaults()
@@ -132,8 +152,14 @@ class MapMakerDialog(QDialog):
         self._timer.setInterval(450)
         self._timer.timeout.connect(self.rebuild)
 
+        self._legend_timer = QTimer(self)
+        self._legend_timer.setSingleShot(True)
+        self._legend_timer.setInterval(400)
+        self._legend_timer.timeout.connect(self._legend_refresh_if_idle)
+
         self._build_ui()
         self._apply_settings(self._load_last())
+        self._load_titles_from_project()
         self._connect_project()
         QTimer.singleShot(0, self.rebuild)
 
@@ -155,6 +181,8 @@ class MapMakerDialog(QDialog):
         self.tabs.addTab(self._scroll(self._tab_map()), "Зураг")
         self.tabs.addTab(self._scroll(self._tab_basemap()), "Суурь зураг")
         self.tabs.addTab(self._scroll(self._tab_elements()), "Элемент")
+        self._legend_tab = self.tabs.addTab(self._tab_legend_edit(), "Тэмдэг")
+        self.tabs.currentChanged.connect(self._tab_changed)
         self.tabs.addTab(self._scroll(self._tab_table()), "Хүснэгт")
         self.tabs.addTab(self._scroll(self._tab_photos()), "Фото")
 
@@ -544,6 +572,12 @@ class MapMakerDialog(QDialog):
         ch = QCheckBox("Зөвхөн зурагт харагдаж буй тэмдгийг оруулах")
         self._bind("legend_filter", ch)
         f.addRow(ch)
+        ch = QCheckBox("KML-ийн шугам, дүрсийн загварыг таних тэмдэгт гаргах")
+        ch.setToolTip("KML-ээс импортолсон давхарга загвараа объект бүртээ агуулдаг тул QGIS "
+                      "түүнд таних тэмдгийн дүрс үүсгэдэггүй. Чагттай бол загварыг нь ижил "
+                      "харагдах энгийн загвар руу хөрвүүлнэ («Тэмдэг» табаас буцааж болно).")
+        self._bind("legend_kml", ch)
+        f.addRow(ch)
         ch = QCheckBox("Онлайн суурь зургийг (XYZ / WMS) хасах")
         self._bind("legend_skip_basemap", ch)
         f.addRow(ch)
@@ -589,6 +623,334 @@ class MapMakerDialog(QDialog):
         v.addWidget(ch)
         v.addStretch(1)
         return w
+
+    def _tab_legend_edit(self):
+        w = QWidget()
+        v = QVBoxLayout(w)
+        note = QLabel(
+            "Таних тэмдгийн нэр, өнгө, дүрсийг эндээс засна. Засвар нь давхаргын "
+            "загварт шууд хэрэгжих тул газрын зураг дээрх өнгө, дүрс болон таних "
+            "тэмдэг хамт өөрчлөгдөнө (QGIS-ийн үндсэн цонхонд ч мөн адил). "
+            "Нэр дээр давхар товшиж бичнэ. Давхаргыг сонгоод ▲ ▼ товчоор таних "
+            "тэмдэг дэх дарааллыг солино; чагтыг авбал таних тэмдэгт орохгүй.")
+        note.setWordWrap(True)
+        v.addWidget(note)
+        t = QTreeWidget()
+        t.setColumnCount(3)
+        t.setHeaderLabels(["Нэр", "Өнгө", "Дүрс"])
+        t.setRootIsDecorated(True)
+        t.setUniformRowHeights(False)
+        t.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked
+                          | QAbstractItemView.EditTrigger.EditKeyPressed)
+        hd = t.header()
+        hd.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hd.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hd.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        t.itemChanged.connect(self._legend_item_edited)
+        self.tree_legend = t
+        v.addWidget(t, 1)
+        h = QHBoxLayout()
+        h.addWidget(QLabel("Дараалал:"))
+        for text, tip, step in (("▲ Дээш", "Сонгосон давхаргыг таних тэмдэгт дээшлүүлнэ", -1),
+                                ("▼ Доош", "Сонгосон давхаргыг таних тэмдэгт доошлуулна", 1)):
+            b = QPushButton(text)
+            b.setToolTip(tip)
+            b.clicked.connect(lambda _=False, st=step: self._legend_move(st))
+            h.addWidget(b)
+        b = QPushButton("Анхны дараалал")
+        b.setToolTip("Давхаргын самбарын дараалал, бүлгүүд рүү буцаана")
+        b.clicked.connect(self._legend_reset_order)
+        h.addWidget(b)
+        h.addStretch(1)
+        v.addLayout(h)
+        h = QHBoxLayout()
+        b = QPushButton("Жагсаалт шинэчлэх")
+        b.clicked.connect(lambda: self._refresh_legend_editor(force=True))
+        h.addWidget(b)
+        b = QPushButton("Сонгосныг анхных руу")
+        b.setToolTip("Сонгосон давхаргын загвар, нэрийг засахаас өмнөх байдалд нь буцаана")
+        b.clicked.connect(self._legend_revert_selected)
+        h.addWidget(b)
+        b = QPushButton("Бүгдийг анхных руу")
+        b.clicked.connect(self._legend_revert_all)
+        h.addWidget(b)
+        v.addLayout(h)
+        warn = QLabel("Анхаар: засвар нь төслийн давхаргын загварыг өөрчилдөг тул төслөө "
+                      "хадгалбал хамт хадгалагдана.")
+        warn.setWordWrap(True)
+        warn.setStyleSheet("color:#666")
+        v.addWidget(warn)
+        return w
+
+    # ---- Таних тэмдэг засварлагч ---------------------------------------
+    def _tab_changed(self, idx):
+        if idx == self._legend_tab:
+            self._refresh_legend_editor()
+
+    def _legend_mark_dirty(self, *_):
+        self._legend_dirty = True
+        if self.isVisible() and self.tabs.currentIndex() == self._legend_tab:
+            self._legend_timer.start()
+
+    def _legend_refresh_if_idle(self):
+        if self._legend_busy:
+            self._legend_timer.start()  # засвар дуустал хүлээнэ
+        elif self._legend_dirty:
+            self._refresh_legend_editor()
+
+    @staticmethod
+    def _exec(dlg):
+        return (dlg.exec if hasattr(dlg, "exec") else dlg.exec_)()
+
+    def _refresh_legend_editor(self, force=False):
+        if self._legend_busy:
+            return
+        if not (force or self._legend_dirty):
+            return
+        self._legend_dirty = False
+        t = self.tree_legend
+        self._legend_busy = True
+        t.blockSignals(True)
+        try:
+            t.clear()
+            self._legend_cbs = {}
+            self._legend_btns = {}
+            skip = bool(self._bindings["legend_skip_basemap"][0]())
+            for lyr in self._legend_layers(skip):
+                lid = lyr.id()
+                kind = legend_edit.renderer_kind(lyr)
+                top = QTreeWidgetItem([self._legend_titles.get(lid) or lyr.name(), "", ""])
+                top.setFlags(top.flags() | Qt.ItemFlag.ItemIsEditable
+                             | Qt.ItemFlag.ItemIsUserCheckable)
+                top.setCheckState(0, Qt.CheckState.Unchecked if lid in self._legend_hidden
+                                  else Qt.CheckState.Checked)
+                top.setData(0, Qt.ItemDataRole.UserRole, ["layer", lid, 0])
+                top.setToolTip(0, f"Давхарга: {lyr.name()}")
+                t.addTopLevelItem(top)
+                entries = legend_edit.list_entries(lyr)
+                if kind == legend_edit.SINGLE and entries:
+                    self._legend_widgets(top, lid, 0, entries[0].symbol)
+                else:
+                    for e in entries:
+                        child = QTreeWidgetItem([e.label, "", ""])
+                        child.setFlags(child.flags() | Qt.ItemFlag.ItemIsEditable)
+                        child.setData(0, Qt.ItemDataRole.UserRole, ["entry", lid, e.key])
+                        top.addChild(child)
+                        self._legend_widgets(child, lid, e.key, e.symbol)
+                    if kind == legend_edit.OTHER:
+                        top.setToolTip(0, "Энэ төрлийн загварыг QGIS-ийн Layer Styling "
+                                          "самбараас засна")
+                top.setExpanded(True)
+        finally:
+            t.blockSignals(False)
+            self._legend_busy = False
+
+    def _legend_widgets(self, item, lid, key, symbol):
+        if symbol is None:
+            return
+        t = self.tree_legend
+        cb = QgsColorButton()
+        cb.setAllowOpacity(True)
+        cb.setColor(symbol.color())
+        cb.colorChanged.connect(
+            lambda c, lid=lid, key=key: self._legend_color(lid, key, c))
+        t.setItemWidget(item, 1, cb)
+        btn = QToolButton()
+        btn.setText("Өөрчлөх…")
+        btn.setIconSize(QSize(28, 16))
+        btn.setIcon(QgsSymbolLayerUtils.symbolPreviewIcon(symbol, QSize(28, 16)))
+        btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        btn.clicked.connect(lambda _=False, lid=lid, key=key: self._legend_symbol(lid, key))
+        t.setItemWidget(item, 2, btn)
+        self._legend_cbs[(lid, str(key))] = cb
+        self._legend_btns[(lid, str(key))] = btn
+
+    def _legend_sync_widgets(self, lid, key, symbol):
+        """Засварын дараа өнгө, дүрсийн урьдчилсан харалтыг шинэчилнэ."""
+        cb = self._legend_cbs.get((lid, str(key)))
+        btn = self._legend_btns.get((lid, str(key)))
+        try:
+            if cb is not None:
+                cb.blockSignals(True)
+                cb.setColor(symbol.color())
+                cb.blockSignals(False)
+            if btn is not None:
+                btn.setIcon(QgsSymbolLayerUtils.symbolPreviewIcon(symbol, QSize(28, 16)))
+        except RuntimeError:
+            pass
+
+    def _legend_entry_symbol(self, layer, key):
+        for e in legend_edit.list_entries(layer):
+            if str(e.key) == str(key):
+                return e.key, e.symbol
+        return None, None
+
+    def _legend_color(self, lid, key, color):
+        layer = QgsProject.instance().mapLayer(lid)
+        if layer is None:
+            return
+        real_key, _sym = self._legend_entry_symbol(layer, key)
+        if real_key is None:
+            return
+        legend_edit.backup_renderer(self._style_backup, layer)
+        if legend_edit.apply_color(layer, real_key, color):
+            _k, sym = self._legend_entry_symbol(layer, key)
+            if sym is not None:
+                btn = self._legend_btns.get((lid, str(key)))
+                if btn is not None:
+                    btn.setIcon(QgsSymbolLayerUtils.symbolPreviewIcon(sym, QSize(28, 16)))
+            self._changed()
+
+    def _legend_symbol(self, lid, key):
+        layer = QgsProject.instance().mapLayer(lid)
+        if layer is None:
+            return
+        real_key, sym = self._legend_entry_symbol(layer, key)
+        if sym is None:
+            return
+        self._legend_busy = True
+        try:
+            dlg = QgsSymbolSelectorDialog(sym, QgsStyle.defaultStyle(), layer, self)
+            accepted = self._exec(dlg)
+        finally:
+            self._legend_busy = False
+        if not accepted:
+            return
+        legend_edit.backup_renderer(self._style_backup, layer)
+        if legend_edit.apply_entry(layer, real_key, symbol=sym):
+            self._legend_sync_widgets(lid, key, sym)
+            self._changed()
+
+    def _legend_item_edited(self, item, col):
+        if self._legend_busy or col != 0:
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        what, lid, key = data[0], data[1], data[2]
+        layer = QgsProject.instance().mapLayer(lid)
+        if layer is None:
+            return
+        text = item.text(0).strip()
+        if what == "layer":
+            shown = item.checkState(0) != Qt.CheckState.Unchecked
+            if shown and lid in self._legend_hidden:
+                self._legend_hidden.remove(lid)
+            elif not shown and lid not in self._legend_hidden:
+                self._legend_hidden.append(lid)
+            if text and text != layer.name():
+                self._legend_titles[lid] = text
+            else:
+                self._legend_titles.pop(lid, None)
+            self._save_titles_to_project()
+        else:
+            real_key, _sym = self._legend_entry_symbol(layer, key)
+            if real_key is None:
+                return
+            legend_edit.backup_renderer(self._style_backup, layer)
+            legend_edit.apply_entry(layer, real_key, label=item.text(0))
+        self._changed()
+
+    def _legend_layers(self, skip_basemap=True):
+        """Таних тэмдэгт орох давхаргууд — хэрэглэгчийн дарааллаар."""
+        lyrs = legend_edit.editable_layers(QgsProject.instance(), skip_basemap)
+        if self._legend_order:
+            rank = {lid: i for i, lid in enumerate(self._legend_order)}
+            lyrs.sort(key=lambda l: rank.get(l.id(), len(rank)))
+        return lyrs
+
+    def _legend_move(self, step):
+        ids = self._legend_selected_layer_ids()
+        if not ids:
+            self.lbl_status.setText("Эхлээд жагсаалтаас давхаргаа сонгоно уу.")
+            return
+        skip = bool(self._bindings["legend_skip_basemap"][0]())
+        order = [l.id() for l in self._legend_layers(skip)]
+        moving = [i for i in order if i in ids]
+        seq = moving if step < 0 else list(reversed(moving))
+        for lid in seq:
+            i = order.index(lid)
+            j = i + step
+            if 0 <= j < len(order) and order[j] not in ids:
+                order[i], order[j] = order[j], order[i]
+        self._legend_order = order
+        self._save_titles_to_project()
+        self._refresh_legend_editor(force=True)
+        self._legend_select(ids)
+        self._changed()
+
+    def _legend_reset_order(self):
+        self._legend_order = []
+        self._save_titles_to_project()
+        self._refresh_legend_editor(force=True)
+        self._changed()
+
+    def _legend_select(self, ids):
+        t = self.tree_legend
+        for i in range(t.topLevelItemCount()):
+            it = t.topLevelItem(i)
+            data = it.data(0, Qt.ItemDataRole.UserRole)
+            if data and data[1] in ids:
+                it.setSelected(True)
+                t.setCurrentItem(it)
+
+    def _legend_selected_layer_ids(self):
+        ids = []
+        for it in self.tree_legend.selectedItems():
+            top = it.parent() or it
+            data = top.data(0, Qt.ItemDataRole.UserRole)
+            if data and data[1] not in ids:
+                ids.append(data[1])
+        return ids
+
+    def _legend_revert(self, ids):
+        prj = QgsProject.instance()
+        for lid in ids:
+            layer = prj.mapLayer(lid)
+            if layer is not None:
+                legend_edit.restore_renderer(self._style_backup, layer)
+            self._legend_titles.pop(lid, None)
+        self._save_titles_to_project()
+        self._refresh_legend_editor(force=True)
+        self._changed()
+
+    def _legend_revert_selected(self):
+        self._legend_revert(self._legend_selected_layer_ids())
+
+    def _legend_revert_all(self):
+        self._legend_revert(list(set(self._style_backup) | set(self._legend_titles)))
+
+    def _save_titles_to_project(self):
+        prj = QgsProject.instance()
+        prj.writeEntry(PROJECT_SCOPE, TITLES_KEY,
+                       json.dumps(self._legend_titles, ensure_ascii=False))
+        prj.writeEntry(PROJECT_SCOPE, ORDER_KEY, json.dumps(self._legend_order))
+        prj.writeEntry(PROJECT_SCOPE, HIDDEN_KEY, json.dumps(self._legend_hidden))
+        prj.setDirty(True)
+
+    def _load_titles_from_project(self):
+        raw, ok = QgsProject.instance().readEntry(PROJECT_SCOPE, TITLES_KEY, "")
+        try:
+            d = json.loads(raw) if ok and raw else {}
+            self._legend_titles = d if isinstance(d, dict) else {}
+        except ValueError:
+            self._legend_titles = {}
+        for key, attr in ((ORDER_KEY, "_legend_order"), (HIDDEN_KEY, "_legend_hidden")):
+            raw, ok = QgsProject.instance().readEntry(PROJECT_SCOPE, key, "")
+            try:
+                d = json.loads(raw) if ok and raw else []
+                setattr(self, attr, [str(x) for x in d] if isinstance(d, list) else [])
+            except ValueError:
+                setattr(self, attr, [])
+        self._legend_dirty = True
+
+    def _set_legend_list(self, attr, v):
+        setattr(self, attr, [str(x) for x in v] if isinstance(v, list) else [])
+        self._legend_mark_dirty()
+
+    def _set_legend_titles(self, v):
+        self._legend_titles = dict(v) if isinstance(v, dict) else {}
+        self._legend_mark_dirty()
 
     def _tab_table(self):
         w = QWidget()
@@ -680,6 +1042,14 @@ class MapMakerDialog(QDialog):
         f.addRow(ch)
         v.addLayout(f)
         self._bindings["photos"] = (self._get_photos, self._set_photos)
+        self._bindings["legend_titles"] = (lambda: dict(self._legend_titles),
+                                           self._set_legend_titles)
+        self._bindings["legend_order"] = (
+            lambda: list(self._legend_order),
+            lambda v: self._set_legend_list("_legend_order", v))
+        self._bindings["legend_hidden"] = (
+            lambda: list(self._legend_hidden),
+            lambda v: self._set_legend_list("_legend_hidden", v))
         return w
 
     @staticmethod
@@ -698,7 +1068,8 @@ class MapMakerDialog(QDialog):
                     if sub == "arrows" and "north" not in low:
                         continue
                     seen.add(name)
-                    out.append((os.path.splitext(name)[0], os.path.join(d, name)))
+                    # Харьцангуй нэрээр хадгална: загварыг өөр компьютерт ч ашиглаж болно
+                    out.append((os.path.splitext(name)[0], f"{sub}/{name}"))
         return out
 
     # ------------------------------------------------------------------
@@ -901,14 +1272,34 @@ class MapMakerDialog(QDialog):
     # ------------------------------------------------------------------
     def _connect_project(self):
         canvas = self.iface.mapCanvas()
-        canvas.extentsChanged.connect(self._canvas_changed)
         prj = QgsProject.instance()
-        prj.layerTreeRoot().visibilityChanged.connect(self._changed)
-        prj.layersAdded.connect(self._changed)
-        prj.layersRemoved.connect(self._changed)
-        prj.crsChanged.connect(self._project_reset)
-        prj.cleared.connect(self._project_reset)
-        prj.readProject.connect(self._project_loaded)
+        root = prj.layerTreeRoot()
+        pairs = [
+            (canvas.extentsChanged, self._canvas_changed),
+            (root.visibilityChanged, self._changed),
+            (root.visibilityChanged, self._legend_mark_dirty),
+            (prj.layersAdded, self._changed),
+            (prj.layersAdded, self._legend_mark_dirty),
+            (prj.layersRemoved, self._changed),
+            (prj.layersRemoved, self._legend_mark_dirty),
+            (prj.crsChanged, self._project_reset),
+            (prj.cleared, self._project_cleared),
+            (prj.readProject, self._project_loaded),
+        ]
+        for sig, slot in pairs:
+            sig.connect(slot)
+            self._conns.append((sig, slot))
+
+    def shutdown(self):
+        """Плагин унтрах / дахин ачаалах үед QGIS-ийн дохионоос салгана."""
+        self._timer.stop()
+        self._legend_timer.stop()
+        for sig, slot in self._conns:
+            try:
+                sig.disconnect(slot)
+            except (TypeError, RuntimeError):
+                pass
+        self._conns = []
 
     def _canvas_changed(self):
         if self.isVisible() and self.cb_extent.currentData() == "canvas" \
@@ -917,6 +1308,9 @@ class MapMakerDialog(QDialog):
 
     def _project_loaded(self, *_):
         self._set_basemap_state(basemaps.from_project(QgsProject.instance()))
+        self._style_backup = {}
+        self._load_titles_from_project()
+        self._legend_mark_dirty()
         self._changed()
 
     def _set_basemap_state(self, state):
@@ -935,6 +1329,16 @@ class MapMakerDialog(QDialog):
         self._extent_override = None
         self._extent_snapshot = None
         self._changed()
+
+    def _project_cleared(self, *_):
+        # Төсөл цэвэрлэгдэхэд давхаргууд устах тул нэр, нөөц загварыг мартана
+        # (CRS солигдоход мартахгүй).
+        self._legend_titles = {}
+        self._legend_order = []
+        self._legend_hidden = []
+        self._style_backup = {}
+        self._legend_mark_dirty()
+        self._project_reset()
 
     def _alive(self, item):
         try:
@@ -978,6 +1382,8 @@ class MapMakerDialog(QDialog):
                 self._loading = False
             self.lbl_token.setVisible(
                 basemaps.needs_token(s["basemap"] or "") and not s["mapbox_token"].strip())
+            if s["legend"] and s["legend_kml"]:
+                self._convert_kml_styles()
             self.layout_.deselectAll()
             self._items = composer.build(
                 self.layout_, s, self.iface.mapCanvas().extent(),
@@ -987,7 +1393,11 @@ class MapMakerDialog(QDialog):
             if m is not None:
                 self._extent_snapshot = QgsRectangle(m.extent())
                 self.lbl_scale.setText("1 : {:,.0f}".format(m.scale()).replace(",", " "))
-            QgsSettings().setValue(SETTINGS_KEY, json.dumps(s, ensure_ascii=False))
+            QgsSettings().setValue(
+                SETTINGS_KEY, json.dumps(dict(s, _v=SETTINGS_VERSION), ensure_ascii=False))
+            # Торны гаднах солбицлын тоо эхний зурагдалтын дараа л хэмжигддэг
+            # хувилбарт зориулж дахин нэг удаа зай гаргана.
+            QTimer.singleShot(250, self._refresh_map_bounds)
             if self._first_build:
                 self._first_build = False
                 self.view.zoomFull()
@@ -996,6 +1406,32 @@ class MapMakerDialog(QDialog):
             raise
         finally:
             self._building = False
+
+    def _convert_kml_styles(self):
+        """KML-ийн объектод шингэсэн загварыг таних тэмдэгт гарах загвар руу хөрвүүлнэ."""
+        done = []
+        self._loading = True
+        try:
+            for lyr in legend_edit.editable_layers(QgsProject.instance()):
+                if not composer.has_embedded_symbols(lyr):
+                    continue
+                backup = lyr.renderer().clone()
+                if legend_edit.convert_embedded(lyr):
+                    self._style_backup.setdefault(lyr.id(), backup)
+                    done.append(lyr.name())
+        finally:
+            self._loading = False
+        if done:
+            self._legend_mark_dirty()
+            self.lbl_status.setText(
+                "KML-ийн загварыг таних тэмдэгт гаргахаар хөрвүүллээ: " + ", ".join(done))
+
+    def _refresh_map_bounds(self):
+        m = self._items.get("nm_map")
+        if self._alive(m):
+            composer.refresh_map_bounds(m)
+            self.layout_.update()
+            self.view.viewport().update()
 
     def reset_positions(self):
         self._overrides = {}
@@ -1021,8 +1457,13 @@ class MapMakerDialog(QDialog):
             raw = QgsSettings().value(SETTINGS_KEY, "")
             s = json.loads(raw) if raw else {}
             # Давхарга, фото нь төсөл бүрд өөр тул өмнөх төслөөс зөөхгүй
-            for k in ("photos", "extent_layer", "table_layer", "table_field"):
+            for k in ("photos", "extent_layer", "table_layer", "table_field", "legend_titles",
+                      "legend_order", "legend_hidden"):
                 s.pop(k, None)
+            # Хуучин хувилбарын хадгалсан утга шинэ анхдагч утгыг дарахгүй
+            if int(s.pop("_v", 1) or 1) < SETTINGS_VERSION:
+                for k in ("north_svg", "scalebar_style", "legend_filter"):
+                    s.pop(k, None)
             if "extent_mode" in s and s["extent_mode"] == "layer":
                 s["extent_mode"] = "canvas"
             s["table"] = False
