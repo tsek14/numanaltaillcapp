@@ -414,6 +414,12 @@
   .gs-mini-btn:hover{ background:var(--teal); border-color:var(--teal); color:#062b22; }
   .gs-mini-btn.active{ background:var(--teal); border-color:var(--teal); color:#062b22; }
   .gs-type-row{ display:flex; align-items:center; gap:8px; padding:4px 0; }
+  .gs-type-up{
+    width:22px; height:22px; padding:0; flex-shrink:0; border-radius:6px; cursor:pointer;
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text); font-size:9px; line-height:1;
+  }
+  .gs-type-up:disabled{ opacity:0.3; cursor:default; }
+  .gs-type-note{ font-size:11px; color:var(--muted); padding:2px 0 6px; line-height:1.35; }
   .gs-type-row .gs-type-name{
     font-size:10.5px; color:var(--text); flex:1; overflow:hidden; text-overflow:ellipsis;
     white-space:nowrap;
@@ -1008,6 +1014,29 @@
   }
   #toast.show{ opacity:1; }
 
+  /* ---- Vertex editing (js-10-edit.js) ---- */
+  #editBar{
+    position:absolute; bottom:calc(var(--sheet-h, 0px) + 60px); left:50%; transform:translateX(-50%); z-index:690; display:none;
+    align-items:center; gap:10px; max-width:min(92vw, 560px);
+    background:var(--panel-2); border:1px solid var(--teal); color:var(--text);
+    padding:7px 8px 7px 14px; border-radius:14px; font-size:12px; line-height:1.4;
+    box-shadow:0 4px 16px rgba(0,0,0,0.4);
+  }
+  #editBar.show{ display:flex; }
+  #editBarDone{
+    flex-shrink:0; background:var(--teal); color:#062b22; border:0; border-radius:9px;
+    padding:7px 12px; font-weight:700; font-size:12px; cursor:pointer;
+  }
+  .edit-vtx{
+    width:14px; height:14px; margin:6px; border-radius:50%; background:#fff; border:3px solid #35d9b0;
+    box-shadow:0 1px 4px rgba(0,0,0,0.5); cursor:grab;
+  }
+  .edit-mid{
+    width:16px; height:16px; margin:5px; border-radius:50%; background:rgba(255,255,255,0.85); color:#222;
+    border:1px solid rgba(0,0,0,0.45); font-size:13px; font-weight:700; line-height:14px; text-align:center; cursor:copy;
+  }
+  .layer-export-btn.on{ color:var(--teal); }
+
   /* ---- Sentinel-2 setup modal ---- */
   #sentinelSetupModal{
     position:fixed; inset:0; z-index:2000; display:none;
@@ -1295,7 +1324,7 @@
     #crosshair{ left:calc(50% + var(--panel-w) / 2); }
     #legendPanel, #legendPanel.below-sentinel-bar{ left:calc(var(--panel-w) + 14px); top:max(14px, env(safe-area-inset-top)); }
     #measurePanel{ left:calc(var(--panel-w) + 14px); top:max(14px, env(safe-area-inset-top)); }
-    #mrpamHint, #adminHint, #cadastreHint, #userGjHint, #toast{ left:calc(50% + var(--panel-w) / 2); }
+    #mrpamHint, #adminHint, #cadastreHint, #userGjHint, #toast, #editBar{ left:calc(50% + var(--panel-w) / 2); }
   }
 
   /* Language switch (EN/MN), added by ../i18n.js */

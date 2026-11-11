@@ -763,7 +763,8 @@
     msTypeColorsEmpty.style.display = 'none';
     // One row per type: name, color picker, and a show/hide checkbox — the
     // shared helper below builds it identically for MRPAM and the cadastre.
-    renderTypeFilterRows(msTypeColorsList, types, {
+    renderTypeFilterRows(msTypeColorsList, applyTypeOrder('mrpam', types), {
+      onMoveUp: function(t){ moveTypeUp('mrpam', types, t); renderMrpamTypeColorList(); },
       colorOf: function(t){ return mrpamTypeColors[t]; },
       isHidden: function(t){ return !!mrpamTypesHidden[t]; },
       onColor: function(t, value){
@@ -801,11 +802,18 @@
   // on the boundary layer's settings panel.
   //   cfg.colorOf(type) -> '#rrggbb'      cfg.isHidden(type) -> bool
   //   cfg.onColor(type, '#rrggbb')        cfg.onToggle(type, shownBool)
+  //   cfg.onMoveUp(type)  (optional) -> shows a ▲ button that moves the type up
   function renderTypeFilterRows(container, types, cfg){
     var html = '';
-    types.forEach(function(t){
+    if(cfg.onMoveUp && types.length > 1){
+      html += '<div class="gs-type-note">Дарааллыг ▲ товчоор өөрчилнө. Полигон тайрахад төрлүүд давхцсан хэсэг дээр байгаа төрөлд тооцогдоно.</div>';
+    }
+    types.forEach(function(t, i){
       var esc = escapeXml(t);
       html += '<div class="gs-type-row">';
+      if(cfg.onMoveUp && types.length > 1){
+        html += '  <button type="button" class="gs-type-up" data-type="'+esc+'" title="Дээшлүүлэх"'+(i === 0 ? ' disabled' : '')+'>▲</button>';
+      }
       html += '  <span class="gs-type-name" title="'+esc+'">'+esc+'</span>';
       html += '  <input type="color" data-type="'+esc+'" value="'+cfg.colorOf(t)+'">';
       html += '  <input type="checkbox" class="gs-type-show" data-type="'+esc+'" title="Харуулах / нуух"'+(cfg.isHidden(t) ? '' : ' checked')+'>';
@@ -818,6 +826,27 @@
     Array.prototype.forEach.call(container.querySelectorAll('input.gs-type-show'), function(cb){
       cb.addEventListener('change', function(){ cfg.onToggle(cb.getAttribute('data-type'), cb.checked); });
     });
+    Array.prototype.forEach.call(container.querySelectorAll('button.gs-type-up'), function(btn){
+      btn.addEventListener('click', function(){ cfg.onMoveUp(btn.getAttribute('data-type')); });
+    });
+  }
+
+  // The person's own order of a layer's types (the ▲ buttons), kept per layer
+  // and per type property. Types not ordered yet follow in their usual order.
+  var typeOrderPrefs = getSetting('typeOrderPrefs', {}) || {};
+  function applyTypeOrder(prefKey, types){
+    var saved = typeOrderPrefs[prefKey] || [], has = {}, used = {}, out = [];
+    types.forEach(function(t){ has[t] = true; });
+    saved.forEach(function(t){ if(has[t] && !used[t]){ used[t] = true; out.push(t); } });
+    types.forEach(function(t){ if(!used[t]) out.push(t); });
+    return out;
+  }
+  function moveTypeUp(prefKey, types, t){
+    var o = applyTypeOrder(prefKey, types), i = o.indexOf(t);
+    if(i > 0){ o.splice(i, 1); o.splice(i - 1, 0, t); }
+    typeOrderPrefs[prefKey] = o;
+    saveSetting('typeOrderPrefs', typeOrderPrefs);
+    return o;
   }
 
   // The "Сонгож экспортлох" behaviour MRPAM has (turn select mode on, tap

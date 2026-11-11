@@ -177,6 +177,7 @@
   }
 
   function startTapDraw(){
+    if(shapeEditActive) stopShapeEdit(); // drawing and vertex editing both use map taps
     // If the shape we last drew into already has points, this is a fresh
     // session — start a brand-new shape instead of continuing the old one.
     if(shapes[tapShapeIndex] && shapes[tapShapeIndex].points.length > 0){
@@ -226,6 +227,7 @@
     if(shapes[tapShapeIndex].points.length === 0) return;
     pushUndo();
     shapes[tapShapeIndex].points = [];
+    delete shapes[tapShapeIndex].holes;
     redrawAll();
   });
   document.getElementById('btnGPS').addEventListener('click', function(){

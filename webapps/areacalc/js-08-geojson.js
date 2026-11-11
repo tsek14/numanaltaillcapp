@@ -216,6 +216,8 @@
     var overrides = userGjColorOverrides[userGjTypeKey] || {};
     userGjTypeColors = {};
     userGjTypeOrder.forEach(function(t, i){ userGjTypeColors[t] = overrides[t] || cadastreTypeColorAt(i); });
+    // Colours stay tied to the by-count order; the list itself follows the person's own order.
+    userGjTypeOrder = applyTypeOrder('usergj|' + userGjTypeKey, userGjTypeOrder);
   }
 
   function isUserGjTypeHidden(t){
@@ -613,6 +615,10 @@
     }
     gjTypeEmpty.style.display = 'none';
     renderTypeFilterRows(gjTypeList, userGjTypeOrder, {
+      onMoveUp: function(t){
+        userGjTypeOrder = moveTypeUp('usergj|' + userGjTypeKey, userGjTypeOrder, t);
+        renderUserGjTypeUi(); renderLegend();
+      },
       colorOf: function(t){ return userGjTypeColors[t]; },
       isHidden: function(t){ return isUserGjTypeHidden(t); },
       onColor: function(t, value){
