@@ -418,12 +418,45 @@
     return { full:full, net:net };
   }
 
+  // A whole batch as one polygon layer. Leaflet rounds vertices to whole
+  // pixels; smoothFactor 0.01 then only drops repeated and exactly collinear
+  // points (real simplification would pull shared edges apart), and rings
+  // that collapse to a line at the current zoom are skipped — zoomed out,
+  // most pieces of a big cut-up area do, which keeps drawing fast.
+  var BatchPolygon = L.Polygon.extend({
+    _simplifyPoints: function(){
+      L.Polygon.prototype._simplifyPoints.call(this);
+      this._parts = this._parts.filter(function(r){
+        if(r.length < 3) return false;
+        var x0 = r[0].x, y0 = r[0].y, dx = false, dy = false;
+        for(var i=1;i<r.length;i++){
+          if(r[i].x !== x0) dx = true;
+          if(r[i].y !== y0) dy = true;
+          if(dx && dy) return true;
+        }
+        return false;
+      });
+    }
+  });
+
+  // [lat,lng] ring of a shape, always wound the same way (for 'nonzero' filling).
+  function sameWinding(pts){
+    var sum = 0, n = pts.length, ring = new Array(n);
+    for(var i=0;i<n;i++){
+      var a = pts[i], b = pts[(i + 1) % n];
+      sum += (b.lng - a.lng) * (b.lat + a.lat);
+      ring[i] = [a.lat, a.lng];
+    }
+    return sum < 0 ? ring.reverse() : ring;
+  }
+
   function redrawAll(opts){
     drawLayer.clearLayers();
     var knockoutFills = polyKnockoutOn ? computeKnockoutFills() : null;
     document.getElementById('tapCount').textContent = shapes[tapShapeIndex] ? shapes[tapShapeIndex].points.length : 0;
 
     var totals = { totalPolyArea:0, totalLineLen:0, polyCount:0, lineCount:0, pointCount:0 };
+    var batchDraw = {}, batchDrawOrder = [];
     var allLatLngs = [];
     var tapTypeLabel = '—';
 
@@ -490,10 +523,14 @@
         var op = (shape.opacity===undefined ? 1 : shape.opacity);
         var fillOp = op * (showLine ? 0.22 : 0.45);
         var kFill = knockoutFills ? knockoutFills[sIdx] : undefined;
-        if(kFill === undefined){
+        if(kFill === undefined && shape.batchId){
+          // Batch members are drawn together, one path per batch (see below).
+          var gk = shape.batchId + '|' + color + '|' + fillOp + '|' + showLine;
+          if(!batchDraw[gk]){ batchDraw[gk] = { rings:[], color:color, fillOp:fillOp, showLine:showLine }; batchDrawOrder.push(gk); }
+          batchDraw[gk].rings.push(sameWinding(pts));
+        } else if(kFill === undefined){
           L.polygon(pts.map(function(p){return [p.lat,p.lng];}), {
-            stroke: showLine, color:color, weight:3, fillColor:color, fillOpacity: fillOp,
-            renderer: shape.batchId ? batchRenderer : undefined
+            stroke: showLine, color:color, weight:3, fillColor:color, fillOpacity: fillOp
           }).addTo(drawLayer);
         } else {
           // Overlap knocked out: fill = only the part no other polygon covers.
@@ -512,6 +549,20 @@
         if(shownA < fullA - 0.01) totals.cutOverlap = true;
         if(sIdx === 0) tapTypeLabel = 'Полигон';
       }
+    });
+
+    // One path per batch. Pieces of a cut-up polygon (holes opened along
+    // meridians, clip results) touch along shared edges; drawn one by one, each
+    // piece blurs its own edges, which shows as stripes, and pieces thinner
+    // than a pixel fade out when zoomed out. In a single path the shared
+    // edges cancel, so the fill is seamless at every zoom. 'nonzero' with one
+    // winding direction fills overlapping members instead of punching holes.
+    batchDrawOrder.forEach(function(gk){
+      var g = batchDraw[gk];
+      new BatchPolygon(g.rings, {
+        stroke: g.showLine, color:g.color, weight:3, fillColor:g.color, fillOpacity:g.fillOp,
+        fillRule:'nonzero', smoothFactor:0.01, interactive:false, renderer: batchRenderer
+      }).addTo(drawLayer);
     });
 
     document.getElementById('tapType').textContent = tapTypeLabel;
