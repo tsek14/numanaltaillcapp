@@ -20,6 +20,8 @@ from qgis.PyQt.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -57,7 +59,7 @@ from qgis.gui import (
     QgsScaleWidget,
 )
 
-from . import composer
+from . import basemaps, composer
 
 SETTINGS_KEY = "numan_map_maker/last_settings"
 
@@ -151,6 +153,7 @@ class MapMakerDialog(QDialog):
         lv.addWidget(self.tabs, 1)
         self.tabs.addTab(self._scroll(self._tab_page()), "Хуудас")
         self.tabs.addTab(self._scroll(self._tab_map()), "Зураг")
+        self.tabs.addTab(self._scroll(self._tab_basemap()), "Суурь зураг")
         self.tabs.addTab(self._scroll(self._tab_elements()), "Элемент")
         self.tabs.addTab(self._scroll(self._tab_table()), "Хүснэгт")
         self.tabs.addTab(self._scroll(self._tab_photos()), "Фото")
@@ -194,6 +197,9 @@ class MapMakerDialog(QDialog):
         self.view = QgsLayoutView()
         self.view.setCurrentLayout(self.layout_)
         self.tool_select = QgsLayoutViewToolSelect(self.view)
+        # Сонгох хэрэгсэл layout-аа мэдэхгүй бол хулгана хөдөлмөгц QGIS унадаг
+        # (чирэх бариулууд нь setLayout дотор үүсдэг).
+        self.tool_select.setLayout(self.layout_)
         self.tool_pan = QgsLayoutViewToolPan(self.view)
         self.tool_content = QgsLayoutViewToolMoveItemContent(self.view)
         self._tool_buttons = []
@@ -430,6 +436,87 @@ class MapMakerDialog(QDialog):
         v.addWidget(g)
         v.addStretch(1)
         return w
+
+    def _tab_basemap(self):
+        w = QWidget()
+        v = QVBoxLayout(w)
+
+        g = QGroupBox("Суурь зураг (фон)")
+        f = QFormLayout(g)
+        cb = QComboBox()
+        cb.addItem("Суурь зураггүй", "")
+        group = None
+        for key, (name, grp, _url, _z, _a) in basemaps.BASEMAPS.items():
+            if grp != group:
+                group = grp
+                cb.insertSeparator(cb.count())
+            cb.addItem(name, key)
+        cb.setMaxVisibleItems(30)
+        self._bind("basemap", cb)
+        self.cb_basemap = cb
+        cb.currentIndexChanged.connect(self._update_enabled)
+        f.addRow("Фон:", cb)
+        le = QLineEdit()
+        le.setPlaceholderText("pk.… (mapbox.com дээрх өөрийн access token)")
+        self._bind("mapbox_token", le)
+        self.le_token = le
+        f.addRow("Mapbox token:", le)
+        self.lbl_token = QLabel("Mapbox-ын зураг харуулахын тулд access token оруулна уу.")
+        self.lbl_token.setWordWrap(True)
+        self.lbl_token.setStyleSheet("color:#b00")
+        f.addRow(self.lbl_token)
+        v.addWidget(g)
+
+        g = QGroupBox("Overlay давхарга")
+        gv = QVBoxLayout(g)
+        lw = QListWidget()
+        for key, (name, _url, _z, _a) in basemaps.OVERLAYS.items():
+            it = QListWidgetItem(name)
+            it.setData(Qt.ItemDataRole.UserRole, key)
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            it.setCheckState(Qt.CheckState.Unchecked)
+            lw.addItem(it)
+        lw.setFixedHeight(lw.sizeHintForRow(0) * lw.count() + 8)
+        lw.itemChanged.connect(self._changed)
+        self.lw_overlays = lw
+        self._bindings["overlays"] = (self._get_overlays, self._set_overlays)
+        gv.addWidget(lw)
+        ch = QCheckBox("Overlay-г миний давхаргуудын дээр гаргах")
+        ch.setToolTip("Сонгоогүй бол overlay нь суурь зургийн яг дээр, таны "
+                      "давхаргуудын доор байрлана.")
+        self._bind("overlays_on_top", ch)
+        gv.addWidget(ch)
+        v.addWidget(g)
+
+        ch = QCheckBox("Эх сурвалжийн бичвэрийг зурагт автоматаар нэмэх")
+        ch.setToolTip("«Хуудас» табын «Эх сурвалж» хоосон бол сонгосон суурь "
+                      "зургийн зохиогчийн эрхийн бичвэрийг зургийн буланд бичнэ.")
+        self._bind("basemap_credit", ch)
+        v.addWidget(ch)
+        note = QLabel(
+            "Сонгосон зураг төслийн давхаргын жагсаалтад «плагины» давхарга болж "
+            "нэмэгдэх бөгөөд сонголтоо солиход автоматаар солигдоно. Интернэт "
+            "холболт шаардана. Үйлчилгээ тус бүр өөрийн ашиглалтын нөхцөлтэй тул "
+            "хэвлэн нийтлэхдээ эх сурвалжийг заавал дурдана уу.")
+        note.setWordWrap(True)
+        v.addWidget(note)
+        v.addStretch(1)
+        return w
+
+    def _get_overlays(self):
+        lw = self.lw_overlays
+        return [lw.item(i).data(Qt.ItemDataRole.UserRole) for i in range(lw.count())
+                if lw.item(i).checkState() == Qt.CheckState.Checked]
+
+    def _set_overlays(self, keys):
+        keys = set(keys or [])
+        lw = self.lw_overlays
+        lw.blockSignals(True)
+        for i in range(lw.count()):
+            it = lw.item(i)
+            it.setCheckState(Qt.CheckState.Checked if it.data(Qt.ItemDataRole.UserRole) in keys
+                             else Qt.CheckState.Unchecked)
+        lw.blockSignals(False)
 
     def _tab_elements(self):
         w = QWidget()
@@ -720,6 +807,9 @@ class MapMakerDialog(QDialog):
         geo = self.cb_grid_crs.currentData() == "geo"
         self.cb_grid_geo.setEnabled(geo)
         self.sp_grid_map.setEnabled(not geo)
+        mb = basemaps.needs_token(self.cb_basemap.currentData() or "")
+        self.le_token.setEnabled(mb)
+        self.lbl_token.setVisible(mb and not self.le_token.text().strip())
 
     def _changed(self, *_):
         if self._loading:
@@ -818,13 +908,28 @@ class MapMakerDialog(QDialog):
         prj.layersRemoved.connect(self._changed)
         prj.crsChanged.connect(self._project_reset)
         prj.cleared.connect(self._project_reset)
+        prj.readProject.connect(self._project_loaded)
 
     def _canvas_changed(self):
         if self.isVisible() and self.cb_extent.currentData() == "canvas" \
                 and self._extent_override is None:
             self._changed()
 
+    def _project_loaded(self, *_):
+        self._set_basemap_state(basemaps.from_project(QgsProject.instance()))
+        self._changed()
+
+    def _set_basemap_state(self, state):
+        self._loading = True
+        try:
+            for key in ("basemap", "overlays", "overlays_on_top"):
+                self._bindings[key][1](state[key])
+        finally:
+            self._loading = False
+        self._update_enabled()
+
     def _project_reset(self, *_):
+        self._set_basemap_state({"basemap": "", "overlays": [], "overlays_on_top": False})
         self._overrides = {}
         self._snapshot = {}
         self._extent_override = None
@@ -865,6 +970,14 @@ class MapMakerDialog(QDialog):
         try:
             self._collect_overrides()
             s = self.settings()
+            # Суурь зураг нэмэх/хасахад төслийн дохио дахин угсралт дуудуулахгүй
+            self._loading = True
+            try:
+                basemaps.sync(QgsProject.instance(), s)
+            finally:
+                self._loading = False
+            self.lbl_token.setVisible(
+                basemaps.needs_token(s["basemap"] or "") and not s["mapbox_token"].strip())
             self.layout_.deselectAll()
             self._items = composer.build(
                 self.layout_, s, self.iface.mapCanvas().extent(),
@@ -913,9 +1026,12 @@ class MapMakerDialog(QDialog):
             if "extent_mode" in s and s["extent_mode"] == "layer":
                 s["extent_mode"] = "canvas"
             s["table"] = False
-            return s
         except Exception:
-            return {}
+            s = {}
+        # Суурь зураг нь төсөл бүрийн сонголт: өмнөх төслийнхийг шинэ төсөлд
+        # өөрөө нэмэхгүй, харин энэ төсөлд байгааг нь таньж үргэлжлүүлнэ.
+        s.update(basemaps.from_project(QgsProject.instance()))
+        return s
 
     def save_preset(self):
         path, _ = QFileDialog.getSaveFileName(

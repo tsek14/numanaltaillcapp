@@ -44,6 +44,8 @@ from qgis.core import (
     QgsVectorLayer,
 )
 
+from . import basemaps
+
 PAGE_SIZES = {  # мм, босоо чиглэлээр
     "A5": (148, 210),
     "A4": (210, 297),
@@ -73,6 +75,12 @@ DEFAULTS = {
     "caption": "",
     "caption_size": 11.0,
     "credits": "",
+    # Суурь зураг (фон), overlay
+    "basemap": "",
+    "overlays": [],
+    "overlays_on_top": False,
+    "mapbox_token": "",
+    "basemap_credit": True,
     # Зургийн хамрах хүрээ
     "extent_mode": "canvas",  # canvas | visible | layer
     "extent_layer": "",
@@ -215,6 +223,8 @@ def text_format(family, size, bold=False, color="#000000", italic=False):
 
 def is_basemap(layer):
     """XYZ / WMS / WMTS зэрэг онлайн суурь зураг эсэх."""
+    if layer.customProperty(basemaps.ROLE):
+        return True
     return isinstance(layer, QgsRasterLayer) and layer.providerType() in (
         "wms", "arcgismapserver", "xyzvectortiles", "vectortile")
 
@@ -706,9 +716,12 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
         corner = []  # (item, pos, key)
         offsets = {"TL": 0.0, "TR": 0.0, "BL": 0.0, "BR": 0.0}
 
-        if s["credits"].strip():
+        credits = s["credits"].strip()
+        if not credits and s["basemap_credit"]:
+            credits = basemaps.attribution(s)
+        if credits:
             tf = text_format(font, 6.5, False, "#333333")
-            lb = _label(layout, s["credits"].strip(), tf,
+            lb = _label(layout, credits, tf,
                         Qt.AlignmentFlag.AlignRight, bg="#ffffffc8", item_id="nm_credits")
             lb.setBackgroundColor(QColor(255, 255, 255, 200))
             w = min(mw * 0.6, lb.sizeForText().width() + 3)
