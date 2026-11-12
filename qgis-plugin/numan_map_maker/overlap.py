@@ -31,6 +31,8 @@ from qgis.core import (
     QgsWkbTypes,
 )
 
+from . import fastload
+
 ROLE = "numan_map_maker/overlap"       # үр дүнгийн давхаргад: хилийн давхаргын id
 REST = "Давхцаагүй хэсэг"
 F_NAME, F_HA, F_PCT = "ner", "talbai_ga", "huvi"
@@ -83,23 +85,38 @@ def load_boundary_file(path, project):
 
     Төсөлд нэмэхгүй — дуудсан тал нэмнэ. Хоосон жагсаалт = хил олдсонгүй.
     """
-    layers = []
-    try:
-        layers = _sublayers(path, project)
-    except Exception:
-        layers = []
-    if not layers and path.lower().endswith(".kmz"):
-        kml = _kmz_to_kml(path)
-        if kml:
-            layers = _sublayers(kml, project)
     base = os.path.splitext(os.path.basename(path))[0]
+    # Том KML / KMZ / GeoJSON-ийг нэг удаа индекстэй кэш рүү хөрвүүлж, дараа нь зөвхөн
+    # харагдаж буй хэсгийг уншина (fastload-ийг үз).
+    layers, cached = [], False
+    if fastload.is_heavy(path):
+        read_path = None
+        if path.lower().endswith(".kmz"):
+            try:
+                if not _sublayers(path, project):
+                    read_path = _kmz_to_kml(path)
+            except Exception:
+                read_path = _kmz_to_kml(path)
+        layers, cached = fastload.load(path, project, read_path=read_path)
+    if not cached:
+        try:
+            layers = _sublayers(path, project)
+        except Exception:
+            layers = []
+        if not layers and path.lower().endswith(".kmz"):
+            kml = _kmz_to_kml(path)
+            if kml:
+                layers = _sublayers(kml, project)
+        for lyr in layers:
+            fastload.ensure_index(lyr)
+            fastload.tune(lyr)
     # Полигон нь шугамаас түрүүлнэ; хоосон давхаргыг хасна
     layers = [l for l in layers if l.featureCount() != 0]
     layers.sort(key=lambda l: l.geometryType() != QgsWkbTypes.PolygonGeometry)
     for lyr in layers:
         if len(layers) > 1:
             kind = "талбай" if lyr.geometryType() == QgsWkbTypes.PolygonGeometry else "шугам"
-            sub = lyr.name() if lyr.name() and lyr.name() != base else kind
+            sub = kind if cached or not lyr.name() or lyr.name() == base else lyr.name()
             lyr.setName(f"{base} — {sub}")
         else:
             lyr.setName(base)

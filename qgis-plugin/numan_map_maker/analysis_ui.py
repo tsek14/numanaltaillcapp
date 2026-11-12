@@ -38,7 +38,7 @@ from qgis.core import (
 )
 from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
 
-from . import overlap
+from . import fastload, overlap
 
 HELP_HTML = """
 <h2>Газрын зураг бэлтгэгч — тусламж</h2>
@@ -103,6 +103,13 @@ HELP_HTML = """
 <p>Хэд хэдэн хилтэй (аймаг, лиценз, ТХГ …) ээлжлэн тооцоолж болно. Дараа нь «Цуврал» табын
 «Давхарга бүрээр» горимоор тус бүрд нь сэдэвчилсэн зураг гаргана.</p>
 
+<h3>Том файл</h3>
+<p>Улсын хэмжээний олон мянган полигонтой KML, KMZ, GeoJSON файлыг «Хилийн файл нэмэх…»-ээр
+нэмэхэд плагин түүнийг нэг удаа орон зайн индекстэй кэш болгон бэлтгэдэг (эхний удаа хэдэн
+секундээс хэдэн минут). Дараа нь зураг зурах, давхцал тооцохдоо зөвхөн дэлгэцэнд харагдаж
+буй хэсгийн объектыг уншдаг тул хөнгөн ажиллана. QGIS-ээр шууд нээсэн том давхаргад
+«Сонгосон давхаргыг хөнгөлөх» товчийг дарна. Эх файлд өөрчлөлт орохгүй.</p>
+
 <h3>Хэвлэх</h3>
 <p>«Хэвлэх…» товч хэвлэгчийн цонхыг нээнэ. Хуудасны хэмжээ, чиглэлийг зургийн хуудастай ижлээр
 урьдчилан тохируулдаг. Зураг хэвлэгчийн цаасаас том бол PDF-ээр экспортлоод хэвлэхдээ
@@ -141,6 +148,13 @@ class AnalysisMixin:
         b.clicked.connect(self._overlap_add_file)
         h.addWidget(b)
         f.addRow("Хилийн давхарга:", h)
+        b = QPushButton("Сонгосон давхаргыг хөнгөлөх")
+        b.setToolTip(
+            "QGIS-ээр шууд нээсэн том KML / GeoJSON давхаргыг орон зайн индекстэй кэш рүү "
+            "шилжүүлнэ: дараа нь зөвхөн дэлгэцэнд харагдаж буй хэсгийг уншина. "
+            "«Хилийн файл нэмэх…»-ээр нэмсэн том файлд автоматаар хийгддэг.")
+        b.clicked.connect(self._overlap_lighten)
+        f.addRow(b)
         self.fc_ov_name = QgsFieldComboBox()
         self.fc_ov_name.setAllowEmptyFieldName(True)
         self.lc_ov_bound.layerChanged.connect(self._overlap_bound_changed)
@@ -223,8 +237,14 @@ class AnalysisMixin:
         prj = QgsProject.instance()
         added = []
         self._loading = True
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             for path in paths:
+                if fastload.is_heavy(path) and not os.path.exists(fastload.cache_path(path)):
+                    self.lbl_status.setText(
+                        f"Том файл: {os.path.basename(path)} — хөнгөн уншихаар нэг удаа "
+                        "бэлтгэж байна…")
+                    QApplication.processEvents()
                 try:
                     layers = overlap.load_boundary_file(path, prj)
                 except Exception:
@@ -234,6 +254,7 @@ class AnalysisMixin:
                     added.append(lyr)
         finally:
             self._loading = False
+            QApplication.restoreOverrideCursor()
         if added:
             self.lc_ov_bound.setLayer(added[0])
             self._legend_mark_dirty()
@@ -241,6 +262,30 @@ class AnalysisMixin:
             self.lbl_status.setText("Хилийн давхарга нэмэгдлээ: "
                                     + ", ".join(l.name() for l in added))
         return added
+
+    def _overlap_lighten(self):
+        lyr = self.lc_ov_bound.currentLayer()
+        if not isinstance(lyr, QgsVectorLayer):
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.lbl_status.setText(f"{lyr.name()} — хөнгөн уншихаар бэлтгэж байна…")
+        QApplication.processEvents()
+        self._loading = True
+        try:
+            ok = fastload.lighten(lyr, QgsProject.instance())
+        except Exception:
+            ok = False
+        finally:
+            self._loading = False
+            QApplication.restoreOverrideCursor()
+        if ok:
+            self._style_backup.pop(lyr.id(), None)
+            self._legend_mark_dirty()
+            self._changed()
+            self.lbl_status.setText(f"«{lyr.name()}» одоо зөвхөн харагдаж буй хэсгээ уншина.")
+        else:
+            self.lbl_status.setText(
+                f"«{lyr.name()}» аль хэдийн хөнгөн форматтай эсвэл хөрвүүлэх боломжгүй.")
 
     def _overlap_result_layer(self):
         return QgsProject.instance().mapLayer(self._overlap_layer_id) \
