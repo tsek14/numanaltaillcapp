@@ -137,6 +137,7 @@ DEFAULTS = {
     "table_head1": "Ангилал",
     "table_head2": "",
     "table_total": True,
+    "table_percent": False,  # «Хувь, %» багана нэмэх
     "table_pos": "TR",
     "table_font_size": 8.0,
     # Зургийн дугаар (Зураг 1.66. …)
@@ -147,6 +148,7 @@ DEFAULTS = {
     "fig_increment": True,
     # Газрын зурагт оруулахгүй давхаргууд (цуврал зурагт ашиглана)
     "map_hidden_layers": [],
+    "map_shown_layers": [],   # давхаргын самбарт нуугдсан ч зурагт оруулах
     "extent_rect": [],  # extent_mode == "rect" үед [xmin, ymin, xmax, ymax]
     # Байршлын жижиг зураг
     "inset": False,
@@ -342,7 +344,9 @@ def compute_extent(project, s, canvas_extent=None):
         root = project.layerTreeRoot()
         for node in root.findLayers():
             lyr = node.layer()
-            if lyr is None or not node.isVisible() or is_basemap(lyr) or lyr.id() in hidden:
+            if lyr is None or is_basemap(lyr) or lyr.id() in hidden:
+                continue
+            if not node.isVisible() and lyr.id() not in (s.get("map_shown_layers") or []):
                 continue
             if not lyr.isSpatial() or lyr.extent().isEmpty() and lyr.extent().width() == 0 \
                     and lyr.extent().height() == 0 and lyr.extent().isNull():
@@ -757,12 +761,15 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
         map_rect = QRectF(mx, my, mw, mh)
 
         hidden_map = set(s.get("map_hidden_layers") or [])
-        if hidden_map:
+        shown_map = set(s.get("map_shown_layers") or []) - hidden_map
+        if hidden_map or shown_map:
             root_tree = project.layerTreeRoot()
             lyrs = []
             for lyr in root_tree.layerOrder():
                 node = root_tree.findLayer(lyr.id())
-                if node is not None and node.isVisible() and lyr.id() not in hidden_map:
+                if node is None or lyr.id() in hidden_map:
+                    continue
+                if node.isVisible() or lyr.id() in shown_map:
                     lyrs.append(lyr)
             map_item.setLayers(lyrs)
             map_item.setKeepLayerSet(True)
@@ -891,8 +898,8 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
             root = legend.model().rootGroup()
             for node in list(root.findLayers()):
                 lyr = node.layer()
-                drop = lyr is None or not _layer_visible(project, lyr) \
-                    or lyr.id() in hidden_map
+                drop = lyr is None or lyr.id() in hidden_map or not (
+                    _layer_visible(project, lyr) or lyr.id() in shown_map)
                 if not drop and s["legend_skip_basemap"] and is_basemap(lyr):
                     drop = True
                 if drop:
@@ -1288,11 +1295,21 @@ def _add_table(layout, project, layer, s):
             c.setHorizontalAlignment(Qt.AlignmentFlag.AlignRight)
         return c
 
-    contents = [[cell(head1, "#ffffff", True), cell(head2, "#ffffff", True, True)]]
+    pct = bool(s.get("table_percent")) and total > 0
+    head = [cell(head1, "#ffffff", True), cell(head2, "#ffffff", True, True)]
+    if pct:
+        head.append(cell("Хувь, %", "#ffffff", True, True))
+    contents = [head]
     for label, value, color in rows:
         bg = color if color is not None else "#ffffff"
-        contents.append([cell(label, bg), cell(_fmt_number(value, dec), bg, False, True)])
+        row = [cell(label, bg), cell(_fmt_number(value, dec), bg, False, True)]
+        if pct:
+            row.append(cell(f"{value / total * 100:.1f}", bg, False, True))
+        contents.append(row)
     if s["table_total"] and len(rows) > 1:
-        contents.append([cell("Нийт", "#ffffff", True),
-                         cell(_fmt_number(total, dec), "#ffffff", True, True)])
+        row = [cell("Нийт", "#ffffff", True),
+               cell(_fmt_number(total, dec), "#ffffff", True, True)]
+        if pct:
+            row.append(cell("100.0", "#ffffff", True, True))
+        contents.append(row)
     return _manual_table(layout, contents, "nm_table", font, size)

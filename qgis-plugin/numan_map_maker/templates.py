@@ -13,7 +13,7 @@ from qgis.core import QgsApplication
 # Төсөл бүрд өөр байдаг тул загварт хэзээ ч хадгалахгүй түлхүүрүүд
 PROJECT_KEYS = (
     "photos", "extent_layer", "extent_rect", "table_layer", "table_field",
-    "legend_titles", "legend_order", "legend_hidden", "map_hidden_layers",
+    "legend_titles", "legend_order", "legend_hidden", "map_hidden_layers", "map_shown_layers",
     "inset_layer", "mapbox_token", "fig_no",
 )
 

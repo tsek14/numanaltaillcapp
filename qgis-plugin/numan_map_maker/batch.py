@@ -55,10 +55,22 @@ def by_layers(project, layer_ids):
         lyr = project.mapLayer(lid)
         if lyr is None:
             continue
-        jobs.append({"name": lyr.name(), "settings": {
+        st = {
             "map_hidden_layers": [i for i in layer_ids if i != lid],
+            "map_shown_layers": [lid],      # самбарт нуугдсан байсан ч энэ зурагт гарна
             "_tokens": {"name": lyr.name(), "layer": lyr.name()},
-        }})
+        }
+        # Давхцлын үр дүнгийн давхарга бол хүснэгтийг нь тухайн зурагт харуулна
+        own = lyr.customProperty("numan_map_maker/overlap")
+        if own:
+            st.update({"table": True, "table_layer": lid, "table_field": "",
+                       "table_percent": True})
+            # Бусад давхцлын хилийн давхаргууд (аймаг, ТХГ …) энэ сэдвийн зурагт орохгүй
+            for other in project.mapLayers().values():
+                b = other.customProperty("numan_map_maker/overlap")
+                if b and b != own and b not in st["map_hidden_layers"]:
+                    st["map_hidden_layers"].append(b)
+        jobs.append({"name": lyr.name(), "settings": st})
     return jobs
 
 

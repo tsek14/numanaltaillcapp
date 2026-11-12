@@ -61,12 +61,12 @@ class ExtrasMixin:
     # ==================================================================
     def _template_bar(self):
         row = QHBoxLayout()
-        row.addWidget(QLabel("Бэлэн загвар:"))
+        row.addWidget(QLabel("Загвар:"))
         self.cb_template = QComboBox()
         # Урт нэртэй загвар зүүн самбарыг (цонхыг) тэлэхээс сэргийлнэ
         self.cb_template.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.cb_template.setMinimumContentsLength(16)
+        self.cb_template.setMinimumContentsLength(8)
         self.cb_template.setToolTip(
             "Хуудас, байрлал, фонт зэргийг нэг дор тохируулна. Төслийн давхарга, фото, "
             "таних тэмдгийн дараалалд хүрэхгүй.")
@@ -413,7 +413,8 @@ class ExtrasMixin:
     def _write_table(path, layer, s):
         head1, head2, rows, total = composer.table_data(QgsProject.instance(), layer, s)
         return table_export.write(path, head1, head2, rows, total,
-                                  int(s["table_decimals"]), bool(s["table_total"]))
+                                  int(s["table_decimals"]), bool(s["table_total"]),
+                                  bool(s.get("table_percent")))
 
     # ==================================================================
     # 1. Цуврал зураг
@@ -512,7 +513,16 @@ class ExtrasMixin:
         checked = {lw.item(i).data(Qt.ItemDataRole.UserRole) for i in range(lw.count())
                    if lw.item(i).checkState() == Qt.CheckState.Checked}
         lw.clear()
-        for lyr in legend_edit.editable_layers(QgsProject.instance()):
+        prj = QgsProject.instance()
+        lyrs = legend_edit.editable_layers(prj)
+        # Давхцлын нуугдсан үр дүнгүүд ч сэдэвчилсэн зураг болж чадна
+        seen = {l.id() for l in lyrs}
+        for node in prj.layerTreeRoot().findLayers():
+            l = node.layer()
+            if l is not None and l.id() not in seen and \
+                    l.customProperty("numan_map_maker/overlap"):
+                lyrs.append(l)
+        for lyr in lyrs:
             it = QListWidgetItem(lyr.name())
             it.setData(Qt.ItemDataRole.UserRole, lyr.id())
             it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)

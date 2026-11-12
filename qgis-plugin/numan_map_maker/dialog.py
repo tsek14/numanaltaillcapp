@@ -66,6 +66,7 @@ from qgis.gui import (
 )
 
 from . import basemaps, composer, legend_edit
+from .analysis_ui import AnalysisMixin
 from .extras import ExtrasMixin
 from .version import plugin_version
 
@@ -117,14 +118,24 @@ def _spin(lo, hi):
     return sp
 
 
-class MapMakerDialog(ExtrasMixin, QDialog):
+class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
         self.setWindowTitle(f"Газрын зураг бэлтгэгч — Нуман-Алтай · v{plugin_version()}")
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint
                             | Qt.WindowType.WindowMinimizeButtonHint)
-        self.resize(1360, 820)
+        # Дэлгэцэнд багтах хэмжээгээр нээнэ (жижиг дэлгэц, томруулсан Windows-д ч)
+        w, h = 1280, 720
+        try:
+            scr = (parent.screen() if parent is not None else None) or \
+                QApplication.primaryScreen()
+            avail = scr.availableGeometry()
+            w = max(900, min(w, avail.width() - 40))
+            h = max(480, min(h, avail.height() - 90))
+        except Exception:
+            pass
+        self.resize(w, h)
 
         self._bindings = {}     # key -> (getter, setter)
         self._loading = False
@@ -188,9 +199,10 @@ class MapMakerDialog(ExtrasMixin, QDialog):
         self.tabs.addTab(self._scroll(self._tab_map()), "Зураг")
         self.tabs.addTab(self._scroll(self._tab_basemap()), "Суурь зураг")
         self.tabs.addTab(self._scroll(self._tab_elements()), "Элемент")
-        self._legend_tab = self.tabs.addTab(self._tab_legend_edit(), "Тэмдэг")
+        self._legend_tab = self.tabs.addTab(self._scroll(self._tab_legend_edit()), "Тэмдэг")
         self.tabs.currentChanged.connect(self._tab_changed)
         self.tabs.addTab(self._scroll(self._tab_table()), "Хүснэгт")
+        self.tabs.addTab(self._scroll(self._tab_overlap()), "Давхцал")
         self.tabs.addTab(self._scroll(self._tab_photos()), "Фото")
         self.tabs.addTab(self._scroll(self._tab_extras()), "Нэмэлт")
         self.tabs.addTab(self._scroll(self._tab_batch()), "Цуврал")
@@ -214,13 +226,17 @@ class MapMakerDialog(ExtrasMixin, QDialog):
         lv.addLayout(row)
 
         row = QHBoxLayout()
-        b = QPushButton("Загвар хадгалах…")
+        row.addWidget(QLabel("Тохиргоо:"))
+        b = QPushButton("Хадгалах…")
+        b.setToolTip("Бүх тохиргоог файлд (.json) хадгална")
         b.clicked.connect(self.save_preset)
         row.addWidget(b)
-        b = QPushButton("Загвар ачаалах…")
+        b = QPushButton("Ачаалах…")
+        b.setToolTip("Хадгалсан тохиргооны файлыг уншина")
         b.clicked.connect(self.load_preset)
         row.addWidget(b)
-        b = QPushButton("Анхны тохиргоо")
+        b = QPushButton("Анхных")
+        b.setToolTip("Бүх тохиргоог анхны утгад нь буцаана")
         b.clicked.connect(self.restore_defaults)
         row.addWidget(b)
         lv.addLayout(row)
@@ -255,7 +271,8 @@ class MapMakerDialog(ExtrasMixin, QDialog):
             bar.addWidget(tb)
             self._tool_buttons.append((tb, tool))
         tb = QToolButton()
-        tb.setText("Бүтнээр харах")
+        tb.setText("Бүтэн")
+        tb.setToolTip("Хуудсыг бүтнээр нь цонхонд багтааж харуулна")
         tb.clicked.connect(self.view.zoomFull)
         bar.addWidget(tb)
         tb = QToolButton()
@@ -272,7 +289,11 @@ class MapMakerDialog(ExtrasMixin, QDialog):
         tb.clicked.connect(self.view.deleteSelectedItems)
         bar.addWidget(tb)
         bar.addStretch(1)
-        b = QPushButton("Layout Designer-т нээх")
+        b = QPushButton("Тусламж")
+        b.setToolTip("Товчлуур, табуудын тайлбар, ажлын дараалал")
+        b.clicked.connect(self.show_help)
+        bar.addWidget(b)
+        b = QPushButton("Designer…")
         b.setToolTip("Зургийг төсөлд хадгалж, QGIS-ийн Layout Designer-т нээж "
                      "нарийвчлан засварлана")
         b.clicked.connect(self.open_in_designer)
@@ -286,6 +307,8 @@ class MapMakerDialog(ExtrasMixin, QDialog):
         ex = QHBoxLayout()
         ex.addWidget(QLabel("Формат:"))
         self.cb_format = _combo(EXPORT_FORMATS)
+        for i, (_text, ext_) in enumerate(EXPORT_FORMATS):
+            self.cb_format.setItemText(i, ext_.upper())
         ex.addWidget(self.cb_format)
         ex.addWidget(QLabel("Нягтрал:"))
         self.sp_dpi = _spin(72, 1200)
@@ -309,6 +332,10 @@ class MapMakerDialog(ExtrasMixin, QDialog):
         self.btn_export.setDefault(True)
         self.btn_export.clicked.connect(self.export)
         ex.addWidget(self.btn_export)
+        self.btn_print = QPushButton("Хэвлэх…")
+        self.btn_print.setToolTip("Зургийг хэвлэгч рүү шууд илгээнэ")
+        self.btn_print.clicked.connect(self.print_map)
+        ex.addWidget(self.btn_print)
         rv.addLayout(ex)
         split.addWidget(right)
         split.setStretchFactor(0, 0)
@@ -662,6 +689,7 @@ class MapMakerDialog(ExtrasMixin, QDialog):
         hd.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         t.itemChanged.connect(self._legend_item_edited)
         self.tree_legend = t
+        t.setMinimumHeight(170)
         v.addWidget(t, 1)
         h = QHBoxLayout()
         h.addWidget(QLabel("Дараалал:"))
@@ -1004,6 +1032,9 @@ class MapMakerDialog(ExtrasMixin, QDialog):
         ch = QCheckBox("«Нийт» мөр нэмэх")
         self._bind("table_total", ch)
         f.addRow(ch)
+        ch = QCheckBox("«Хувь, %» багана нэмэх")
+        self._bind("table_percent", ch)
+        f.addRow(ch)
         cb = _combo(POSITIONS)
         self._bind("table_pos", cb)
         f.addRow("Байрлал:", cb)
@@ -1343,8 +1374,11 @@ class MapMakerDialog(ExtrasMixin, QDialog):
     def _project_reset(self, *_):
         self._job_override = None
         self._jobs = []
+        self._overlap_layer_id = ""
         try:
             self.lw_jobs.clear()
+            self.tbl_overlap.setRowCount(0)
+            self.lbl_overlap.setText("")
         except (AttributeError, RuntimeError):
             pass
         self._set_basemap_state({"basemap": "", "overlays": [], "overlays_on_top": False})
@@ -1485,6 +1519,7 @@ class MapMakerDialog(ExtrasMixin, QDialog):
             # Давхарга, фото нь төсөл бүрд өөр тул өмнөх төслөөс зөөхгүй
             for k in ("photos", "extent_layer", "table_layer", "table_field", "legend_titles",
                       "legend_order", "legend_hidden", "inset_layer", "map_hidden_layers",
+                      "map_shown_layers",
                       "extent_rect"):
                 s.pop(k, None)
             # Хуучин хувилбарын хадгалсан утга шинэ анхдагч утгыг дарахгүй
