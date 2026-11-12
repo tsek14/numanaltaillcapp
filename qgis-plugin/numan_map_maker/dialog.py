@@ -514,6 +514,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         f = QFormLayout(g)
         cb = QComboBox()
         cb.addItem("Суурь зураггүй", "")
+        cb.addItem("Офлайн файл (OsmAnd .sqlitedb, .mbtiles)", basemaps.FILE_KEY)
         group = None
         for key, (name, grp, _url, _z, _a) in basemaps.BASEMAPS.items():
             if grp != group:
@@ -525,6 +526,20 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         self.cb_basemap = cb
         cb.currentIndexChanged.connect(self._update_enabled)
         f.addRow("Фон:", cb)
+        h = QHBoxLayout()
+        le = QLineEdit()
+        le.setPlaceholderText("OsmAnd-ийн .sqlitedb эсвэл .mbtiles файл")
+        le.setReadOnly(True)
+        self._bind("basemap_file", le)
+        self.le_basemap_file = le
+        h.addWidget(le, 1)
+        b = QPushButton("…")
+        b.setFixedWidth(32)
+        b.setToolTip("Офлайн зургийн сангийн файл сонгох")
+        b.clicked.connect(self._pick_basemap_file)
+        self.btn_basemap_file = b
+        h.addWidget(b)
+        f.addRow("Офлайн файл:", h)
         le = QLineEdit()
         le.setPlaceholderText("pk.… (mapbox.com дээрх өөрийн access token)")
         self._bind("mapbox_token", le)
@@ -571,6 +586,56 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         v.addWidget(note)
         v.addStretch(1)
         return w
+
+    def _pick_basemap_file(self):
+        """Офлайн зургийн сан сонгож, шаардлагатай бол нэг удаа хөрвүүлнэ."""
+        from . import osmand
+        st = QgsSettings()
+        start = os.path.dirname(self.le_basemap_file.text()) or \
+            st.value("numan_map_maker/offline_dir", "") or os.path.expanduser("~")
+        path, _ = QFileDialog.getOpenFileName(self, "Офлайн зургийн сан сонгох", start,
+                                              osmand.FILE_FILTER)
+        if not path:
+            return
+        st.setValue("numan_map_maker/offline_dir", os.path.dirname(path))
+        if self._prepare_offline(path):
+            self._loading = True
+            try:
+                self._bindings["basemap_file"][1](path)
+                self._bindings["basemap"][1](basemaps.FILE_KEY)
+            finally:
+                self._loading = False
+            self._update_enabled()
+            self.rebuild()
+
+    def _prepare_offline(self, path):
+        from qgis.PyQt.QtWidgets import QProgressDialog
+        from . import osmand
+        if osmand.is_converted(path):
+            return True
+        prog = QProgressDialog("Офлайн зургийн санг QGIS-д уншигдах хэлбэрт нэг удаа "
+                               "хөрвүүлж байна…", "Зогсоох", 0, 100, self)
+        prog.setWindowModality(Qt.WindowModality.WindowModal)
+        prog.setMinimumDuration(0)
+        prog.setValue(0)
+
+        def step(done, total):
+            prog.setValue(int(done * 100 / max(1, total)))
+            QApplication.processEvents()
+            return not prog.wasCanceled()
+
+        try:
+            osmand.to_mbtiles(path, step)
+        except osmand.OsmandError as e:
+            prog.close()
+            QMessageBox.warning(self, "Офлайн зураг", str(e))
+            return False
+        except Exception as e:
+            prog.close()
+            QMessageBox.warning(self, "Офлайн зураг", f"Файлыг уншиж чадсангүй:\n{e}")
+            return False
+        prog.setValue(100)
+        return True
 
     def _get_overlays(self):
         lw = self.lw_overlays
@@ -1227,6 +1292,8 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         geo = self.cb_grid_crs.currentData() == "geo"
         self.cb_grid_geo.setEnabled(geo)
         self.sp_grid_map.setEnabled(not geo)
+        offline = self.cb_basemap.currentData() == basemaps.FILE_KEY
+        self.le_basemap_file.setEnabled(offline)
         mb = basemaps.needs_token(self.cb_basemap.currentData() or "")
         self.le_token.setEnabled(mb)
         self.lbl_token.setVisible(mb and not self.le_token.text().strip())
@@ -1367,6 +1434,8 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         try:
             for key in ("basemap", "overlays", "overlays_on_top"):
                 self._bindings[key][1](state[key])
+            if state.get("basemap_file"):
+                self._bindings["basemap_file"][1](state["basemap_file"])
         finally:
             self._loading = False
         self._update_enabled()

@@ -84,6 +84,7 @@ DEFAULTS = {
     "credits": "",
     # Суурь зураг (фон), overlay
     "basemap": "",
+    "basemap_file": "",   # basemap == "file" үед: OsmAnd .sqlitedb эсвэл .mbtiles
     "overlays": [],
     "overlays_on_top": False,
     "mapbox_token": "",

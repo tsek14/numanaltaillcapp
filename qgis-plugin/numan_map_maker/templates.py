@@ -14,7 +14,7 @@ from qgis.core import QgsApplication
 PROJECT_KEYS = (
     "photos", "extent_layer", "extent_rect", "table_layer", "table_field",
     "legend_titles", "legend_order", "legend_hidden", "map_hidden_layers", "map_shown_layers",
-    "inset_layer", "mapbox_token", "fig_no",
+    "inset_layer", "mapbox_token", "fig_no", "basemap_file",
 )
 
 BUILTIN = {
@@ -49,6 +49,44 @@ BUILTIN = {
         "legend": True, "legend_pos": "BL", "north": True, "north_pos": "TR",
         "scalebar": True, "scalebar_pos": "BR", "caption_auto": True,
         "info": True, "info_pos": "BR", "scalebar_pos": "BL", "legend_pos": "TL",
+    },
+    "A5 хэвтээ (жижиг зураг)": {
+        "page_size": "A5", "orientation": "landscape", "margin": 6.0,
+        "title_size": 12.0, "caption_size": 8.5, "grid_font_size": 5.5,
+        "legend_font_size": 6.5, "table_font_size": 6.5, "info_font_size": 5.5,
+        "north_size": 11.0, "inset_size": 38.0, "logo_size": 18.0,
+        "grid": True, "grid_style": "frame", "grid_frame": "ticks",
+        "legend": True, "legend_pos": "BL", "north": True, "north_pos": "TR",
+        "scalebar": True, "scalebar_pos": "BR", "scalebar_segments": 2,
+        "inset": False, "info": False,
+    },
+    "A5 босоо (жижиг зураг)": {
+        "page_size": "A5", "orientation": "portrait", "margin": 6.0,
+        "title_size": 12.0, "caption_size": 8.5, "grid_font_size": 5.5,
+        "legend_font_size": 6.5, "table_font_size": 6.5, "info_font_size": 5.5,
+        "north_size": 11.0, "inset_size": 34.0, "logo_size": 16.0,
+        "grid": True, "grid_style": "frame", "grid_frame": "ticks",
+        "legend": True, "legend_pos": "BL", "north": True, "north_pos": "TR",
+        "scalebar": True, "scalebar_pos": "BR", "scalebar_segments": 2,
+        "inset": False, "info": False,
+    },
+    "A3 хэвтээ": {
+        "page_size": "A3", "orientation": "landscape", "margin": 10.0,
+        "title_size": 22.0, "caption_size": 14.0, "grid_font_size": 9.0,
+        "legend_font_size": 10.5, "table_font_size": 10.0, "info_font_size": 9.0,
+        "north_size": 22.0, "inset_size": 80.0, "logo_size": 40.0,
+        "grid": True, "grid_style": "frame", "grid_frame": "ticks",
+        "legend": True, "legend_pos": "BL", "north": True, "north_pos": "TR",
+        "scalebar": True, "scalebar_pos": "BR", "scalebar_segments": 4,
+    },
+    "A3 босоо": {
+        "page_size": "A3", "orientation": "portrait", "margin": 10.0,
+        "title_size": 22.0, "caption_size": 14.0, "grid_font_size": 9.0,
+        "legend_font_size": 10.5, "table_font_size": 10.0, "info_font_size": 9.0,
+        "north_size": 22.0, "inset_size": 75.0, "logo_size": 38.0,
+        "grid": True, "grid_style": "frame", "grid_frame": "ticks",
+        "legend": True, "legend_pos": "BL", "north": True, "north_pos": "TR",
+        "scalebar": True, "scalebar_pos": "BR", "scalebar_segments": 4,
     },
     "Ханын зураг (A1 хэвтээ)": {
         "page_size": "A1", "orientation": "landscape", "margin": 15.0,

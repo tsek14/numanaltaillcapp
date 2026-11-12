@@ -5,9 +5,12 @@
 плагины өмнө нэмсэн давхаргуудыг сольж өгнө. Хэрэглэгчийн өөрийн давхаргад
 огт хүрэхгүй.
 """
+import os
 from urllib.parse import quote
 
 from qgis.core import QgsRasterLayer
+
+from . import osmand
 
 ROLE = "numan_map_maker/role"      # basemap | overlay
 SIGN = "numan_map_maker/signature"
@@ -81,6 +84,10 @@ OVERLAYS = {
 }
 
 
+FILE_KEY = "file"                      # хэрэглэгчийн офлайн файл (.sqlitedb / .mbtiles)
+FILE_PROP = "numan_map_maker/basemap_file"
+
+
 def needs_token(key):
     return key.startswith("mapbox_")
 
@@ -97,7 +104,12 @@ def _wanted(s):
     token = (s.get("mapbox_token") or "").strip()
     out = []
     key = s.get("basemap") or ""
-    if key in BASEMAPS and not (needs_token(key) and not token):
+    if key == FILE_KEY:
+        path = (s.get("basemap_file") or "").strip()
+        if path and os.path.isfile(path):
+            name = "Офлайн зураг — " + os.path.splitext(os.path.basename(path))[0]
+            out.append(("basemap", FILE_KEY, name, path, 0))
+    elif key in BASEMAPS and not (needs_token(key) and not token):
         name, _grp, url, zmax, _a = BASEMAPS[key]
         out.append(("basemap", key, name, url, zmax))
     for key in s.get("overlays") or []:
@@ -129,7 +141,10 @@ def from_project(project):
     out = {"basemap": "", "overlays": [], "overlays_on_top": False}
     for lyr in plugin_layers(project):
         for part in str(lyr.customProperty(SIGN) or "").split("|"):
-            if part.startswith("basemap:") and part[8:] in BASEMAPS:
+            if part == "basemap:" + FILE_KEY and lyr.customProperty(FILE_PROP):
+                out["basemap"] = FILE_KEY
+                out["basemap_file"] = str(lyr.customProperty(FILE_PROP))
+            elif part.startswith("basemap:") and part[8:] in BASEMAPS:
                 out["basemap"] = part[8:]
             elif part.startswith("overlay:") and part[8:] in OVERLAYS \
                     and part[8:] not in out["overlays"]:
@@ -152,6 +167,9 @@ def sync(project, s):
     wanted, token = _wanted(s)
     on_top = bool(s.get("overlays_on_top"))
     sign = "|".join(f"{r}:{k}" for r, k, *_ in wanted) + f"|top={int(on_top)}|{token}"
+    offline = next((url for _r, k, _n, url, _z in wanted if k == FILE_KEY), "")
+    if offline:
+        sign += "|" + offline
     root = project.layerTreeRoot()
     present = plugin_layers(project)
     # Хэрэглэгч давхаргын модноос гараар устгасан бол дахин нэмнэ
@@ -165,9 +183,17 @@ def sync(project, s):
 
     top_index = 0
     for role, key, name, url, zmax in wanted:
-        lyr = _layer(name, url, zmax, token)
+        if key == FILE_KEY:
+            try:
+                lyr = osmand.layer(url, name)
+            except Exception:
+                continue
+        else:
+            lyr = _layer(name, url, zmax, token)
         if not lyr.isValid():
             continue
+        if key == FILE_KEY:
+            lyr.setCustomProperty(FILE_PROP, url)
         lyr.setCustomProperty(ROLE, role)
         lyr.setCustomProperty(SIGN, sign)
         project.addMapLayer(lyr, False)
