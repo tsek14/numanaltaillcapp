@@ -27,6 +27,7 @@ from qgis.PyQt.QtWidgets import (
     QPushButton,
     QScrollArea,
     QShortcut,
+    QSizePolicy,
     QSpinBox,
     QSplitter,
     QTabWidget,
@@ -65,6 +66,7 @@ from qgis.gui import (
 )
 
 from . import basemaps, composer, legend_edit
+from .extras import ExtrasMixin
 from .version import plugin_version
 
 SETTINGS_KEY = "numan_map_maker/last_settings"
@@ -115,7 +117,7 @@ def _spin(lo, hi):
     return sp
 
 
-class MapMakerDialog(QDialog):
+class MapMakerDialog(ExtrasMixin, QDialog):
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
@@ -176,6 +178,11 @@ class MapMakerDialog(QDialog):
         lv = QVBoxLayout(left)
         lv.setContentsMargins(0, 0, 0, 0)
         self.tabs = QTabWidget()
+        self.tabs.setUsesScrollButtons(True)
+        self._job_override = None
+        self._jobs = []
+        tpl_holder = QVBoxLayout()
+        lv.addLayout(tpl_holder)
         lv.addWidget(self.tabs, 1)
         self.tabs.addTab(self._scroll(self._tab_page()), "Хуудас")
         self.tabs.addTab(self._scroll(self._tab_map()), "Зураг")
@@ -185,6 +192,9 @@ class MapMakerDialog(QDialog):
         self.tabs.currentChanged.connect(self._tab_changed)
         self.tabs.addTab(self._scroll(self._tab_table()), "Хүснэгт")
         self.tabs.addTab(self._scroll(self._tab_photos()), "Фото")
+        self.tabs.addTab(self._scroll(self._tab_extras()), "Нэмэлт")
+        self.tabs.addTab(self._scroll(self._tab_batch()), "Цуврал")
+        tpl_holder.addLayout(self._template_bar())
 
         row = QHBoxLayout()
         self.btn_refresh = QPushButton("Шинэчлэх")
@@ -288,6 +298,9 @@ class MapMakerDialog(QDialog):
                                   "(.pgw / .jgw / .tfw) хамт үүсгэнэ")
         ex.addWidget(self.chk_world)
         self.lbl_status = QLabel("")
+        # Урт мэдэгдэл цонхыг тэлэхгүй: багтахгүй хэсэг нь тайрагдана
+        self.lbl_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.lbl_status.setMinimumWidth(60)
         self.lbl_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self.lbl_status.linkActivated.connect(
             lambda href: QDesktopServices.openUrl(QUrl(href)))
@@ -385,6 +398,7 @@ class MapMakerDialog(QDialog):
         sp = _dspin(5, 48, 1, 1, " pt")
         self._bind("caption_size", sp)
         f.addRow("Хэмжээ:", sp)
+        self._caption_number_rows(f)
         le = QLineEdit()
         le.setPlaceholderText("Жишээ: Эх сурвалж: Esri, Sentinel-2, НУМАН-АЛТАЙ ХХК")
         self._bind("credits", le)
@@ -663,6 +677,7 @@ class MapMakerDialog(QDialog):
         h.addWidget(b)
         h.addStretch(1)
         v.addLayout(h)
+        v.addLayout(self._style_buttons())
         h = QHBoxLayout()
         b = QPushButton("Жагсаалт шинэчлэх")
         b.clicked.connect(lambda: self._refresh_legend_editor(force=True))
@@ -996,6 +1011,7 @@ class MapMakerDialog(QDialog):
         self._bind("table_font_size", sp)
         f.addRow("Бичгийн хэмжээ:", sp)
         v.addWidget(g)
+        v.addWidget(self._table_export_button())
         note = QLabel("Талбайг төслийн эллипсоид (тохируулаагүй бол WGS84) дээр "
                       "тооцоолно.")
         note.setWordWrap(True)
@@ -1096,6 +1112,8 @@ class MapMakerDialog(QDialog):
                 lyr = QgsProject.instance().mapLayer(v) if v else None
                 if lyr is not None:
                     w.setLayer(lyr)
+                elif w.allowEmptyLayer():
+                    w.setLayer(None)
             w.layerChanged.connect(changed)
         elif isinstance(w, QgsFieldComboBox):
             get, set_ = w.currentField, lambda v: w.setField(v or "")
@@ -1323,6 +1341,12 @@ class MapMakerDialog(QDialog):
         self._update_enabled()
 
     def _project_reset(self, *_):
+        self._job_override = None
+        self._jobs = []
+        try:
+            self.lw_jobs.clear()
+        except (AttributeError, RuntimeError):
+            pass
         self._set_basemap_state({"basemap": "", "overlays": [], "overlays_on_top": False})
         self._overrides = {}
         self._snapshot = {}
@@ -1385,9 +1409,11 @@ class MapMakerDialog(QDialog):
             if s["legend"] and s["legend_kml"]:
                 self._convert_kml_styles()
             self.layout_.deselectAll()
+            job = self._job_override
             self._items = composer.build(
-                self.layout_, s, self.iface.mapCanvas().extent(),
-                self._overrides, self._extent_override)
+                self.layout_, dict(s, **job) if job else s,
+                self.iface.mapCanvas().extent(), self._overrides,
+                None if job else self._extent_override)
             self._snapshot = {k: composer.item_geom(v) for k, v in self._items.items()}
             m = self._items.get("nm_map")
             if m is not None:
@@ -1458,7 +1484,8 @@ class MapMakerDialog(QDialog):
             s = json.loads(raw) if raw else {}
             # Давхарга, фото нь төсөл бүрд өөр тул өмнөх төслөөс зөөхгүй
             for k in ("photos", "extent_layer", "table_layer", "table_field", "legend_titles",
-                      "legend_order", "legend_hidden"):
+                      "legend_order", "legend_hidden", "inset_layer", "map_hidden_layers",
+                      "extent_rect"):
                 s.pop(k, None)
             # Хуучин хувилбарын хадгалсан утга шинэ анхдагч утгыг дарахгүй
             if int(s.pop("_v", 1) or 1) < SETTINGS_VERSION:
@@ -1591,6 +1618,7 @@ class MapMakerDialog(QDialog):
             clone.deleteLater()
 
         if res == QgsLayoutExporter.Success:
+            self._after_export(1)
             url = QUrl.fromLocalFile(path).toString()
             durl = QUrl.fromLocalFile(os.path.dirname(path)).toString()
             self.lbl_status.setText(

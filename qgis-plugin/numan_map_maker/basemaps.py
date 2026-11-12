@@ -104,6 +104,11 @@ def _wanted(s):
         if key in OVERLAYS:
             name, url, zmax, _a = OVERLAYS[key]
             out.append(("overlay", key, name, url, zmax))
+    # Байршлын жижиг зургийн фон: төсөлд нуугдмал (чагтгүй) давхарга болж нэмэгдэнэ
+    key = s.get("inset_base") or ""
+    if s.get("inset") and key in BASEMAPS and not (needs_token(key) and not token):
+        name, _grp, url, zmax, _a = BASEMAPS[key]
+        out.append(("inset", key, "Байршлын зургийн фон — " + name, url, zmax))
     return out, token
 
 
@@ -166,8 +171,19 @@ def sync(project, s):
         lyr.setCustomProperty(ROLE, role)
         lyr.setCustomProperty(SIGN, sign)
         project.addMapLayer(lyr, False)
-        if role == "basemap":
-            root.addLayer(lyr)                      # хамгийн доод талд
+        if role == "inset":
+            node = root.addLayer(lyr)
+            node.setItemVisibilityChecked(False)    # үндсэн зурагт харагдахгүй
+        elif role == "basemap":
+            # хамгийн доод талд (байршлын зургийн нуугдмал фоны дээр)
+            children = root.children()
+            idx = len(children)
+            for i, nd in enumerate(children):
+                l = nd.layer() if hasattr(nd, "layer") else None
+                if l is not None and l.customProperty(ROLE) == "inset":
+                    idx = i
+                    break
+            root.insertLayer(idx, lyr)
         elif on_top:
             root.insertLayer(top_index, lyr)        # хэрэглэгчийн давхаргуудын дээр
         else:

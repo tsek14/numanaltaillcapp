@@ -3,6 +3,7 @@
 
 Энэ модуль нь цонх (GUI)-оос хамааралгүй тул headless орчинд ч ажиллана.
 """
+import datetime
 import math
 import os
 
@@ -10,6 +11,7 @@ from qgis.PyQt.QtCore import Qt, QPointF, QRectF
 from qgis.PyQt.QtGui import QColor, QFont, QImageReader, QPolygonF
 from qgis.core import (
     QgsCategorizedSymbolRenderer,
+    QgsCentroidFillSymbolLayer,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
     QgsDistanceArea,
@@ -25,6 +27,7 @@ from qgis.core import (
     QgsLayoutItemManualTable,
     QgsLayoutItemMap,
     QgsLayoutItemMapGrid,
+    QgsLayoutItemMapOverview,
     QgsLayoutItemPage,
     QgsLayoutItemPicture,
     QgsLayoutItemPolyline,
@@ -35,6 +38,7 @@ from qgis.core import (
     QgsLayoutSize,
     QgsLegendStyle,
     QgsLineSymbol,
+    QgsMarkerSymbol,
     QgsPathResolver,
     QgsPointXY,
     QgsProject,
@@ -135,6 +139,37 @@ DEFAULTS = {
     "table_total": True,
     "table_pos": "TR",
     "table_font_size": 8.0,
+    # Зургийн дугаар (Зураг 1.66. …)
+    "caption_auto": False,
+    "caption_prefix": "Зураг",
+    "fig_chapter": "1",
+    "fig_no": 1,
+    "fig_increment": True,
+    # Газрын зурагт оруулахгүй давхаргууд (цуврал зурагт ашиглана)
+    "map_hidden_layers": [],
+    "extent_rect": [],  # extent_mode == "rect" үед [xmin, ymin, xmax, ymax]
+    # Байршлын жижиг зураг
+    "inset": False,
+    "inset_pos": "TL",
+    "inset_size": 55.0,
+    "inset_extent": "mongolia",  # mongolia | factor | layer
+    "inset_factor": 10.0,
+    "inset_layer": "",
+    "inset_base": "esri_natgeo",
+    # Лого
+    "logo": "",
+    "logo_pos": "TL",
+    "logo_size": 28.0,
+    # Мэдээллийн хүснэгт
+    "info": False,
+    "info_org": "",
+    "info_author": "",
+    "info_date": "",       # хоосон бол өнөөдрийн огноо
+    "info_crs": True,
+    "info_scale": True,
+    "info_source": "",
+    "info_pos": "BR",
+    "info_font_size": 7.0,
     # Фото зураг
     "photos": [],  # [{path, lon, lat, pos, width}]
     "photo_lines": True,
@@ -296,7 +331,10 @@ def compute_extent(project, s, canvas_extent=None):
     crs = project.crs()
     mode = s["extent_mode"]
     ext = QgsRectangle()
-    if mode == "layer":
+    hidden = set(s.get("map_hidden_layers") or [])
+    if mode == "rect" and len(s.get("extent_rect") or []) == 4:
+        ext = QgsRectangle(*[float(v) for v in s["extent_rect"]])
+    elif mode == "layer":
         lyr = project.mapLayer(s["extent_layer"])
         if lyr is not None:
             ext = _transform_rect(lyr.extent(), lyr.crs(), crs, project)
@@ -304,7 +342,7 @@ def compute_extent(project, s, canvas_extent=None):
         root = project.layerTreeRoot()
         for node in root.findLayers():
             lyr = node.layer()
-            if lyr is None or not node.isVisible() or is_basemap(lyr):
+            if lyr is None or not node.isVisible() or is_basemap(lyr) or lyr.id() in hidden:
                 continue
             if not lyr.isSpatial() or lyr.extent().isEmpty() and lyr.extent().width() == 0 \
                     and lyr.extent().height() == 0 and lyr.extent().isNull():
@@ -332,7 +370,7 @@ def compute_extent(project, s, canvas_extent=None):
                 ext.combineExtentWith(r)
         if ext.isNull():
             return QgsRectangle(0, 0, 1, 1)
-    if mode in ("layer", "visible"):
+    if mode in ("layer", "visible", "rect"):
         k = max(0.0, float(s["extent_buffer"])) / 100.0
         dx = (ext.width() or ext.height() or 1.0) * k
         dy = (ext.height() or ext.width() or 1.0) * k
@@ -640,17 +678,20 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
         width = right - left
 
         # ---- Гарчиг ------------------------------------------------
+        title_text = expand_tokens(s["title"], s, project).strip()
+        subtitle_text = expand_tokens(s["subtitle"], s, project).strip()
+
         def make_titles():
             out = []
-            if s["title"].strip():
+            if title_text:
                 tf = text_format(font, float(s["title_size"]), True, s["title_color"])
-                lb = _label(layout, s["title"].strip(), tf,
+                lb = _label(layout, title_text, tf,
                             Qt.AlignmentFlag.AlignHCenter, item_id="nm_title")
                 out.append(lb)
                 items["nm_title"] = lb
-            if s["subtitle"].strip():
+            if subtitle_text:
                 tf = text_format(font, float(s["title_size"]) * 0.7, False, s["title_color"])
-                lb = _label(layout, s["subtitle"].strip(), tf,
+                lb = _label(layout, subtitle_text, tf,
                             Qt.AlignmentFlag.AlignHCenter, item_id="nm_subtitle")
                 out.append(lb)
                 items["nm_subtitle"] = lb
@@ -667,9 +708,10 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
                 top += 1.0
 
         # ---- Зургийн доорх тайлбар ----------------------------------
-        if s["caption"].strip():
+        caption_text = caption_string(s, project)
+        if caption_text:
             tf = text_format(font, float(s["caption_size"]), True)
-            lb = _label(layout, s["caption"].strip(), tf,
+            lb = _label(layout, caption_text, tf,
                         Qt.AlignmentFlag.AlignHCenter, item_id="nm_caption")
             h = _wrapped_height(lb, width)
             lb.attemptMove(QgsLayoutPoint(left, bottom - h))
@@ -713,6 +755,17 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
                     map_item.setScale(nice_scale(sc))
         items["nm_map"] = map_item
         map_rect = QRectF(mx, my, mw, mh)
+
+        hidden_map = set(s.get("map_hidden_layers") or [])
+        if hidden_map:
+            root_tree = project.layerTreeRoot()
+            lyrs = []
+            for lyr in root_tree.layerOrder():
+                node = root_tree.findLayer(lyr.id())
+                if node is not None and node.isVisible() and lyr.id() not in hidden_map:
+                    lyrs.append(lyr)
+            map_item.setLayers(lyrs)
+            map_item.setKeepLayerSet(True)
 
         if s["grid"]:
             _add_grid(map_item, s, project)
@@ -838,7 +891,8 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
             root = legend.model().rootGroup()
             for node in list(root.findLayers()):
                 lyr = node.layer()
-                drop = lyr is None or not _layer_visible(project, lyr)
+                drop = lyr is None or not _layer_visible(project, lyr) \
+                    or lyr.id() in hidden_map
                 if not drop and s["legend_skip_basemap"] and is_basemap(lyr):
                     drop = True
                 if drop:
@@ -896,7 +950,31 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
             items[pid] = pic
             photos.append((pic, ph, pid))
 
+        inset = _add_inset(layout, project, map_item, s) if s["inset"] else None
+        if inset is not None:
+            items["nm_inset"] = inset
+
+        logo = None
+        logo_path = (s["logo"] or "").strip()
+        if logo_path and os.path.exists(logo_path):
+            logo = QgsLayoutItemPicture(layout)
+            logo.setId("nm_logo")
+            layout.addLayoutItem(logo)
+            logo.setPicturePath(logo_path)
+            logo.setResizeMode(QgsLayoutItemPicture.Zoom)
+            w, h = _photo_size(logo_path, float(s["logo_size"]))
+            logo.attemptResize(QgsLayoutSize(w, h))
+            items["nm_logo"] = logo
+
+        info = _add_info(layout, project, map_item, s) if s["info"] else None
+        if info is not None:
+            items["nm_info"] = info
+
         # Буланд давхарлах дараалал
+        if logo is not None:
+            corner.append((logo, s["logo_pos"]))
+        if inset is not None:
+            corner.append((inset, s["inset_pos"]))
         if north is not None:
             corner.append((north, s["north_pos"]))
         if scalebar is not None:
@@ -905,6 +983,8 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
             corner.append((scale_text, s["scalebar_pos"]))
         for pic, ph, _pid in photos:
             corner.append((pic, ph.get("pos") or "TL"))
+        if info is not None:
+            corner.append((info, s["info_pos"]))
         if table_frame is not None:
             corner.append((table_frame, s["table_pos"]))
         if legend is not None and s["legend_pos"] != "OUT":
@@ -1022,15 +1102,177 @@ def _prune_empty_groups(group):
                 group.removeChildNode(child)
 
 
-def _add_table(layout, project, layer, s):
+def table_data(project, layer, s):
+    """Талбайн хүснэгтийн өгөгдөл: (толгой1, толгой2, [(нэр, утга, QColor|None)], нийт).
+
+    Утга нь сонгосон нэгжээр (км² / га / м²). Зураг дээрх хүснэгт болон Excel
+    экспорт хоёул үүнийг ашиглана.
+    """
     rows = area_statistics(project, layer, s["table_field"])
+    div, unit = UNITS.get(s["table_unit"], UNITS["km2"])
+    head2 = s["table_head2"].strip() or f"Талбай, {unit}"
+    out = [(label, area / div, color) for label, color, area in rows]
+    return s["table_head1"], head2, out, sum(v for _l, v, _c in out)
+
+
+def expand_tokens(text, s, project=None):
+    """Гарчиг, тайлбар доторх {name} {layer} {n} {date} {project} тэмдэглэгээг орлуулна."""
+    if not text or "{" not in text:
+        return text or ""
+    tokens = {"name": "", "layer": "", "n": figure_number(s),
+              "date": datetime.date.today().strftime("%Y.%m.%d"), "project": ""}
+    if project is not None:
+        tokens["project"] = project.title() or project.baseName()
+        lyr = project.mapLayer(s.get("extent_layer") or "")
+        if lyr is not None and s.get("extent_mode") == "layer":
+            tokens["layer"] = lyr.name()
+    tokens.update({k: str(v) for k, v in (s.get("_tokens") or {}).items()})
+    for k, v in tokens.items():
+        text = text.replace("{" + k + "}", v)
+    return text
+
+
+def figure_number(s):
+    chapter = str(s.get("fig_chapter") or "").strip()
+    no = int(s.get("fig_no") or 1)
+    return f"{chapter}.{no}" if chapter else str(no)
+
+
+def caption_string(s, project=None):
+    """Зургийн доорх тайлбар; автомат дугаартай бол «Зураг 1.66. …» хэлбэртэй."""
+    text = expand_tokens(s["caption"], s, project).strip()
+    if s.get("caption_auto"):
+        head = f"{(s.get('caption_prefix') or 'Зураг').strip()} {figure_number(s)}."
+        return f"{head} {text}".strip()
+    return text
+
+
+MONGOLIA_WGS84 = (87.4, 41.4, 120.2, 52.3)
+
+
+def _add_inset(layout, project, map_item, s):
+    """Судалгааны талбайн байршлыг харуулах жижиг зураг (улаан хүрээ/цэгтэй)."""
+    w = float(s["inset_size"])
+    h = w * 0.7
+    inset = QgsLayoutItemMap(layout)
+    inset.setId("nm_inset")
+    layout.addLayoutItem(inset)
+    inset.attemptResize(QgsLayoutSize(w, h))
+    inset.setCrs(project.crs())
+    inset.setFrameEnabled(True)
+    inset.setFrameStrokeWidth(QgsLayoutMeasurement(0.3))
+    inset.setBackgroundColor(QColor(255, 255, 255))
+
+    lyrs = []
+    user = project.mapLayer(s.get("inset_layer") or "")
+    if user is not None:
+        lyrs.append(user)
+    for lyr in project.mapLayers().values():
+        if lyr.customProperty(basemaps.ROLE) == "inset":
+            lyrs.append(lyr)
+    inset.setLayers(lyrs)
+    inset.setKeepLayerSet(True)
+
+    main = map_item.extent()
+    mode = s["inset_extent"]
+    ext = QgsRectangle()
+    if mode == "layer" and user is not None:
+        ext = _transform_rect(user.extent(), user.crs(), project.crs(), project)
+        ext.scale(1.06)
+    elif mode == "mongolia":
+        ext = _transform_rect(QgsRectangle(*MONGOLIA_WGS84),
+                              QgsCoordinateReferenceSystem("EPSG:4326"), project.crs(), project)
+    if ext.isNull() or not ext.isFinite() or ext.width() <= 0:
+        ext = QgsRectangle(main)
+        ext.scale(max(1.5, float(s["inset_factor"])))
+    if not ext.contains(main):
+        ext.combineExtentWith(main)
+        ext.scale(1.1)
+    inset.zoomToExtent(ext)
+
+    ov = QgsLayoutItemMapOverview("nm_overview", inset)
+    ov.setLinkedMap(map_item)
+    sym = QgsFillSymbol.createSimple({"color": "255,0,0,45", "outline_color": "#e60000",
+                                      "outline_width": "0.45"})
+    # Талбай жижиг зурагт цэг шиг жижиг харагдах бол төвд нь улаан цэг нэмнэ
+    ie = inset.extent()
+    if ie.width() > 0 and (main.width() / ie.width()) * w < 3.0:
+        cl = QgsCentroidFillSymbolLayer()
+        cl.setSubSymbol(QgsMarkerSymbol.createSimple({
+            "name": "circle", "color": "#e60000", "size": "2.4",
+            "outline_color": "#ffffff", "outline_width": "0.3"}))
+        sym.appendSymbolLayer(cl)
+    ov.setFrameSymbol(sym)
+    inset.overviews().addOverview(ov)
+    return inset
+
+
+def _manual_table(layout, contents, item_id, font, size):
+    table = QgsLayoutItemManualTable.create(layout)
+    layout.addMultiFrame(table)
+    table.setIncludeTableHeader(False)
+    table.setTableContents(contents)
+    table.setContentTextFormat(text_format(font, size))
+    table.setCellMargin(1.2)
+    table.setGridStrokeWidth(0.2)
+    table.setBackgroundColor(QColor(255, 255, 255))
+    table.setResizeMode(QgsLayoutMultiFrame.UseExistingFrames)
+    frame = QgsLayoutFrame(layout, table)
+    frame.setId(item_id)
+    frame.attemptResize(QgsLayoutSize(60, 30))
+    table.addFrame(frame)
+    table.refresh()
+    sz = table.totalSize()
+    if sz.width() > 0 and sz.height() > 0:
+        frame.attemptResize(QgsLayoutSize(sz.width(), sz.height()))
+    return frame
+
+
+def info_rows(project, map_item, s):
+    """Мэдээллийн хүснэгтийн мөрүүд: [(нэр, утга)]."""
+    rows = []
+    if s["info_org"].strip():
+        rows.append(("Гүйцэтгэгч", s["info_org"].strip()))
+    if s["info_author"].strip():
+        rows.append(("Зураг үйлдсэн", s["info_author"].strip()))
+    rows.append(("Огноо", s["info_date"].strip()
+                 or datetime.date.today().strftime("%Y.%m.%d")))
+    if s["info_crs"]:
+        crs = project.crs()
+        if crs.isValid():
+            rows.append(("Проекц", f"{crs.description()} ({crs.authid()})"))
+    if s["info_scale"] and map_item is not None:
+        sc = map_item.scale()
+        if sc > 0 and math.isfinite(sc):
+            rows.append(("Масштаб", "1:" + f"{sc:,.0f}".replace(",", " ")))
+    if s["info_source"].strip():
+        rows.append(("Эх сурвалж", s["info_source"].strip()))
+    return rows
+
+
+def _add_info(layout, project, map_item, s):
+    rows = info_rows(project, map_item, s)
     if not rows:
         return None
-    div, unit = UNITS.get(s["table_unit"], UNITS["km2"])
+    font = s["font"]
+    size = float(s["info_font_size"])
+    contents = []
+    for label, value in rows:
+        a = QgsTableCell(label)
+        a.setTextFormat(text_format(font, size, True))
+        b = QgsTableCell(value)
+        b.setTextFormat(text_format(font, size))
+        contents.append([a, b])
+    return _manual_table(layout, contents, "nm_info", font, size)
+
+
+def _add_table(layout, project, layer, s):
+    head1, head2, rows, total = table_data(project, layer, s)
+    if not rows:
+        return None
     font = s["font"]
     size = float(s["table_font_size"])
     dec = int(s["table_decimals"])
-    head2 = s["table_head2"].strip() or f"Талбай, {unit}"
 
     def cell(text, bg=None, bold=False, right=False):
         c = QgsTableCell(text)
@@ -1046,32 +1288,11 @@ def _add_table(layout, project, layer, s):
             c.setHorizontalAlignment(Qt.AlignmentFlag.AlignRight)
         return c
 
-    contents = [[cell(s["table_head1"], "#ffffff", True),
-                 cell(head2, "#ffffff", True, True)]]
-    total = 0.0
-    for label, color, area in rows:
-        total += area
+    contents = [[cell(head1, "#ffffff", True), cell(head2, "#ffffff", True, True)]]
+    for label, value, color in rows:
         bg = color if color is not None else "#ffffff"
-        contents.append([cell(label, bg), cell(_fmt_number(area / div, dec), bg, False, True)])
+        contents.append([cell(label, bg), cell(_fmt_number(value, dec), bg, False, True)])
     if s["table_total"] and len(rows) > 1:
         contents.append([cell("Нийт", "#ffffff", True),
-                         cell(_fmt_number(total / div, dec), "#ffffff", True, True)])
-
-    table = QgsLayoutItemManualTable.create(layout)
-    layout.addMultiFrame(table)
-    table.setIncludeTableHeader(False)
-    table.setTableContents(contents)
-    table.setContentTextFormat(text_format(font, size))
-    table.setCellMargin(1.2)
-    table.setGridStrokeWidth(0.2)
-    table.setBackgroundColor(QColor(255, 255, 255))
-    table.setResizeMode(QgsLayoutMultiFrame.UseExistingFrames)
-    frame = QgsLayoutFrame(layout, table)
-    frame.setId("nm_table")
-    frame.attemptResize(QgsLayoutSize(60, 30))
-    table.addFrame(frame)
-    table.refresh()
-    sz = table.totalSize()
-    if sz.width() > 0 and sz.height() > 0:
-        frame.attemptResize(QgsLayoutSize(sz.width(), sz.height()))
-    return frame
+                         cell(_fmt_number(total, dec), "#ffffff", True, True)])
+    return _manual_table(layout, contents, "nm_table", font, size)
