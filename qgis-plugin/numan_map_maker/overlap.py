@@ -332,6 +332,8 @@ def analyse(project, target, boundary, name_field="", only_selected=False,
     pr.addFeatures(out)
     layer.updateExtents()
     layer.setCustomProperty(ROLE, boundary.id())
+    # Хүснэгтийн хувийг энэ нийт хэмжээнээс тооцно (composer.table_data-г үз)
+    layer.setCustomProperty("numan_map_maker/overlap_total_m2", total)
     style_result(layer)
     res.layer = layer
     if not res.rows:

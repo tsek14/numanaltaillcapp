@@ -174,6 +174,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         self._build_ui()
         self._apply_settings(self._load_last())
         self._load_titles_from_project()
+        self._restore_state()       # энэ төсөлд хадгалсан зураг байвал түүгээр эхэлнэ
         self._connect_project()
         QTimer.singleShot(0, self.rebuild)
 
@@ -230,11 +231,12 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         row = QHBoxLayout()
         row.addWidget(QLabel("Тохиргоо:"))
         b = QPushButton("Хадгалах…")
-        b.setToolTip("Бүх тохиргоог файлд (.json) хадгална")
+        b.setToolTip("Зургийг бүхэлд нь хадгална: тохиргоо, гараар зөөсөн байрлал, "
+                     "давхаргууд, ачаалсан хил, давхцлын үр дүн, суурь зураг (QGIS төсөл .qgz)")
         b.clicked.connect(self.save_preset)
         row.addWidget(b)
         b = QPushButton("Ачаалах…")
-        b.setToolTip("Хадгалсан тохиргооны файлыг уншина")
+        b.setToolTip("Хадгалсан зургийг (.qgz) хамгийн сүүлд хадгалсан байдлаар нь нээнэ")
         b.clicked.connect(self.load_preset)
         row.addWidget(b)
         b = QPushButton("Анхных")
@@ -780,7 +782,8 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
             "загварт шууд хэрэгжих тул газрын зураг дээрх өнгө, дүрс болон таних "
             "тэмдэг хамт өөрчлөгдөнө (QGIS-ийн үндсэн цонхонд ч мөн адил). "
             "Нэр дээр давхар товшиж бичнэ. Давхаргыг сонгоод ▲ ▼ товчоор таних "
-            "тэмдэг дэх дарааллыг солино; чагтыг авбал таних тэмдэгт орохгүй.")
+            "тэмдэг дэх дарааллыг солино. Давхарга эсвэл ангиллын чагтыг авбал тэр нь "
+            "таних тэмдгээс ч, газрын зураг дээрээс ч хасагдана.")
         note.setWordWrap(True)
         v.addWidget(note)
         t = QTreeWidget()
@@ -885,7 +888,10 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
                 else:
                     for e in entries:
                         child = QTreeWidgetItem([e.label, "", ""])
-                        child.setFlags(child.flags() | Qt.ItemFlag.ItemIsEditable)
+                        child.setFlags(child.flags() | Qt.ItemFlag.ItemIsEditable
+                                       | Qt.ItemFlag.ItemIsUserCheckable)
+                        child.setCheckState(0, Qt.CheckState.Checked if e.active
+                                            else Qt.CheckState.Unchecked)
                         child.setData(0, Qt.ItemDataRole.UserRole, ["entry", lid, e.key])
                         top.addChild(child)
                         self._legend_widgets(child, lid, e.key, e.symbol)
@@ -1000,7 +1006,15 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
             if real_key is None:
                 return
             legend_edit.backup_renderer(self._style_backup, layer)
-            legend_edit.apply_entry(layer, real_key, label=item.text(0))
+            entry = next((e for e in legend_edit.list_entries(layer)
+                          if str(e.key) == str(key)), None)
+            shown = item.checkState(0) != Qt.CheckState.Unchecked
+            if entry is not None and entry.active != shown:
+                # Чагтыг авсан ангилал зураг дээр ч, таних тэмдэгт ч харагдахгүй
+                legend_edit.set_entry_active(layer, real_key, shown)
+            if entry is None or entry.label != item.text(0):
+                legend_edit.apply_entry(layer, real_key, label=item.text(0))
+            self._map_dirty = True
         self._changed()
 
     def _legend_layers(self, skip_basemap=True):
@@ -1480,7 +1494,12 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         self._style_backup = {}
         self._load_titles_from_project()
         self._legend_mark_dirty()
-        self._changed()
+        if self._restore_state():
+            # «Хадгалах…»-аар хадгалсан зураг: яг хадгалсан байдлаар нь сэргээнэ
+            self.rebuild(force=True)
+            self.view.zoomFull()
+        else:
+            self._changed()
 
     def _set_basemap_state(self, state):
         self._loading = True
@@ -1683,31 +1702,12 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         return s
 
     def save_preset(self):
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Загвар хадгалах", "zurgiin_zagvar.json", "Загвар (*.json)")
-        if not path:
-            return
-        if not path.lower().endswith(".json"):
-            path += ".json"
-        with open(path, "w", encoding="utf-8") as fh:
-            json.dump(self.settings(), fh, ensure_ascii=False, indent=2)
-        self.lbl_status.setText(f"Загвар хадгалагдлаа: {os.path.basename(path)}")
+        """«Хадгалах…» — зургийг бүхэлд нь (тохиргоо, давхарга, хил, суурь зураг) хадгална."""
+        self.save_map_project()
 
     def load_preset(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Загвар ачаалах", "", "Загвар (*.json);;Бүх файл (*)")
-        if not path:
-            return
-        try:
-            with open(path, "r", encoding="utf-8") as fh:
-                s = json.load(fh)
-            if not isinstance(s, dict):
-                raise ValueError("буруу бүтэцтэй файл")
-        except Exception as e:
-            QMessageBox.warning(self, "Загвар ачаалах", f"Файлыг уншиж чадсангүй:\n{e}")
-            return
-        self._apply_settings(s)
-        self.reset_positions()
+        """«Ачаалах…» — хадгалсан зургийг хамгийн сүүлд хадгалсан байдлаар нь нээнэ."""
+        self.load_map_project()
 
     def restore_defaults(self):
         self._apply_settings({})

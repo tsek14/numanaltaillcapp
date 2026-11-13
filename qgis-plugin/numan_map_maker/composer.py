@@ -38,6 +38,7 @@ from qgis.core import (
     QgsLayoutSize,
     QgsLegendStyle,
     QgsLineSymbol,
+    QgsMapLayerLegendUtils,
     QgsMarkerSymbol,
     QgsPathResolver,
     QgsPointXY,
@@ -344,7 +345,7 @@ def compute_extent(project, s, canvas_extent=None):
     crs = project.crs()
     mode = s["extent_mode"]
     ext = QgsRectangle()
-    hidden = set(s.get("map_hidden_layers") or [])
+    hidden = set(s.get("map_hidden_layers") or []) | set(s.get("legend_hidden") or [])
     if mode == "rect" and len(s.get("extent_rect") or []) == 4:
         ext = QgsRectangle(*[float(v) for v in s["extent_rect"]])
     elif mode == "layer":
@@ -772,7 +773,8 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
         else:
             target = compute_extent(project, s, canvas_extent)
             scale_key = (s["scale_mode"], float(s["scale"]) if s["scale_mode"] == "fixed" else 0)
-        hidden_map = set(s.get("map_hidden_layers") or [])
+        # Таних тэмдгээс хассан давхарга зураг дээр ч хасагдана
+        hidden_map = set(s.get("map_hidden_layers") or []) | set(s.get("legend_hidden") or [])
         shown_map = set(s.get("map_shown_layers") or []) - hidden_map
         # Газрын зургийн агуулгыг тодорхойлох бүх оролт: аль нэг нь өөрчлөгдвөл л дахин зурна
         sig = repr((round(mx, 3), round(my, 3), round(mw, 3), round(mh, 3),
@@ -964,6 +966,15 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
             for node in root.findLayers():
                 if has_embedded_symbols(node.layer()):
                     embedded = True
+            # Чагтыг нь авсан (зураг дээр зурагдахгүй) ангилал таних тэмдэгт ч орохгүй
+            for node in root.findLayers():
+                originals = legend.model().layerOriginalLegendNodes(node)
+                keep = [i for i, n in enumerate(originals)
+                        if n.data(Qt.ItemDataRole.CheckStateRole)
+                        not in (0, Qt.CheckState.Unchecked)]
+                if originals and len(keep) != len(originals):
+                    QgsMapLayerLegendUtils.setLegendNodeOrder(node, keep)
+                    legend.model().refreshLayerLegend(node)
             titles = s.get("legend_titles") or {}
             for node in root.findLayers():
                 t = (titles.get(node.layerId()) or "").strip()
@@ -1168,7 +1179,28 @@ def table_data(project, layer, s):
     div, unit = UNITS.get(s["table_unit"], UNITS["km2"])
     head2 = s["table_head2"].strip() or f"Талбай, {unit}"
     out = [(label, area / div, color) for label, color, area in rows]
-    return s["table_head1"], head2, out, sum(v for _l, v, _c in out)
+    total = sum(v for _l, v, _c in out)
+    # Давхцлын үр дүн: нэгжүүд хоорондоо давхцаж болно (аймаг ⊃ сум ⊃ баг), иймд хувийг
+    # мөрүүдийн нийлбэрээс биш судалгааны талбайн нийт хэмжээнээс тооцно.
+    base = overlap_base_m2(layer)
+    if base > 0:
+        total = base / div
+    return s["table_head1"], head2, out, total
+
+
+OVERLAP_TOTAL = "numan_map_maker/overlap_total_m2"
+
+
+def overlap_base_m2(layer):
+    """Давхцлын үр дүнгийн давхаргад хадгалсан судалгааны талбайн нийт хэмжээ (м²); үгүй бол 0."""
+    try:
+        return float(layer.customProperty(OVERLAP_TOTAL) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def table_total_label(layer):
+    return "Судалгааны талбай" if overlap_base_m2(layer) > 0 else "Нийт"
 
 
 def expand_tokens(text, s, project=None):
@@ -1356,7 +1388,7 @@ def _add_table(layout, project, layer, s):
             row.append(cell(f"{value / total * 100:.1f}", bg, False, True))
         contents.append(row)
     if s["table_total"] and len(rows) > 1:
-        row = [cell("Нийт", "#ffffff", True),
+        row = [cell(table_total_label(layer), "#ffffff", True),
                cell(_fmt_number(total, dec), "#ffffff", True, True)]
         if pct:
             row.append(cell("100.0", "#ffffff", True, True))

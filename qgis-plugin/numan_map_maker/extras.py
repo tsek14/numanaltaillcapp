@@ -4,6 +4,7 @@
 бэлэн загварын сан, зургийн автомат дугаар, байршлын жижиг зураг, лого,
 мэдээллийн хүснэгт, давхаргын стандарт загвар, цуврал экспорт, Excel гаргалт.
 """
+import json
 import os
 
 from qgis.PyQt.QtCore import Qt, QUrl
@@ -32,6 +33,8 @@ from qgis.core import (
     QgsLayoutExporter,
     QgsMapLayerProxyModel,
     QgsPrintLayout,
+    QgsRectangle,
+    QgsVectorFileWriter,
     QgsProject,
     QgsSettings,
     QgsVectorLayer,
@@ -145,6 +148,184 @@ class ExtrasMixin:
             return
         templates.delete_user(d[1])
         self._template_refresh()
+
+    # ==================================================================
+    # Зургийг бүхэлд нь хадгалах / ачаалах (QGIS төслийн файл дотор)
+    # ==================================================================
+    STATE_SCOPE = "numan_map_maker"
+    STATE_KEY = "state"
+
+    def _state_json(self):
+        self._collect_overrides()
+        s = self.settings()
+        s.pop("mapbox_token", None)          # нууц түлхүүрийг төслийн файлд бичихгүй
+        e = self._extent_override
+        return json.dumps({
+            "version": 1,
+            "settings": s,
+            "overrides": {k: list(v) for k, v in self._overrides.items()},
+            "extent": [e.xMinimum(), e.yMinimum(), e.xMaximum(), e.yMaximum()]
+            if e is not None and not e.isNull() else None,
+        }, ensure_ascii=False)
+
+    def _restore_state(self):
+        """Төсөлд хадгалсан зургийн төлөвийг сэргээнэ. Байхгүй бол False."""
+        raw, ok = QgsProject.instance().readEntry(self.STATE_SCOPE, self.STATE_KEY, "")
+        if not ok or not raw:
+            return False
+        try:
+            st = json.loads(raw)
+            s = dict(st["settings"])
+        except (ValueError, KeyError, TypeError):
+            return False
+        s["mapbox_token"] = self.settings().get("mapbox_token", "")
+        self._job_override = None
+        self._apply_settings(s)
+        self._overrides = {k: tuple(v) for k, v in (st.get("overrides") or {}).items()
+                           if isinstance(v, (list, tuple)) and len(v) == 5}
+        e = st.get("extent")
+        self._extent_override = QgsRectangle(*e) if isinstance(e, list) and len(e) == 4 \
+            else None
+        self._snapshot = {}
+        self._extent_snapshot = None
+        self._map_dirty = True
+        lyr = QgsProject.instance().mapLayer(s.get("table_layer") or "")
+        if lyr is not None and lyr.customProperty("numan_map_maker/overlap"):
+            self._overlap_layer_id = lyr.id()
+        return True
+
+    def _persist_memory_layers(self, project_path):
+        """Зөвхөн санах ойд байгаа давхаргуудыг (давхцлын үр дүн гэх мэт) төслийн хажуугийн
+        GeoPackage руу бичиж, давхаргыг түүн рүү шилжүүлнэ — эс бөгөөс QGIS-ийг хаахад
+        алга болно. Шилжүүлсэн давхаргын тоог буцаана."""
+        prj = QgsProject.instance()
+        mem = [l for l in prj.mapLayers().values()
+               if isinstance(l, QgsVectorLayer) and l.providerType() == "memory"]
+        if not mem:
+            return 0
+        gpkg = os.path.splitext(project_path)[0] + "_data.gpkg"
+        moved = 0
+        for lyr in mem:
+            name = "".join(c if c.isalnum() else "_" for c in lyr.name())[:40] + "_" + \
+                lyr.id()[-8:]
+            opts = QgsVectorFileWriter.SaveVectorOptions()
+            opts.driverName = "GPKG"
+            opts.layerName = name
+            opts.fileEncoding = "UTF-8"
+            opts.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteLayer \
+                if os.path.exists(gpkg) else QgsVectorFileWriter.CreateOrOverwriteFile
+            res = QgsVectorFileWriter.writeAsVectorFormatV3(
+                lyr, gpkg, prj.transformContext(), opts)
+            if res[0] != QgsVectorFileWriter.NoError:
+                raise RuntimeError(f"«{lyr.name()}» давхаргыг хадгалж чадсангүй: {res[1]}")
+            uri = f"{gpkg}|layername={name}"
+            check = QgsVectorLayer(uri, "check", "ogr")
+            if not check.isValid() or check.featureCount() != lyr.featureCount():
+                raise RuntimeError(f"«{lyr.name()}» давхаргын хадгалсан хуулбар буруу байна.")
+            del check
+            lyr.setDataSource(uri, lyr.name(), "ogr")
+            moved += 1
+        return moved
+
+    def save_map_project(self):
+        prj = QgsProject.instance()
+        st = QgsSettings()
+        default = prj.fileName()
+        if not default:
+            folder = st.value("numan_map_maker/project_dir", "") or \
+                st.value("numan_map_maker/export_dir", "") or os.path.expanduser("~")
+            base = (self.settings()["title"].strip().split("\n")[0] or "gazriin_zurag")
+            base = "".join(c for c in base if c not in '\\/:*?"<>|').strip()[:80] \
+                or "gazriin_zurag"
+            default = os.path.join(folder, base + ".qgz")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Зургийг хадгалах", default, "Зургийн төсөл — QGIS (*.qgz)")
+        if not path:
+            return False
+        if not path.lower().endswith((".qgz", ".qgs")):
+            path += ".qgz"
+        st.setValue("numan_map_maker/project_dir", os.path.dirname(path))
+        self._job_override = None
+        self.rebuild()
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self._loading = True
+        try:
+            moved = self._persist_memory_layers(path)
+            prj.writeEntry(self.STATE_SCOPE, self.STATE_KEY, self._state_json())
+            ok = prj.write(path)
+            err = "" if ok else prj.error()
+        except Exception as e:
+            ok, err, moved = False, str(e), 0
+        finally:
+            self._loading = False
+            QApplication.restoreOverrideCursor()
+        if not ok:
+            QMessageBox.warning(self, "Зургийг хадгалах", f"Хадгалж чадсангүй:\n{err}")
+            return False
+        self._map_dirty = True
+        url = QUrl.fromLocalFile(path).toString()
+        extra = f" · {moved} түр давхаргыг {os.path.basename(path)[:-4]}_data.gpkg-д" if moved \
+            else ""
+        self.lbl_status.setText(
+            f"Зураг хадгалагдлаа: <a href='{url}'>{os.path.basename(path)}</a>{extra}")
+        return True
+
+    def load_map_project(self):
+        prj = QgsProject.instance()
+        st = QgsSettings()
+        start = st.value("numan_map_maker/project_dir", "") or \
+            os.path.dirname(prj.fileName()) or os.path.expanduser("~")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Хадгалсан зургийг ачаалах", start,
+            "Зургийн төсөл — QGIS (*.qgz *.qgs);;Хуучин тохиргооны файл (*.json);;Бүх файл (*)")
+        if not path:
+            return False
+        if path.lower().endswith(".json"):
+            return self._load_settings_json(path)
+        if prj.isDirty() and prj.mapLayers():
+            ans = QMessageBox.question(
+                self, "Зураг ачаалах",
+                "Одоо нээлттэй байгаа төсөл хаагдаж, хадгалаагүй өөрчлөлт алдагдана.\n\n"
+                "Үргэлжлүүлэх үү?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if ans != QMessageBox.StandardButton.Yes:
+                return False
+        st.setValue("numan_map_maker/project_dir", os.path.dirname(path))
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            opener = getattr(self.iface, "addProject", None)
+            ok = bool(opener(path)) if opener is not None else prj.read(path)
+        except Exception:
+            ok = False
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not ok:
+            QMessageBox.warning(self, "Зураг ачаалах", "Төслийн файлыг нээж чадсангүй.")
+            return False
+        # Төсөл уншигдахад _project_loaded дуудагдаж төлөвийг сэргээдэг
+        raw, has = prj.readEntry(self.STATE_SCOPE, self.STATE_KEY, "")
+        if has and raw:
+            self.lbl_status.setText(f"Зураг ачааллаа: {os.path.basename(path)}")
+        else:
+            self.lbl_status.setText(
+                f"{os.path.basename(path)} нээгдлээ (энэ төсөлд плагинаар хадгалсан зураг "
+                "байхгүй тул одоогийн тохиргоогоор угсарлаа).")
+            self.rebuild(force=True)
+        return True
+
+    def _load_settings_json(self, path):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                s = json.load(fh)
+            if not isinstance(s, dict):
+                raise ValueError("буруу бүтэцтэй файл")
+        except Exception as e:
+            QMessageBox.warning(self, "Ачаалах", f"Файлыг уншиж чадсангүй:\n{e}")
+            return False
+        self._apply_settings(s)
+        self.reset_positions()
+        return True
 
     # ==================================================================
     # 5. Зургийн автомат дугаар
@@ -592,7 +773,8 @@ class ExtrasMixin:
         head1, head2, rows, total = composer.table_data(QgsProject.instance(), layer, s)
         return table_export.write(path, head1, head2, rows, total,
                                   int(s["table_decimals"]), bool(s["table_total"]),
-                                  bool(s.get("table_percent")))
+                                  bool(s.get("table_percent")),
+                                  composer.table_total_label(layer))
 
     # ==================================================================
     # 1. Цуврал зураг

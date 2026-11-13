@@ -16,26 +16,29 @@ from qgis.core import (
 PCT_HEAD = "Хувь, %"
 
 
-def _rows(head1, head2, rows, total, decimals, with_total):
+def _rows(head1, head2, rows, total, decimals, with_total, total_label="Нийт"):
     """[(нэр, утга, хувь)]"""
     def share(v):
         return round(v / total * 100.0, 2) if total > 0 else 0.0
     out = [(label, round(value, decimals), share(value)) for label, value, _c in rows]
     if with_total and len(rows) > 1:
-        out.append(("Нийт", round(total, decimals), 100.0))
+        out.append((total_label, round(total, decimals), 100.0))
     return out
 
 
-def write_csv(path, head1, head2, rows, total, decimals=2, with_total=True, percent=False):
+def write_csv(path, head1, head2, rows, total, decimals=2, with_total=True, percent=False,
+              total_label="Нийт"):
     with open(path, "w", encoding="utf-8-sig", newline="") as fh:
         w = csv.writer(fh)
         w.writerow([head1, head2] + ([PCT_HEAD] if percent else []))
-        for label, value, pct in _rows(head1, head2, rows, total, decimals, with_total):
+        for label, value, pct in _rows(head1, head2, rows, total, decimals, with_total,
+                                       total_label):
             w.writerow([label, f"{value:.{decimals}f}"] + ([f"{pct:.2f}"] if percent else []))
     return path
 
 
-def write_xlsx(path, head1, head2, rows, total, decimals=2, with_total=True, percent=False):
+def write_xlsx(path, head1, head2, rows, total, decimals=2, with_total=True, percent=False,
+               total_label="Нийт"):
     """GDAL-ийн XLSX драйвераар бичнэ. Амжилтгүй бол алдааны бичвэр буцаана ('' = амжилттай)."""
     lyr = QgsVectorLayer("None", "Талбай", "memory")
     pr = lyr.dataProvider()
@@ -46,7 +49,8 @@ def write_xlsx(path, head1, head2, rows, total, decimals=2, with_total=True, per
     pr.addAttributes(fields)
     lyr.updateFields()
     feats = []
-    for label, value, pct in _rows(head1, head2, rows, total, decimals, with_total):
+    for label, value, pct in _rows(head1, head2, rows, total, decimals, with_total,
+                                   total_label):
         f = QgsFeature(lyr.fields())
         f.setAttributes([label, float(value)] + ([float(pct)] if percent else []))
         feats.append(f)
@@ -65,14 +69,17 @@ def write_xlsx(path, head1, head2, rows, total, decimals=2, with_total=True, per
     return ""
 
 
-def write(path, head1, head2, rows, total, decimals=2, with_total=True, percent=False):
+def write(path, head1, head2, rows, total, decimals=2, with_total=True, percent=False,
+          total_label="Нийт"):
     """Өргөтгөлөөр нь xlsx эсвэл csv бичнэ. Бодитоор бичсэн файлын зам буцаана.
 
     XLSX драйвер энэ QGIS-д байхгүй бол ижил нэртэй CSV бичнэ.
     """
     if path.lower().endswith(".xlsx"):
-        err = write_xlsx(path, head1, head2, rows, total, decimals, with_total, percent)
+        err = write_xlsx(path, head1, head2, rows, total, decimals, with_total, percent,
+                         total_label)
         if not err:
             return path
         path = os.path.splitext(path)[0] + ".csv"
-    return write_csv(path, head1, head2, rows, total, decimals, with_total, percent)
+    return write_csv(path, head1, head2, rows, total, decimals, with_total, percent,
+                     total_label)

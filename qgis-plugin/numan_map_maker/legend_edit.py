@@ -29,12 +29,13 @@ OTHER = "other"
 class Entry:
     """Таних тэмдгийн нэг мөр: нэр + тэмдэг (symbol)."""
 
-    __slots__ = ("key", "label", "symbol")
+    __slots__ = ("key", "label", "symbol", "active")
 
-    def __init__(self, key, label, symbol):
+    def __init__(self, key, label, symbol, active=True):
         self.key = key
         self.label = label
         self.symbol = symbol
+        self.active = active    # зураг болон таних тэмдэгт харагдах эсэх
 
 
 def editable_layers(project=None, skip_basemap=True):
@@ -87,15 +88,17 @@ def list_entries(layer):
     elif kind == CATEGORIZED:
         for i, c in enumerate(r.categories()):
             sym = c.symbol()
-            out.append(Entry(i, c.label(), sym.clone() if sym is not None else None))
+            out.append(Entry(i, c.label(), sym.clone() if sym is not None else None,
+                             c.renderState()))
     elif kind == GRADUATED:
         for i, rg in enumerate(r.ranges()):
             sym = rg.symbol()
-            out.append(Entry(i, rg.label(), sym.clone() if sym is not None else None))
+            out.append(Entry(i, rg.label(), sym.clone() if sym is not None else None,
+                             rg.renderState()))
     elif kind == RULE:
         for rule in _leaf_rules(r.rootRule()):
             out.append(Entry(rule.ruleKey(), rule.label() or rule.description() or "",
-                             rule.symbol().clone()))
+                             rule.symbol().clone(), rule.active()))
     return out
 
 
@@ -142,6 +145,34 @@ def apply_entry(layer, key, label=None, symbol=None):
             if symbol is not None:
                 rule.setSymbol(symbol.clone())
                 ok = True
+    if not ok:
+        return False
+    layer.setRenderer(r)
+    layer.triggerRepaint()
+    QgsProject.instance().setDirty(True)
+    return True
+
+
+def set_entry_active(layer, key, active):
+    """Нэг ангилал / дүрмийг зураг болон таних тэмдгээс хасна эсвэл буцааж оруулна.
+
+    QGIS-ийн давхаргын самбар дахь ангиллын чагттай ижил: чагтгүй ангиллын объект
+    зурагдахгүй, таних тэмдэгт орохгүй. Амжилттай бол True.
+    """
+    kind = renderer_kind(layer)
+    if kind not in (CATEGORIZED, GRADUATED, RULE):
+        return False
+    r = layer.renderer().clone()
+    ok = False
+    if kind == CATEGORIZED and 0 <= key < len(r.categories()):
+        ok = r.updateCategoryRenderState(key, bool(active))
+    elif kind == GRADUATED and 0 <= key < len(r.ranges()):
+        ok = r.updateRangeRenderState(key, bool(active))
+    elif kind == RULE:
+        rule = _find_rule(r.rootRule(), key)
+        if rule is not None:
+            rule.setActive(bool(active))
+            ok = True
     if not ok:
         return False
     layer.setRenderer(r)
