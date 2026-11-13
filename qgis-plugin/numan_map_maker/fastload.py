@@ -85,23 +85,55 @@ def layers_in_cache(project):
     return used
 
 
-def clear_cache(project=None):
-    """Кэшийг цэвэрлэнэ. Одоогийн төсөлд ашиглагдаж буй файлыг үлдээнэ.
+def file_kind(path):
+    """Кэшийн файлын төрлийн нэр (хэрэглэгчид харуулах)."""
+    low = path.lower()
+    for suffix in ("-wal", "-shm", "-journal"):
+        if low.endswith(suffix):
+            low = low[:-len(suffix)]
+    if low.endswith(".gpkg"):
+        return "Хөрвүүлсэн хилийн давхарга"
+    if low.endswith(".mbtiles"):
+        return "Хөрвүүлсэн офлайн зураг"
+    if low.endswith(".kml"):
+        return "KMZ-ээс задалсан KML"
+    if low.endswith(".part"):
+        return "Дуусаагүй хөрвүүлэлтийн үлдэгдэл"
+    return "Бусад түр файл"
 
-    Буцаах утга: (чөлөөлсөн байт, устгасан файл, үлдээсэн файл)
+
+def cache_plan(project=None):
+    """Цэвэрлэхэд юу устах, юу үлдэхийг урьдчилан гаргана (юу ч устгахгүй).
+
+    Буцаах утга: (устгах [(зам, байт)], үлдээх [(зам, байт)]) — үлдээх нь одоогийн
+    төсөлд ашиглагдаж буй файлууд.
     """
     keep = layers_in_cache(project) if project is not None else set()
-    freed = removed = skipped = 0
-    for path in list(_cache_files()):
+    delete, kept = [], []
+    for path in sorted(_cache_files()):
         base = os.path.normcase(os.path.abspath(path))
         # SQLite-ийн дагалдах файл (-wal, -shm, -journal) эзэнтэйгээ хамт үлдэнэ
         owner = base
         for suffix in ("-wal", "-shm", "-journal"):
             if owner.endswith(suffix):
                 owner = owner[:-len(suffix)]
-        if owner in keep:
-            skipped += 1
-            continue
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            size = 0
+        (kept if owner in keep else delete).append((path, size))
+    return delete, kept
+
+
+def clear_cache(project=None):
+    """Кэшийг цэвэрлэнэ. Одоогийн төсөлд ашиглагдаж буй файлыг үлдээнэ.
+
+    Буцаах утга: (чөлөөлсөн байт, устгасан файл, үлдээсэн файл)
+    """
+    delete, kept = cache_plan(project)
+    freed = removed = 0
+    skipped = len(kept)
+    for path, _size in delete:
         try:
             size = os.path.getsize(path)
             os.remove(path)

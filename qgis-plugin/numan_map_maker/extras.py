@@ -321,20 +321,65 @@ class ExtrasMixin:
         from qgis.PyQt.QtGui import QDesktopServices
         QDesktopServices.openUrl(QUrl.fromLocalFile(fastload.cache_dir()))
 
+    def _cache_confirm(self, delete, kept):
+        """Юу устах, юу үлдэхийг жагсааж анхааруулна. Зөвшөөрвөл True."""
+        fmt = fastload.format_size
+        kinds = {}
+        for path, size in delete:
+            k = kinds.setdefault(fastload.file_kind(path), [0, 0])
+            k[0] += 1
+            k[1] += size
+        lines = [f"• {name}: {n} файл, {fmt(sz)}" for name, (n, sz) in kinds.items()]
+        total = sum(sz for _p, sz in delete)
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Кэш цэвэрлэх")
+        box.setText(f"<b>{len(delete)} файл ({fmt(total)}) бүрмөсөн устах гэж байна:</b>")
+        info = "\n".join(lines) + "\n\n"
+        info += ("Анхаар:\n"
+                 "– Устгасан файлыг сэргээх боломжгүй (хогийн сав руу орохгүй).\n"
+                 "– Эдгээрийг ашиглаж хадгалсан БУСАД төслийг нээхэд тухайн давхарга "
+                 "«эвдэрсэн» харагдана; хилийн файлаа «Хилийн файл нэмэх…»-ээр дахин "
+                 "нэмж засна.\n"
+                 "– Дараа хэрэг болоход дахин хөрвүүлэх тул том файлд хугацаа орно.\n\n"
+                 "Устахгүй зүйлс:\n"
+                 "– Таны эх файлууд (KML, KMZ, GeoJSON, SHP, .sqlitedb).\n"
+                 "– Өөрийн заасан газарт хадгалсан офлайн зураг (.mbtiles).\n")
+        if kept:
+            info += (f"– Одоогийн төсөлд ашиглагдаж буй {len(kept)} файл "
+                     f"({fmt(sum(sz for _p, sz in kept))}).\n")
+        info += "\nФайлын бүрэн жагсаалтыг «Show Details…» товчоор харна."
+        box.setInformativeText(info)
+        detail = ["УСТГАХ ФАЙЛУУД:"]
+        detail += [f"  {os.path.basename(p)}  —  {fmt(sz)}  ({fastload.file_kind(p)})"
+                   for p, sz in delete]
+        if kept:
+            detail += ["", "ҮЛДЭХ ФАЙЛУУД (одоогийн төсөлд ашиглагдаж байна):"]
+            detail += [f"  {os.path.basename(p)}  —  {fmt(sz)}" for p, sz in kept]
+        detail += ["", "Хавтас: " + fastload.cache_dir()]
+        box.setDetailedText("\n".join(detail))
+        yes = box.addButton("Устгах", QMessageBox.ButtonRole.DestructiveRole)
+        no = box.addButton("Болих", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(no)
+        box.setEscapeButton(no)
+        self._cache_box = box            # тест болон дахин ашиглахад
+        (box.exec if hasattr(box, "exec") else box.exec_)()
+        return box.clickedButton() is yes
+
     def _cache_clear(self):
-        size, count = fastload.cache_usage()
-        if count == 0:
-            self.lbl_status.setText("Кэш хоосон байна.")
+        delete, kept = fastload.cache_plan(QgsProject.instance())
+        if not delete:
             self._cache_refresh()
+            if kept:
+                QMessageBox.information(
+                    self, "Кэш цэвэрлэх",
+                    f"Устгах файл алга. Кэшид байгаа {len(kept)} файл бүгд одоогийн төсөлд "
+                    "ашиглагдаж байна; төслөө хаасны дараа цэвэрлэж болно.")
+            else:
+                self.lbl_status.setText("Кэш хоосон байна.")
             return
-        ans = QMessageBox.question(
-            self, "Кэш цэвэрлэх",
-            f"Кэшид {count} файл, {fastload.format_size(size)} байна.\n\n"
-            "Цэвэрлэх үү? Одоогийн төсөлд ашиглагдаж буй файлууд үлдэнэ. "
-            "Эх файлууд (KML, GeoJSON, .sqlitedb) устахгүй.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        if ans != QMessageBox.StandardButton.Yes:
+        if not self._cache_confirm(delete, kept):
             return
         try:
             freed, removed, skipped = fastload.clear_cache(QgsProject.instance())
