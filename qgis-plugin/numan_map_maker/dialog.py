@@ -588,7 +588,8 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         return w
 
     def _pick_basemap_file(self):
-        """Офлайн зургийн сан сонгож, шаардлагатай бол нэг удаа хөрвүүлнэ."""
+        """Офлайн зургийн сан сонгоно. .sqlitedb бол хөрвүүлсэн файлыг хаана хадгалахыг
+        асууж, нэг удаа хөрвүүлээд, цаашид тэр бэлэн файлыг шууд уншина."""
         from . import osmand
         st = QgsSettings()
         start = os.path.dirname(self.le_basemap_file.text()) or \
@@ -598,21 +599,56 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         if not path:
             return
         st.setValue("numan_map_maker/offline_dir", os.path.dirname(path))
-        if self._prepare_offline(path):
-            self._loading = True
-            try:
-                self._bindings["basemap_file"][1](path)
-                self._bindings["basemap"][1](basemaps.FILE_KEY)
-            finally:
-                self._loading = False
-            self._update_enabled()
-            self.rebuild()
+        ready = self._offline_ready_file(path)
+        if not ready:
+            return
+        self._loading = True
+        try:
+            # Тохиргоонд бэлэн .mbtiles-ийн замыг хадгална: дараа нь хөрвүүлэлтгүй нээгдэнэ
+            self._bindings["basemap_file"][1](ready)
+            self._bindings["basemap"][1](basemaps.FILE_KEY)
+        finally:
+            self._loading = False
+        self._update_enabled()
+        self.rebuild()
 
-    def _prepare_offline(self, path):
+    def _offline_ready_file(self, path):
+        """QGIS-д уншигдах (.mbtiles) файлын замыг буцаана; болиулсан / амжилтгүй бол ''."""
+        from . import osmand
+        try:
+            ready = osmand.known(path)
+        except Exception:
+            ready = ""
+        if ready:
+            if ready != path:
+                self.lbl_status.setText(
+                    f"Өмнө хөрвүүлсэн бэлэн файлыг ашиглалаа: {os.path.basename(ready)}")
+            return ready
+
+        default = osmand.default_output(path)
+        if os.path.isfile(default) and os.path.getsize(default) > 0:
+            ans = QMessageBox.question(
+                self, "Офлайн зураг",
+                f"Эх файлын хажууд «{os.path.basename(default)}» нэртэй хөрвүүлсэн файл "
+                "байна.\n\nТүүнийг дахин хөрвүүлэлгүй шууд ашиглах уу?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes)
+            if ans == QMessageBox.StandardButton.Yes:
+                osmand.remember(path, default)
+                return default
+
+        out, _ = QFileDialog.getSaveFileName(
+            self, "Хөрвүүлсэн файлыг хаана хадгалах вэ?", default, "MBTiles (*.mbtiles)")
+        if not out:
+            return ""
+        if not out.lower().endswith(".mbtiles"):
+            out += ".mbtiles"
+        return self._prepare_offline(path, out)
+
+    def _prepare_offline(self, path, out):
+        """path-ийг out руу хөрвүүлнэ (явцын цонхтой). Амжилттай бол out, эс бөгөөс ''."""
         from qgis.PyQt.QtWidgets import QProgressDialog
         from . import osmand
-        if osmand.is_converted(path):
-            return True
         prog = QProgressDialog("Офлайн зургийн санг QGIS-д уншигдах хэлбэрт нэг удаа "
                                "хөрвүүлж байна…", "Зогсоох", 0, 100, self)
         prog.setWindowModality(Qt.WindowModality.WindowModal)
@@ -625,17 +661,21 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
             return not prog.wasCanceled()
 
         try:
-            osmand.to_mbtiles(path, step)
+            ready = osmand.to_mbtiles(path, step, out)
         except osmand.OsmandError as e:
             prog.close()
             QMessageBox.warning(self, "Офлайн зураг", str(e))
-            return False
+            return ""
         except Exception as e:
             prog.close()
-            QMessageBox.warning(self, "Офлайн зураг", f"Файлыг уншиж чадсангүй:\n{e}")
-            return False
+            QMessageBox.warning(
+                self, "Офлайн зураг",
+                f"Хөрвүүлж чадсангүй:\n{e}\n\nХадгалах хавтсанд бичих эрх, дискний "
+                "сул зай байгаа эсэхийг шалгана уу.")
+            return ""
         prog.setValue(100)
-        return True
+        self.lbl_status.setText(f"Хөрвүүлж хадгаллаа: {ready}")
+        return ready
 
     def _get_overlays(self):
         lw = self.lw_overlays

@@ -12,7 +12,7 @@ import os
 import sqlite3
 
 from qgis.PyQt.QtCore import QUrl
-from qgis.core import QgsRasterLayer
+from qgis.core import QgsRasterLayer, QgsSettings
 
 from . import fastload
 
@@ -33,14 +33,49 @@ def cache_path(path):
     return os.path.join(fastload.cache_dir(), f"{base}_{key}.mbtiles")
 
 
-def is_converted(path):
-    if path.lower().endswith(".mbtiles"):
-        return True
+REGISTRY = "numan_map_maker/converted/"
+
+
+def _source_key(path):
+    st = os.stat(path)
+    return hashlib.md5(f"{os.path.abspath(path)}|{st.st_size}|{int(st.st_mtime)}"
+                       .encode("utf-8")).hexdigest()
+
+
+def default_output(path):
+    """Хөрвүүлсэн файлд санал болгох зам: эх файлын хажууд, ижил нэртэй .mbtiles."""
+    return os.path.splitext(os.path.abspath(path))[0] + ".mbtiles"
+
+
+def remember(path, out):
+    """Энэ эх файлыг хаана хөрвүүлж хадгалсныг тэмдэглэнэ (дахин хөрвүүлэхгүйн тулд)."""
     try:
-        out = cache_path(path)
-        return os.path.exists(out) and os.path.getsize(out) > 0
+        QgsSettings().setValue(REGISTRY + _source_key(path), os.path.abspath(out))
     except OSError:
-        return False
+        pass
+
+
+def known(path):
+    """Энэ эх файлын бэлэн хөрвүүлсэн MBTiles-ийн зам ('' = байхгүй).
+
+    Эх файл өөрчлөгдсөн (хэмжээ, огноо) бол хуучин хөрвүүлэлтийг тооцохгүй.
+    """
+    if path.lower().endswith(".mbtiles"):
+        return path
+    try:
+        saved = QgsSettings().value(REGISTRY + _source_key(path), "") or ""
+        if saved and os.path.isfile(saved) and os.path.getsize(saved) > 0:
+            return saved
+        out = cache_path(path)
+        if os.path.exists(out) and os.path.getsize(out) > 0:
+            return out
+    except OSError:
+        pass
+    return ""
+
+
+def is_converted(path):
+    return bool(known(path))
 
 
 def _columns(con, table):
@@ -112,16 +147,22 @@ def _lonlat(x, y, zoom):
     return lon, lat
 
 
-def to_mbtiles(path, progress=None):
-    """.sqlitedb-г MBTiles болгон кэшид хөрвүүлж, замыг нь буцаана.
+def to_mbtiles(path, progress=None, out=None):
+    """.sqlitedb-г MBTiles болгон хөрвүүлж, замыг нь буцаана.
 
+    out: хадгалах зам. Өгөөгүй бол өмнө хөрвүүлснийг (байвал) ашиглаж, эс бөгөөс кэш
+    хавтсанд хөрвүүлнэ. Өгсөн бол тэр замд шинээр бичнэ.
     progress(хийсэн, нийт) -> False буцаавал зогсооно. .mbtiles бол өөрийг нь буцаана.
     """
     if path.lower().endswith(".mbtiles"):
         return path
-    out = cache_path(path)
-    if os.path.exists(out) and os.path.getsize(out) > 0:
-        return out
+    if out is None:
+        ready = known(path)
+        if ready:
+            return ready
+        out = cache_path(path)
+    elif os.path.abspath(out) == os.path.abspath(path):
+        raise OsmandError("Хөрвүүлсэн файлыг эх файлын дээр хадгалж болохгүй.")
     meta = inspect(path)
     if meta["ellipsoid"] == 1:
         raise OsmandError("Энэ сан эллипс Меркатор (Yandex) проекцтой тул дэмжигдэхгүй.")
@@ -175,6 +216,7 @@ def to_mbtiles(path, progress=None):
         if not ok and os.path.exists(tmp):
             os.remove(tmp)
     os.replace(tmp, out)
+    remember(path, out)
     return out
 
 

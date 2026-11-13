@@ -20,10 +20,13 @@ from qgis.core import (
     QgsField,
     QgsFillSymbol,
     QgsGeometry,
+    QgsLineSymbol,
     QgsPalLayerSettings,
     QgsProviderRegistry,
     QgsProviderSublayerDetails,
     QgsRendererCategory,
+    QgsSimpleFillSymbolLayer,
+    QgsSimpleLineSymbolLayer,
     QgsTextBufferSettings,
     QgsTextFormat,
     QgsVectorLayer,
@@ -412,11 +415,32 @@ def set_labels(layer, expression, family="Arial", size=8.0, is_expression=True,
     layer.triggerRepaint()
 
 
-def outline_symbol(layer, color="#111111", width=0.6, dash=True):
-    """Хилийн давхаргыг дүүргэлтгүй хүрээ шугамаар харуулах тэмдэг (полигонд)."""
-    if layer.geometryType() != QgsWkbTypes.PolygonGeometry:
-        return None
-    props = {"style": "no", "outline_color": color, "outline_width": str(width)}
-    if dash:
-        props["outline_style"] = "dash"
-    return QgsFillSymbol.createSimple(props)
+def outline_symbol(layer, color="#111111", width=0.6, dash=False, halo=True):
+    """Хилийн давхаргыг дүүргэлтгүй хүрээ шугамаар харуулах тэмдэг (полигон, шугам).
+
+    halo: шугамын доор цагаан зурвас тавина — сансрын зураг зэрэг бараан фон дээр ч,
+    цайвар фон дээр ч ялгарч харагдана.
+    """
+    kind = layer.geometryType()
+    style = "dash" if dash else "solid"
+    under = str(float(width) + 0.9)
+    if kind == QgsWkbTypes.PolygonGeometry:
+        top = {"style": "no", "outline_color": color, "outline_width": str(width),
+               "outline_style": style, "joinstyle": "round"}
+        if not halo:
+            return QgsFillSymbol.createSimple(top)
+        sym = QgsFillSymbol.createSimple({"style": "no", "outline_color": "255,255,255,200",
+                                          "outline_width": under, "joinstyle": "round"})
+        # Давхаргыг шууд үүсгэнэ: түр symbol-оос авч хуулбарлавал санах ойн алдаа гарна
+        sym.appendSymbolLayer(QgsSimpleFillSymbolLayer.create(top))
+        return sym
+    if kind == QgsWkbTypes.LineGeometry:
+        top = {"color": color, "width": str(width), "line_style": style,
+               "joinstyle": "round", "capstyle": "round"}
+        if not halo:
+            return QgsLineSymbol.createSimple(top)
+        sym = QgsLineSymbol.createSimple({"color": "255,255,255,200", "width": under,
+                                          "joinstyle": "round", "capstyle": "round"})
+        sym.appendSymbolLayer(QgsSimpleLineSymbolLayer.create(top))
+        return sym
+    return None

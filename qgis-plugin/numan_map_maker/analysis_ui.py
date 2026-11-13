@@ -3,7 +3,7 @@
 import os
 
 from qgis.PyQt.QtCore import QMarginsF, QSizeF, Qt
-from qgis.PyQt.QtGui import QPageLayout, QPageSize
+from qgis.PyQt.QtGui import QColor, QPageLayout, QPageSize
 from qgis.PyQt.QtPrintSupport import QPrintDialog, QPrinter
 from qgis.PyQt.QtWidgets import (
     QApplication,
@@ -11,6 +11,7 @@ from qgis.PyQt.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -36,7 +37,7 @@ from qgis.core import (
     QgsVectorLayer,
     QgsWkbTypes,
 )
-from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
+from qgis.gui import QgsColorButton, QgsFieldComboBox, QgsMapLayerComboBox
 
 from . import fastload, overlap
 
@@ -100,13 +101,16 @@ HELP_HTML = """
 <li>«Давхцал тооцоолох» дарна. Үр дүн хүснэгтээр гарч, зураг дээр өнгөөр ялгасан давхарга,
 нэрийн бичээс, талбай-хувийн хүснэгт нэмэгдэнэ.</li>
 </ol>
+<p>«Хилийн шугам» хэсгийн чагтаар хилийн шугамыг зургийн бүх хэсэгт харуулна эсвэл нууна;
+өнгө, өргөнийг нь тэндээс солино.</p>
 <p>Хэд хэдэн хилтэй (аймаг, лиценз, ТХГ …) ээлжлэн тооцоолж болно. Дараа нь «Цуврал» табын
 «Давхарга бүрээр» горимоор тус бүрд нь сэдэвчилсэн зураг гаргана.</p>
 
 <h3>Офлайн суурь зураг</h3>
 <p>«Суурь зураг» табын «Фон» жагсаалтаас «Офлайн файл»-ыг сонгоод «…» товчоор OsmAnd-ийн
 <b>.sqlitedb</b> (эсвэл <b>.mbtiles</b>) файлаа заана. .sqlitedb файлыг плагин нэг удаа QGIS-д
-уншигдах хэлбэрт хөрвүүлж кэшид хадгална; эх файл өөрчлөгдөхгүй. Интернэтгүй үед ч ажиллана.</p>
+уншигдах хэлбэрт (.mbtiles) хөрвүүлнэ: хөрвүүлэхийн өмнө хаана хадгалахыг асууж, дараа нь тэр
+бэлэн файлыг шууд уншина. Эх файл өөрчлөгдөхгүй. Интернэтгүй үед ч ажиллана.</p>
 
 <h3>Том файл</h3>
 <p>Улсын хэмжээний олон мянган полигонтой KML, KMZ, GeoJSON файлыг «Хилийн файл нэмэх…»-ээр
@@ -178,12 +182,40 @@ class AnalysisMixin:
         self.chk_ov_rest = QCheckBox("Давхцаагүй хэсгийг тусад нь харуулах")
         self.chk_ov_rest.setChecked(True)
         f.addRow(self.chk_ov_rest)
-        self.chk_ov_bound_label = QCheckBox("Хилийн давхаргын нэрийг мөн бичих")
+        g = QGroupBox("Хилийн шугам (зургийн бүх хэсэгт)")
+        gf = QFormLayout(g)
+        self.chk_ov_bound_show = QCheckBox("Хилийн шугамыг зургийн бүх хэсэгт харуулах")
+        self.chk_ov_bound_show.setChecked(True)
+        self.chk_ov_bound_show.setToolTip(
+            "Чагттай бол сонгосон хилийн давхаргын шугам зөвхөн тайрагдсан талбайн дотор "
+            "биш, зургийн хүрээнд бүхэлдээ харагдана. Чагтыг авбал нуугдана.")
+        gf.addRow(self.chk_ov_bound_show)
+        hh = QHBoxLayout()
+        self.cb_ov_bound_color = QgsColorButton()
+        self.cb_ov_bound_color.setColor(QColor("#111111"))
+        self.cb_ov_bound_color.setAllowOpacity(False)
+        hh.addWidget(self.cb_ov_bound_color)
+        self.sp_ov_bound_width = QDoubleSpinBox()
+        self.sp_ov_bound_width.setRange(0.1, 5.0)
+        self.sp_ov_bound_width.setSingleStep(0.1)
+        self.sp_ov_bound_width.setDecimals(1)
+        self.sp_ov_bound_width.setValue(0.7)
+        self.sp_ov_bound_width.setSuffix(" мм")
+        hh.addWidget(self.sp_ov_bound_width)
+        self.chk_ov_bound_dash = QCheckBox("Тасархай")
+        hh.addWidget(self.chk_ov_bound_dash)
+        hh.addStretch(1)
+        gf.addRow("Өнгө, өргөн:", hh)
+        self.chk_ov_bound_label = QCheckBox("Хилийн нэгжүүдийн нэрийг бичих")
         self.chk_ov_bound_label.setToolTip("Талбайтай давхцаагүй хөрш нэгжүүдийн нэрийг ч харуулна")
-        f.addRow(self.chk_ov_bound_label)
-        self.chk_ov_outline = QCheckBox("Хилийг дүүргэлтгүй хүрээ шугамаар харуулах")
-        self.chk_ov_outline.setChecked(True)
-        f.addRow(self.chk_ov_outline)
+        gf.addRow(self.chk_ov_bound_label)
+        f.addRow(g)
+        self._ov_labelled = set()
+        self.chk_ov_bound_show.toggled.connect(self._overlap_boundary_changed)
+        self.chk_ov_bound_dash.toggled.connect(self._overlap_boundary_changed)
+        self.chk_ov_bound_label.toggled.connect(self._overlap_boundary_changed)
+        self.cb_ov_bound_color.colorChanged.connect(self._overlap_boundary_changed)
+        self.sp_ov_bound_width.valueChanged.connect(self._overlap_boundary_changed)
         self.chk_ov_table = QCheckBox("Хүснэгтийг зурагт нэмэх")
         self.chk_ov_table.setChecked(True)
         f.addRow(self.chk_ov_table)
@@ -267,6 +299,58 @@ class AnalysisMixin:
             self.lbl_status.setText("Хилийн давхарга нэмэгдлээ: "
                                     + ", ".join(l.name() for l in added))
         return added
+
+    def _boundary_apply(self, bound, s=None):
+        """Хилийн давхаргыг зургийн бүх хэсэгт харуулах / нуух, шугамын загвар, нэрийн бичээс."""
+        prj = QgsProject.instance()
+        root = prj.layerTreeRoot()
+        node = root.findLayer(bound.id())
+        if node is None:
+            return
+        s = s or self.settings()
+        show = self.chk_ov_bound_show.isChecked()
+        if not show:
+            node.setItemVisibilityChecked(False)
+            return
+        node.setItemVisibilityCheckedParentRecursive(True)
+        # KML-ээс ирсэн (объектдоо загвартай эсвэл түүнээс хөрвүүлсэн) давхаргад ч хэрэглэнэ;
+        # хэрэглэгчийн ангилсан загварт хүрэхгүй.
+        if isinstance(bound.renderer(), (QgsSingleSymbolRenderer, QgsRuleBasedRenderer,
+                                         QgsEmbeddedSymbolRenderer)):
+            sym = overlap.outline_symbol(bound, self.cb_ov_bound_color.color().name(),
+                                         self.sp_ov_bound_width.value(),
+                                         self.chk_ov_bound_dash.isChecked())
+            if sym is not None:
+                self._style_backup.setdefault(bound.id(), bound.renderer().clone())
+                bound.setRenderer(QgsSingleSymbolRenderer(sym))
+                bound.triggerRepaint()
+        # Давхцлын өнгөт талбайн дээр гарч байж шугам нь тасралтгүй харагдана
+        parent = node.parent()
+        if parent is not None and not (parent is root and root.children()
+                                       and root.children()[0] is node):
+            clone = node.clone()
+            root.insertChildNode(0, clone)
+            parent.removeChildNode(node)
+        name_field = self.fc_ov_name.currentField()
+        if self.chk_ov_bound_label.isChecked() and name_field:
+            overlap.set_labels(bound, name_field, s["font"],
+                               max(6.0, float(s["legend_font_size"]) - 1), False)
+            self._ov_labelled.add(bound.id())
+        elif bound.id() in self._ov_labelled:
+            overlap.set_labels(bound, "")
+            self._ov_labelled.discard(bound.id())
+
+    def _overlap_boundary_changed(self, *_):
+        bound = self.lc_ov_bound.currentLayer()
+        if not isinstance(bound, QgsVectorLayer):
+            return
+        self._loading = True
+        try:
+            self._boundary_apply(bound)
+        finally:
+            self._loading = False
+        self._legend_mark_dirty()
+        self._changed()
 
     def _overlap_lighten(self):
         lyr = self.lc_ov_bound.currentLayer()
@@ -372,19 +456,7 @@ class AnalysisMixin:
                                overlap.LABEL_MODES.get(self.cb_ov_label.currentData(), ""),
                                s["font"], max(6.0, float(s["legend_font_size"])), True,
                                overlap.REST)
-            # KML-ээс ирсэн (объектдоо загвартай эсвэл түүнээс хөрвүүлсэн) давхаргад ч
-            # хэрэглэнэ; хэрэглэгчийн ангилсан загварт хүрэхгүй.
-            if self.chk_ov_outline.isChecked() and \
-                    bound.geometryType() == QgsWkbTypes.PolygonGeometry and \
-                    isinstance(bound.renderer(), (QgsSingleSymbolRenderer, QgsRuleBasedRenderer,
-                                                  QgsEmbeddedSymbolRenderer)):
-                self._style_backup.setdefault(bound.id(), bound.renderer().clone())
-                bound.setRenderer(QgsSingleSymbolRenderer(overlap.outline_symbol(bound)))
-                bound.triggerRepaint()
-            name_field = self.fc_ov_name.currentField()
-            if self.chk_ov_bound_label.isChecked() and name_field:
-                overlap.set_labels(bound, name_field, s["font"],
-                                   max(6.0, float(s["legend_font_size"]) - 1), False)
+            self._boundary_apply(bound, s)
             if self.chk_ov_table.isChecked():
                 for key, val in (("table", True), ("table_layer", res.layer.id()),
                                  ("table_field", ""), ("table_unit", self.cb_ov_unit.currentData()),
