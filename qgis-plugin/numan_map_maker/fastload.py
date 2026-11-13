@@ -10,6 +10,7 @@ KML, KMZ, GeoJSON зэрэг текст форматад орон зайн ин�
 import hashlib
 import os
 
+from qgis.PyQt.QtCore import QUrl
 from qgis.core import (
     QgsApplication,
     QgsProviderRegistry,
@@ -30,6 +31,94 @@ def cache_dir():
     d = os.path.join(QgsApplication.qgisSettingsDirPath(), "numan_map_maker", "cache")
     os.makedirs(d, exist_ok=True)
     return d
+
+
+def cache_roots():
+    """Плагины кэш хадгалдаг хавтаснууд: хөрвүүлсэн давхарга / офлайн зураг, задалсан KMZ."""
+    base = os.path.join(QgsApplication.qgisSettingsDirPath(), "numan_map_maker")
+    return [cache_dir(), os.path.join(base, "kmz")]
+
+
+def _cache_files():
+    for root in cache_roots():
+        if not os.path.isdir(root):
+            continue
+        for folder, _dirs, files in os.walk(root):
+            for name in files:
+                yield os.path.join(folder, name)
+
+
+def cache_usage():
+    """(нийт байт, файлын тоо)"""
+    total = count = 0
+    for path in _cache_files():
+        try:
+            total += os.path.getsize(path)
+            count += 1
+        except OSError:
+            pass
+    return total, count
+
+
+def format_size(n):
+    for unit in ("Б", "КБ", "МБ", "ГБ"):
+        if n < 1024 or unit == "ГБ":
+            return f"{n:.0f} {unit}" if unit == "Б" else f"{n:.1f} {unit}"
+        n /= 1024.0
+
+
+def layers_in_cache(project):
+    """Одоогийн төсөлд ашиглагдаж буй кэшийн файлуудын зам (жижиг үсгээр, бүтэн зам)."""
+    roots = [os.path.normcase(os.path.abspath(r)) for r in cache_roots()]
+    used = set()
+    for lyr in project.mapLayers().values():
+        src = lyr.source() or ""
+        for part in src.replace("&", "|").split("|"):
+            part = part.strip()
+            if part.startswith("url=file:"):
+                part = QUrl(part[4:]).toLocalFile()
+            if not part:
+                continue
+            p = os.path.normcase(os.path.abspath(part))
+            if any(p.startswith(r + os.sep) for r in roots):
+                used.add(p)
+    return used
+
+
+def clear_cache(project=None):
+    """Кэшийг цэвэрлэнэ. Одоогийн төсөлд ашиглагдаж буй файлыг үлдээнэ.
+
+    Буцаах утга: (чөлөөлсөн байт, устгасан файл, үлдээсэн файл)
+    """
+    keep = layers_in_cache(project) if project is not None else set()
+    freed = removed = skipped = 0
+    for path in list(_cache_files()):
+        base = os.path.normcase(os.path.abspath(path))
+        # SQLite-ийн дагалдах файл (-wal, -shm, -journal) эзэнтэйгээ хамт үлдэнэ
+        owner = base
+        for suffix in ("-wal", "-shm", "-journal"):
+            if owner.endswith(suffix):
+                owner = owner[:-len(suffix)]
+        if owner in keep:
+            skipped += 1
+            continue
+        try:
+            size = os.path.getsize(path)
+            os.remove(path)
+            freed += size
+            removed += 1
+        except OSError:           # Windows-д өөр программ нээсэн файл устахгүй
+            skipped += 1
+    for root in cache_roots():    # хоосорсон дэд хавтсуудыг арилгана
+        if not os.path.isdir(root):
+            continue
+        for folder, _dirs, _files in os.walk(root, topdown=False):
+            if folder != root:
+                try:
+                    os.rmdir(folder)
+                except OSError:
+                    pass
+    return freed, removed, skipped
 
 
 def cache_path(path):

@@ -122,7 +122,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
-        self.setWindowTitle(f"Газрын зураг бэлтгэгч — Нуман-Алтай · v{plugin_version()}")
+        self.setWindowTitle(f"Газрын зураг бэлтгэгч — Нуман-Алтай ХХК · v{plugin_version()}")
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint
                             | Qt.WindowType.WindowMinimizeButtonHint)
         # Дэлгэцэнд багтах хэмжээгээр нээнэ (жижиг дэлгэц, томруулсан Windows-д ч)
@@ -832,6 +832,8 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
 
     # ---- Таних тэмдэг засварлагч ---------------------------------------
     def _tab_changed(self, idx):
+        if self.tabs.tabText(idx) == "Нэмэлт":
+            self._cache_refresh()       # хөрвүүлэлтийн дараах хэмжээг шинээр харуулна
         if idx == self._legend_tab:
             self._refresh_legend_editor()
 

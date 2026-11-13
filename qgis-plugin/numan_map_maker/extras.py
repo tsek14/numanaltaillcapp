@@ -38,7 +38,7 @@ from qgis.core import (
 )
 from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
 
-from . import basemaps, batch, composer, legend_edit, styles, table_export, templates
+from . import basemaps, batch, composer, fastload, legend_edit, styles, table_export, templates
 
 POSITIONS = [("Зүүн дээд", "TL"), ("Баруун дээд", "TR"),
              ("Зүүн доод", "BL"), ("Баруун доод", "BR")]
@@ -280,8 +280,72 @@ class ExtrasMixin:
         self._bind("info_font_size", sp)
         f.addRow("Бичгийн хэмжээ:", sp)
         v.addWidget(g)
+
+        g = QGroupBox("Кэш (хөрвүүлсэн түр файлууд)")
+        gv = QVBoxLayout(g)
+        note = QLabel("Том хилийн файл, KMZ, хадгалах газар заагаагүй офлайн зургийн "
+                      "хөрвүүлсэн хуулбарууд энд хадгалагддаг. Цэвэрлэвэл дараа хэрэг болоход "
+                      "дахин хөрвүүлнэ; эх файлууд хэвээр үлдэнэ.")
+        note.setWordWrap(True)
+        gv.addWidget(note)
+        self.lbl_cache = QLabel("")
+        self.lbl_cache.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.lbl_cache.setWordWrap(True)
+        gv.addWidget(self.lbl_cache)
+        h = QHBoxLayout()
+        b = QPushButton("Хэмжээг шинэчлэх")
+        b.clicked.connect(self._cache_refresh)
+        h.addWidget(b)
+        b = QPushButton("Хавтас нээх")
+        b.clicked.connect(self._cache_open)
+        h.addWidget(b)
+        b = QPushButton("Кэш цэвэрлэх…")
+        b.clicked.connect(self._cache_clear)
+        h.addWidget(b)
+        gv.addLayout(h)
+        v.addWidget(g)
+        self._cache_refresh()
         v.addStretch(1)
         return w
+
+    def _cache_refresh(self):
+        try:
+            size, count = fastload.cache_usage()
+            self.lbl_cache.setText(
+                f"<b>{fastload.format_size(size)}</b> · {count} файл<br>"
+                f"<span style='color:#666'>{fastload.cache_dir()}</span>")
+        except Exception as e:
+            self.lbl_cache.setText(f"Хэмжээг тооцож чадсангүй: {e}")
+
+    def _cache_open(self):
+        from qgis.PyQt.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(fastload.cache_dir()))
+
+    def _cache_clear(self):
+        size, count = fastload.cache_usage()
+        if count == 0:
+            self.lbl_status.setText("Кэш хоосон байна.")
+            self._cache_refresh()
+            return
+        ans = QMessageBox.question(
+            self, "Кэш цэвэрлэх",
+            f"Кэшид {count} файл, {fastload.format_size(size)} байна.\n\n"
+            "Цэвэрлэх үү? Одоогийн төсөлд ашиглагдаж буй файлууд үлдэнэ. "
+            "Эх файлууд (KML, GeoJSON, .sqlitedb) устахгүй.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            freed, removed, skipped = fastload.clear_cache(QgsProject.instance())
+        except Exception as e:
+            QMessageBox.warning(self, "Кэш цэвэрлэх", f"Цэвэрлэж чадсангүй:\n{e}")
+            return
+        self._cache_refresh()
+        msg = f"Кэш цэвэрлэлээ: {removed} файл, {fastload.format_size(freed)} чөлөөллөө."
+        if skipped:
+            msg += f" Ашиглагдаж буй {skipped} файл үлдлээ."
+        self.lbl_status.setText(msg)
 
     @staticmethod
     def _dspin(lo, hi, step=1.0, decimals=1, suffix=""):
