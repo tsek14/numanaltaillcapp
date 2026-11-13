@@ -274,12 +274,22 @@ def is_basemap(layer):
         "wms", "arcgismapserver", "xyzvectortiles", "vectortile")
 
 
-def clear_layout(layout):
+def clear_layout(layout, keep=None):
+    """Хуудаснаас бусад бүх элементийг арилгана. keep-ийг (газрын зургийн элемент) үлдээнэ."""
     for mf in list(layout.multiFrames()):
         layout.removeMultiFrame(mf)
     for it in list(layout.items()):
+        if it is keep:
+            continue
         if isinstance(it, QgsLayoutItem) and not isinstance(it, QgsLayoutItemPage):
             layout.removeLayoutItem(it)
+
+
+def find_map(layout):
+    for it in layout.items():
+        if isinstance(it, QgsLayoutItemMap) and it.id() == "nm_map":
+            return it
+    return None
 
 
 def item_rect(item):
@@ -624,7 +634,7 @@ def _map_to_layout(map_item, rect, x, y):
     return QPointF(rect.left() + fx * rect.width(), rect.top() + fy * rect.height())
 
 
-def refresh_map_bounds(map_item):
+def refresh_map_bounds(map_item, invalidate=False):
     """Торны хүрээний гаднах солбицлын тоонд зай гаргаж, дахин зуруулна.
 
     Зургийн элементийн зурагдах муж (bounding rect) тор тохируулсны дараа
@@ -634,13 +644,18 @@ def refresh_map_bounds(map_item):
         return
     try:
         map_item.updateBoundingRect()
-        map_item.invalidateCache()
+        if invalidate:
+            map_item.invalidateCache()
         map_item.update()
     except (RuntimeError, AttributeError):
         pass
 
 
-def build(layout, settings, canvas_extent=None, overrides=None, extent_override=None):
+MAP_SIG = "nm_signature"
+
+
+def build(layout, settings, canvas_extent=None, overrides=None, extent_override=None,
+          reuse_map=False, map_dirty=True):
     """Layout-ыг цэвэрлээд тохиргооны дагуу дахин угсарна.
 
     overrides: {item_id: item_geom(...)} — хэрэглэгч гараар зөөсөн элементүүд.
@@ -652,10 +667,14 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
     project = layout.project() or QgsProject.instance()
     items = {}
 
+    map_changed = True
     stack = layout.undoStack()
     stack.blockCommands(True)
     try:
-        clear_layout(layout)
+        # Өмнөх газрын зургийн элементийг үлдээвэл түүний нэгэнт зурсан (суурь зураг,
+        # хилийн шугам бүхий) дүрс хэвээр үлдэж, зураг өөрчлөгдөөгүй үед дахин зурахгүй.
+        old_map = find_map(layout) if reuse_map else None
+        clear_layout(layout, keep=old_map)
 
         # ---- Хуудас -------------------------------------------------
         if s["page_size"] in PAGE_SIZES:
@@ -734,46 +753,65 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
             mw -= float(s["legend_out_width"]) + 2.0
         mw, mh = max(mw, 20.0), max(mh, 20.0)
 
-        map_item = QgsLayoutItemMap(layout)
-        map_item.setId("nm_map")
-        layout.addLayoutItem(map_item)
-        map_item.attemptMove(QgsLayoutPoint(mx, my))
-        map_item.attemptResize(QgsLayoutSize(mw, mh))
+        map_item = old_map
+        map_new = map_item is None
+        if map_new:
+            map_item = QgsLayoutItemMap(layout)
+            map_item.setId("nm_map")
+            layout.addLayoutItem(map_item)
+            map_item.setBackgroundColor(QColor(255, 255, 255))
+        else:
+            for g in list(map_item.grids().asList()):
+                map_item.grids().removeGrid(g.id())
         if "nm_map" in overrides:
-            _apply_override(map_item, overrides["nm_map"])
-            r = item_rect(map_item)
-            mx, my, mw, mh = r.x(), r.y(), r.width(), r.height()
-        map_item.setCrs(project.crs())
-        map_item.setFrameEnabled(bool(s["map_frame"]))
-        map_item.setFrameStrokeWidth(QgsLayoutMeasurement(0.4))
-        map_item.setBackgroundColor(QColor(255, 255, 255))
+            _ref, mx, my, mw, mh = overrides["nm_map"]
 
         if extent_override is not None and not extent_override.isNull():
-            map_item.zoomToExtent(extent_override)
+            target = QgsRectangle(extent_override)
+            scale_key = ("override",)
         else:
-            map_item.zoomToExtent(compute_extent(project, s, canvas_extent))
-            if s["scale_mode"] == "fixed" and float(s["scale"]) > 0:
-                map_item.setScale(float(s["scale"]))
-            elif s["scale_mode"] == "round":
+            target = compute_extent(project, s, canvas_extent)
+            scale_key = (s["scale_mode"], float(s["scale"]) if s["scale_mode"] == "fixed" else 0)
+        hidden_map = set(s.get("map_hidden_layers") or [])
+        shown_map = set(s.get("map_shown_layers") or []) - hidden_map
+        # Газрын зургийн агуулгыг тодорхойлох бүх оролт: аль нэг нь өөрчлөгдвөл л дахин зурна
+        sig = repr((round(mx, 3), round(my, 3), round(mw, 3), round(mh, 3),
+                    [round(v, 6) for v in (target.xMinimum(), target.yMinimum(),
+                                           target.xMaximum(), target.yMaximum())],
+                    scale_key, project.crs().authid(),
+                    sorted(hidden_map), sorted(shown_map)))
+        map_changed = map_new or map_dirty or map_item.customProperty(MAP_SIG) != sig
+        if map_changed:
+            map_item.setReferencePoint(QgsLayoutItem.UpperLeft)
+            map_item.attemptMove(QgsLayoutPoint(mx, my))
+            map_item.attemptResize(QgsLayoutSize(mw, mh))
+            map_item.setCrs(project.crs())
+            map_item.zoomToExtent(target)
+            if scale_key[0] == "fixed" and scale_key[1] > 0:
+                map_item.setScale(scale_key[1])
+            elif scale_key[0] == "round":
                 sc = map_item.scale()
                 if sc > 0 and math.isfinite(sc):
                     map_item.setScale(nice_scale(sc))
+            if hidden_map or shown_map:
+                root_tree = project.layerTreeRoot()
+                lyrs = []
+                for lyr in root_tree.layerOrder():
+                    node = root_tree.findLayer(lyr.id())
+                    if node is None or lyr.id() in hidden_map:
+                        continue
+                    if node.isVisible() or lyr.id() in shown_map:
+                        lyrs.append(lyr)
+                map_item.setLayers(lyrs)
+                map_item.setKeepLayerSet(True)
+            elif map_item.keepLayerSet():
+                map_item.setKeepLayerSet(False)
+                map_item.setLayers([])
+            map_item.setCustomProperty(MAP_SIG, sig)
+        map_item.setFrameEnabled(bool(s["map_frame"]))
+        map_item.setFrameStrokeWidth(QgsLayoutMeasurement(0.4))
         items["nm_map"] = map_item
         map_rect = QRectF(mx, my, mw, mh)
-
-        hidden_map = set(s.get("map_hidden_layers") or [])
-        shown_map = set(s.get("map_shown_layers") or []) - hidden_map
-        if hidden_map or shown_map:
-            root_tree = project.layerTreeRoot()
-            lyrs = []
-            for lyr in root_tree.layerOrder():
-                node = root_tree.findLayer(lyr.id())
-                if node is None or lyr.id() in hidden_map:
-                    continue
-                if node.isVisible() or lyr.id() in shown_map:
-                    lyrs.append(lyr)
-            map_item.setLayers(lyrs)
-            map_item.setKeepLayerSet(True)
 
         if s["grid"]:
             _add_grid(map_item, s, project)
@@ -1072,8 +1110,18 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
                 items[lid] = lb
     finally:
         stack.blockCommands(False)
-    layout.refresh()
-    refresh_map_bounds(items.get("nm_map"))
+    # layout.refresh() нь газрын зургийн зурсан дүрсийг хүчингүй болгодог тул элемент
+    # бүрийг тусад нь шинэчилж, газрын зургийг зөвхөн өөрчлөгдсөн үед дахин зуруулна.
+    the_map = items.get("nm_map")
+    for item in items.values():
+        if item is the_map and not map_changed:
+            continue
+        try:
+            item.refresh()
+        except (RuntimeError, AttributeError):
+            pass
+    layout.updateBounds()
+    refresh_map_bounds(the_map, invalidate=map_changed)
     return items
 
 

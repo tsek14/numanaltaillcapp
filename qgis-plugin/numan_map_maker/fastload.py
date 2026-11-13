@@ -153,6 +153,85 @@ def clear_cache(project=None):
     return freed, removed, skipped
 
 
+# ---------------------------------------------------------------------------
+# Онлайн суурь зургийн (tile) кэш — QGIS-ийн сүлжээний кэш
+# ---------------------------------------------------------------------------
+TILE_CACHE_KEY = "numan_map_maker/tile_cache_mb"
+TILE_CACHE_DEFAULT_MB = 1024
+TILE_EXPIRY_KEY = "qgis/defaultTileExpiry"      # цаг; QGIS-ийн анхдагч 24
+TILE_EXPIRY_HOURS = 24 * 30
+
+
+def _network_cache():
+    from qgis.core import QgsNetworkAccessManager
+    return QgsNetworkAccessManager.instance().cache()
+
+
+def tile_cache_info():
+    """(одоогийн байт, дээд хязгаар байт) — кэш байхгүй бол (0, 0)."""
+    try:
+        c = _network_cache()
+        return (int(c.cacheSize()), int(c.maximumCacheSize())) if c is not None else (0, 0)
+    except Exception:
+        return 0, 0
+
+
+def tile_cache_setting():
+    from qgis.core import QgsSettings
+    try:
+        return int(QgsSettings().value(TILE_CACHE_KEY, TILE_CACHE_DEFAULT_MB))
+    except (TypeError, ValueError):
+        return TILE_CACHE_DEFAULT_MB
+
+
+def apply_tile_cache(mb=None, save=False):
+    """Онлайн суурь зургийн нэгэнт татсан хэсгүүдийг диск дээр илүү ихээр, удаан хадгална.
+
+    QGIS анхдагчаар ердөө 50 МБ орчмыг 24 цаг хадгалдаг тул том зураг хэд гаргахад
+    өмнөх нь шахагдаж, дахин татдаг. mb = 0 бол QGIS-ийн тохиргоонд хүрэхгүй.
+    Буцаах утга: хэрэглэсэн дээд хязгаар (байт), хүрээгүй бол 0.
+    """
+    from qgis.core import QgsSettings
+    if mb is None:
+        mb = tile_cache_setting()
+    mb = int(mb)
+    st = QgsSettings()
+    if save:
+        st.setValue(TILE_CACHE_KEY, mb)
+    if mb <= 0:
+        if save:                      # QGIS-ийн анхдагч руу буцаана
+            st.remove(TILE_EXPIRY_KEY)
+        return 0
+    try:
+        c = _network_cache()
+        if c is None:
+            return 0
+        size = mb * 1024 * 1024
+        if c.maximumCacheSize() != size:
+            c.setMaximumCacheSize(size)
+        try:
+            if int(st.value(TILE_EXPIRY_KEY, 24)) < TILE_EXPIRY_HOURS:
+                st.setValue(TILE_EXPIRY_KEY, TILE_EXPIRY_HOURS)
+        except (TypeError, ValueError):
+            st.setValue(TILE_EXPIRY_KEY, TILE_EXPIRY_HOURS)
+        return size
+    except Exception:
+        return 0
+
+
+def clear_tile_cache():
+    """Онлайн суурь зургийн кэшийг хоослоно. Чөлөөлсөн байтыг буцаана."""
+    try:
+        c = _network_cache()
+        if c is None:
+            return 0
+        before = int(c.cacheSize())
+        c.clear()
+        return before
+    except Exception:
+        return 0
+
+
 def cache_path(path):
     st = os.stat(path)
     key = hashlib.md5(f"{os.path.abspath(path)}|{st.st_size}|{int(st.st_mtime)}"

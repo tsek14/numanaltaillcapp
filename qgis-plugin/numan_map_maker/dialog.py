@@ -146,6 +146,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         self._overrides = {}
         self._extent_override = None
         self._first_build = True
+        self._map_dirty = True        # газрын зургийг шинээр зурах шаардлагатай эсэх
         self._conns = []             # (signal, slot) — shutdown() үед салгана
         self._legend_titles = {}     # layer_id -> таних тэмдэг дэх давхаргын нэр
         self._legend_order = []      # [layer_id] — хэрэглэгчийн тогтоосон дараалал
@@ -210,8 +211,9 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
 
         row = QHBoxLayout()
         self.btn_refresh = QPushButton("Шинэчлэх")
-        self.btn_refresh.setToolTip("Тохиргооны дагуу зургийг дахин угсарна")
-        self.btn_refresh.clicked.connect(self.rebuild)
+        self.btn_refresh.setToolTip("Тохиргооны дагуу зургийг дахин угсарч, газрын зургийг "
+                                    "(суурь зураг, давхаргууд) шинээр зурна")
+        self.btn_refresh.clicked.connect(lambda _=False: self.rebuild(force=True))
         self.chk_auto = QCheckBox("Автоматаар")
         self.chk_auto.setChecked(True)
         self.chk_auto.setToolTip("Тохиргоо өөрчлөгдөх бүрд урьдчилан харалтыг шинэчилнэ")
@@ -1444,9 +1446,18 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
             (prj.cleared, self._project_cleared),
             (prj.readProject, self._project_loaded),
         ]
+        pairs += [
+            (root.visibilityChanged, self._mark_map_dirty),
+            (root.layerOrderChanged, self._mark_map_dirty),
+            (prj.layersAdded, self._mark_map_dirty),
+            (prj.layersRemoved, self._mark_map_dirty),
+            (prj.crsChanged, self._mark_map_dirty),
+            (prj.layersAdded, self._watch_layers),
+        ]
         for sig, slot in pairs:
             sig.connect(slot)
             self._conns.append((sig, slot))
+        self._watch_layers(list(prj.mapLayers().values()))
 
     def shutdown(self):
         """Плагин унтрах / дахин ачаалах үед QGIS-ийн дохионоос салгана."""
@@ -1535,7 +1546,28 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
                     or abs(e.yMaximum() - o.yMaximum()) > tol):
                 self._extent_override = QgsRectangle(e)
 
-    def rebuild(self):
+    def _mark_map_dirty(self, *_):
+        """Газрын зургийн агуулга (давхарга, загвар) өөрчлөгдсөн: дараагийн угсралтад
+        нэгэнт зурсан дүрсийг ашиглалгүй шинээр зурна."""
+        self._map_dirty = True
+
+    def _layer_changed(self, *_):
+        self._map_dirty = True
+        self._changed()
+
+    def _watch_layers(self, layers):
+        for lyr in layers or []:
+            for name in ("styleChanged", "repaintRequested"):
+                sig = getattr(lyr, name, None)
+                if sig is None:
+                    continue
+                try:
+                    sig.connect(self._layer_changed)
+                    self._conns.append((sig, self._layer_changed))
+                except (TypeError, RuntimeError):
+                    pass
+
+    def rebuild(self, force=False):
         if self._building:
             return
         self._building = True
@@ -1546,7 +1578,8 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
             # Суурь зураг нэмэх/хасахад төслийн дохио дахин угсралт дуудуулахгүй
             self._loading = True
             try:
-                basemaps.sync(QgsProject.instance(), s)
+                if basemaps.sync(QgsProject.instance(), s):
+                    self._map_dirty = True
             finally:
                 self._loading = False
             self.lbl_token.setVisible(
@@ -1558,7 +1591,9 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
             self._items = composer.build(
                 self.layout_, dict(s, **job) if job else s,
                 self.iface.mapCanvas().extent(), self._overrides,
-                None if job else self._extent_override)
+                None if job else self._extent_override,
+                reuse_map=True, map_dirty=bool(force or self._map_dirty))
+            self._map_dirty = False
             self._snapshot = {k: composer.item_geom(v) for k, v in self._items.items()}
             m = self._items.get("nm_map")
             if m is not None:
@@ -1600,7 +1635,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
     def _refresh_map_bounds(self):
         m = self._items.get("nm_map")
         if self._alive(m):
-            composer.refresh_map_bounds(m)
+            composer.refresh_map_bounds(m, invalidate=False)
             self.layout_.update()
             self.view.viewport().update()
 

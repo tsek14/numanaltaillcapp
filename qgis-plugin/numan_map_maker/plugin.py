@@ -28,6 +28,11 @@ class NumanMapMaker:
 
     def initGui(self):
         _purge_stale_modules()
+        try:        # онлайн суурь зургийн кэшийг QGIS асах бүрд хэрэглэгчийн сонгосон хэмжээнд
+            from . import fastload
+            fastload.apply_tile_cache()
+        except Exception:
+            pass
         QgsMessageLog.logMessage(
             f"Газрын зураг бэлтгэгч v{plugin_version()} ачааллаа ({os.path.dirname(__file__)})",
             "Numan Map Maker", Qgis.Info)

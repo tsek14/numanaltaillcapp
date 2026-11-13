@@ -304,9 +304,71 @@ class ExtrasMixin:
         h.addWidget(b)
         gv.addLayout(h)
         v.addWidget(g)
+
+        g = QGroupBox("Онлайн суурь зургийн кэш")
+        gv = QVBoxLayout(g)
+        note = QLabel(
+            "Google, Esri, OSM зэргээс нэг удаа татсан зургийн хэсгүүдийг диск дээр хадгалж, "
+            "дараа нь интернэтээс дахин татахгүй (холболтгүй үед ч) ашиглана. QGIS анхдагчаар "
+            "ердөө 50 МБ-ыг 24 цаг хадгалдаг.")
+        note.setWordWrap(True)
+        gv.addWidget(note)
+        f = QFormLayout()
+        self.cb_tile_cache = _combo([
+            ("QGIS-ийн анхдагч (хүрэхгүй)", 0), ("500 МБ", 500), ("1 ГБ", 1024),
+            ("2 ГБ", 2048), ("5 ГБ", 5120), ("10 ГБ", 10240)])
+        i = self.cb_tile_cache.findData(fastload.tile_cache_setting())
+        self.cb_tile_cache.setCurrentIndex(i if i >= 0 else 2)
+        self.cb_tile_cache.setToolTip(
+            "Сонгосон хэмжээ хүртэл, 30 хоног хадгална. Энэ нь QGIS-ийн ерөнхий тохиргоо "
+            "тул QGIS-ийн үндсэн цонхны суурь зурагт ч үйлчилнэ.")
+        self.cb_tile_cache.currentIndexChanged.connect(self._tile_cache_changed)
+        f.addRow("Дээд хэмжээ:", self.cb_tile_cache)
+        gv.addLayout(f)
+        self.lbl_tile_cache = QLabel("")
+        gv.addWidget(self.lbl_tile_cache)
+        b = QPushButton("Суурь зургийн кэш цэвэрлэх…")
+        b.clicked.connect(self._tile_cache_clear)
+        gv.addWidget(b)
+        v.addWidget(g)
+        fastload.apply_tile_cache()
         self._cache_refresh()
         v.addStretch(1)
         return w
+
+    def _tile_cache_changed(self, *_):
+        fastload.apply_tile_cache(self.cb_tile_cache.currentData(), save=True)
+        self._cache_refresh()
+
+    def _tile_cache_clear(self):
+        size, _mx = fastload.tile_cache_info()
+        if size <= 0:
+            self.lbl_status.setText("Суурь зургийн кэш хоосон байна.")
+            return
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Суурь зургийн кэш цэвэрлэх")
+        box.setText(f"<b>Татаж хадгалсан суурь зургийн хэсгүүд ({fastload.format_size(size)}) "
+                    "бүгд устах гэж байна.</b>")
+        box.setInformativeText(
+            "Анхаар:\n"
+            "– Дараа нь суурь зураг харуулахад интернэтээс дахин татна; холболтгүй үед "
+            "суурь зураг хоосон харагдана.\n"
+            "– Энэ нь QGIS-ийн ерөнхий сүлжээний кэш тул QGIS-ийн үндсэн цонхны суурь "
+            "зураг, WMS давхаргын кэш ч мөн устана.\n\n"
+            "Устахгүй зүйлс: таны файлууд, офлайн зураг (.sqlitedb, .mbtiles), "
+            "хөрвүүлсэн хилийн давхаргууд.")
+        yes = box.addButton("Устгах", QMessageBox.ButtonRole.DestructiveRole)
+        no = box.addButton("Болих", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(no)
+        box.setEscapeButton(no)
+        (box.exec if hasattr(box, "exec") else box.exec_)()
+        if box.clickedButton() is not yes:
+            return
+        freed = fastload.clear_tile_cache()
+        self._cache_refresh()
+        self.lbl_status.setText(
+            f"Суурь зургийн кэш цэвэрлэлээ: {fastload.format_size(freed)} чөлөөллөө.")
 
     def _cache_refresh(self):
         try:
@@ -316,6 +378,13 @@ class ExtrasMixin:
                 f"<span style='color:#666'>{fastload.cache_dir()}</span>")
         except Exception as e:
             self.lbl_cache.setText(f"Хэмжээг тооцож чадсангүй: {e}")
+        try:
+            size, mx = fastload.tile_cache_info()
+            self.lbl_tile_cache.setText(
+                f"Одоо: <b>{fastload.format_size(size)}</b> / дээд хязгаар "
+                f"{fastload.format_size(mx)}")
+        except (AttributeError, RuntimeError):
+            pass
 
     def _cache_open(self):
         from qgis.PyQt.QtGui import QDesktopServices
