@@ -14,7 +14,7 @@ from qgis.core import QgsApplication
 PROJECT_KEYS = (
     "photos", "extent_layer", "extent_rect", "table_layer", "table_field",
     "legend_titles", "legend_order", "legend_hidden", "map_hidden_layers", "map_shown_layers",
-    "inset_layer", "mapbox_token", "fig_no", "basemap_file",
+    "inset_layer", "mapbox_token", "fig_no", "basemap_file", "coord_layer",
 )
 
 BUILTIN = {

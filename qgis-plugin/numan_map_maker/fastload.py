@@ -263,10 +263,18 @@ def tune(layer):
     return layer
 
 
+def transform_context(obj):
+    """Төсөл эсвэл QgsCoordinateTransformContext-ээс context буцаана.
+
+    Арын урсгалд ажиллах функцэд төслийг биш, үндсэн урсгалд авсан context-ийг дамжуулна.
+    """
+    return obj.transformContext() if hasattr(obj, "transformContext") else obj
+
+
 def _geometry_sublayers(path, project, kinds):
     out = []
     for d in QgsProviderRegistry.instance().querySublayers(path):
-        lyr = d.toLayer(QgsProviderSublayerDetails.LayerOptions(project.transformContext()))
+        lyr = d.toLayer(QgsProviderSublayerDetails.LayerOptions(transform_context(project)))
         if isinstance(lyr, QgsVectorLayer) and lyr.isValid() and lyr.geometryType() in kinds:
             out.append(lyr)
     return out
@@ -307,7 +315,7 @@ def convert(path, project, kinds=(QgsWkbTypes.PolygonGeometry, QgsWkbTypes.LineG
         opts.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteFile if first \
             else QgsVectorFileWriter.CreateOrOverwriteLayer
         res = QgsVectorFileWriter.writeAsVectorFormatV3(
-            lyr, tmp, project.transformContext(), opts)
+            lyr, tmp, transform_context(project), opts)
         if res[0] != QgsVectorFileWriter.NoError:
             continue
         first = False

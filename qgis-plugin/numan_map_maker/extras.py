@@ -735,6 +735,89 @@ class ExtrasMixin:
     # ==================================================================
     # 7. Талбайн хүснэгтийг Excel рүү
     # ==================================================================
+    # ==================================================================
+    # Булангийн цэгийн солбицол
+    # ==================================================================
+    def _coord_group(self):
+        from qgis.PyQt.QtWidgets import QDoubleSpinBox
+        from . import vertices
+        g = QGroupBox("Булангийн цэгийн солбицол")
+        g.setCheckable(True)
+        self._bind("coord_table", g)
+        f = QFormLayout(g)
+        note = QLabel("Полигоны (лиценз, талбай) оройнуудыг дугаарлаж, солбицлыг хүснэгтээр "
+                      "зурагт нэмнэ.")
+        note.setWordWrap(True)
+        f.addRow(note)
+        lc = QgsMapLayerComboBox()
+        lc.setFilters(QgsMapLayerProxyModel.PolygonLayer | QgsMapLayerProxyModel.LineLayer)
+        self._bind("coord_layer", lc)
+        f.addRow("Давхарга:", lc)
+        ch = QCheckBox("Зөвхөн сонгогдсон объект")
+        self._bind("coord_selected", ch)
+        f.addRow(ch)
+        cb = _combo(vertices.FORMATS)
+        self._bind("coord_format", cb)
+        f.addRow("Хэлбэр:", cb)
+        cb = _combo([("Өргөрөг, Уртраг", "latlon"), ("Уртраг, Өргөрөг", "lonlat")])
+        self._bind("coord_order", cb)
+        f.addRow("Дараалал:", cb)
+        ch = QCheckBox("Оройнуудыг зураг дээр дугаарлах")
+        self._bind("coord_marks", ch)
+        f.addRow(ch)
+        sp = QSpinBox()
+        sp.setRange(5, 200)
+        sp.setToolTip("Үүнээс олон мөртэй бол хүснэгт хажуу тийш үргэлжилнэ")
+        self._bind("coord_rows", sp)
+        f.addRow("Нэг баганад мөр:", sp)
+        cb = _combo(POSITIONS)
+        self._bind("coord_pos", cb)
+        f.addRow("Байрлал:", cb)
+        sp = QDoubleSpinBox()
+        sp.setRange(4, 30)
+        sp.setSingleStep(0.5)
+        sp.setDecimals(1)
+        sp.setSuffix(" pt")
+        self._bind("coord_font_size", sp)
+        f.addRow("Бичгийн хэмжээ:", sp)
+        b = QPushButton("Солбицлыг Excel рүү гаргах…")
+        b.clicked.connect(self._coord_export)
+        f.addRow(b)
+        self.lbl_coord = QLabel("")
+        self.lbl_coord.setWordWrap(True)
+        f.addRow(self.lbl_coord)
+        return g
+
+    def _coord_export(self):
+        from . import vertices
+        s = self.settings()
+        layer = QgsProject.instance().mapLayer(s.get("coord_layer") or "")
+        if not isinstance(layer, QgsVectorLayer):
+            QMessageBox.information(self, "Солбицол", "Эхлээд давхаргаа сонгоно уу.")
+            return
+        data = vertices.table(QgsProject.instance(), layer, s)
+        if data["error"]:
+            QMessageBox.information(self, "Солбицол", data["error"])
+            return
+        folder = QgsSettings().value("numan_map_maker/export_dir", "") or \
+            QgsProject.instance().homePath() or os.path.expanduser("~")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Солбицлын хүснэгт хадгалах",
+            os.path.join(folder, f"{layer.name()}_solbitsol.xlsx"), "Excel (*.xlsx);;CSV (*.csv)")
+        if not path:
+            return
+        if not os.path.splitext(path)[1]:
+            path += ".xlsx"
+        try:
+            out = table_export.write_rows(path, data["head"], data["rows"],
+                                          sheet="Солбицол", note=data["crs_note"])
+        except Exception as e:
+            QMessageBox.warning(self, "Солбицол", f"Хадгалж чадсангүй:\n{e}")
+            return
+        url = QUrl.fromLocalFile(out).toString()
+        self.lbl_status.setText(
+            f"Солбицол хадгаллаа: <a href='{url}'>{os.path.basename(out)}</a>")
+
     def _table_export_button(self):
         b = QPushButton("Хүснэгтийг Excel рүү гаргах…")
         b.setToolTip("Талбайн хүснэгтийг .xlsx (эсвэл .csv) файл болгон хадгална.")

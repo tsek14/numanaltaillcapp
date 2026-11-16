@@ -121,12 +121,12 @@ def inspect(path):
                     return False
             return True
 
-        numbering = str(info.get("tilenumbering") or "").strip().lower()
-        if numbering:
-            inverted = numbering == "bigplanet"
+        # OsmAnd-ийн дүрэм (SQLiteTileSource): info хүснэгтэд tilenumbering багана байвал
+        # утга нь «BigPlanet» үед л урвуу; багана огт байхгүй бол урвуу гэж үзнэ.
+        if "tilenumbering" in info:
+            inverted = str(info.get("tilenumbering") or "").strip().lower() == "bigplanet"
         else:
-            # OsmAnd: tilenumbering багана байхгүй бол урвуу (BigPlanet) дугаарлалт гэж үздэг
-            inverted = valid(True) or not valid(False)
+            inverted = True
         if not valid(inverted) and valid(not inverted):
             inverted = not inverted
         zooms = {(17 - z if inverted else z): n for z, n, *_ in stats}

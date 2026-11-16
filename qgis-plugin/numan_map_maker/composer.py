@@ -142,6 +142,17 @@ DEFAULTS = {
     "table_percent": False,  # «Хувь, %» багана нэмэх
     "table_pos": "TR",
     "table_font_size": 8.0,
+    # Булангийн цэгийн солбицол
+    "coord_table": False,
+    "coord_layer": "",
+    "coord_format": "dms",      # dms | dm | dd | utm | project
+    "coord_order": "latlon",    # latlon (Өргөрөг, Уртраг) | lonlat
+    "coord_selected": False,
+    "coord_marks": True,        # оройнуудыг зураг дээр дугаарлах
+    "coord_mark_size": 1.6,
+    "coord_pos": "BR",
+    "coord_font_size": 7.0,
+    "coord_rows": 30,           # нэг баганад багтах мөр; илүү бол хажууд нь үргэлжилнэ
     # Зургийн дугаар (Зураг 1.66. …)
     "caption_auto": False,
     "caption_prefix": "Зураг",
@@ -395,6 +406,23 @@ def compute_extent(project, s, canvas_extent=None):
     return ext
 
 
+def fill_color(symbol):
+    """Тэмдгийн дүүргэлтийн өнгө; дүүргэлтгүй (зөвхөн хүрээ) бол None — хүснэгтэд цагаан."""
+    if symbol is None:
+        return None
+    try:
+        for i in range(symbol.symbolLayerCount()):
+            sl = symbol.symbolLayer(i)
+            style = sl.brushStyle() if hasattr(sl, "brushStyle") else None
+            if style is not None and style != Qt.BrushStyle.NoBrush and sl.color().alpha() > 0:
+                return sl.color()
+        if symbol.type() == 2:          # дүүргэлт (Fill) боловч бүгд хоосон
+            return None
+    except (AttributeError, RuntimeError):
+        pass
+    return symbol.color()
+
+
 def area_statistics(project, layer, field):
     """Полигон давхаргын талбайг ангиллаар нэгтгэнэ.
 
@@ -458,7 +486,7 @@ def area_statistics(project, layer, field):
                     hit = True
             if not c.renderState() or not hit:
                 continue
-            color = c.symbol().color() if c.symbol() is not None else None
+            color = fill_color(c.symbol())
             rows.append((c.label() or ", ".join(keys), color, area))
         rest = sum(v for k, v in sums.items() if k not in used)
         if rest > 0:
@@ -920,6 +948,14 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
                 if table_frame is not None:
                     items["nm_table"] = table_frame
 
+        coord_frame = None
+        if s.get("coord_table"):
+            lyr = project.mapLayer(s.get("coord_layer") or "")
+            if isinstance(lyr, QgsVectorLayer) and lyr.isValid():
+                coord_frame = _add_coord_table(layout, project, lyr, s)
+                if coord_frame is not None:
+                    items["nm_coords"] = coord_frame
+
         legend = None
         if s["legend"]:
             legend = QgsLayoutItemLegend(layout)
@@ -943,6 +979,8 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
                     _layer_visible(project, lyr) or lyr.id() in shown_map)
                 if not drop and s["legend_skip_basemap"] and is_basemap(lyr):
                     drop = True
+                if not drop and lyr.customProperty("numan_map_maker/vertices"):
+                    drop = True             # дугаарласан оройнууд таних тэмдэгт хэрэггүй
                 if drop:
                     parent = node.parent()
                     if parent is not None:
@@ -1044,6 +1082,8 @@ def build(layout, settings, canvas_extent=None, overrides=None, extent_override=
             corner.append((info, s["info_pos"]))
         if table_frame is not None:
             corner.append((table_frame, s["table_pos"]))
+        if coord_frame is not None:
+            corner.append((coord_frame, s.get("coord_pos") or "BR"))
         if legend is not None and s["legend_pos"] != "OUT":
             corner.append((legend, s["legend_pos"]))
 
@@ -1336,6 +1376,41 @@ def info_rows(project, map_item, s):
     if s["info_source"].strip():
         rows.append(("Эх сурвалж", s["info_source"].strip()))
     return rows
+
+
+def _add_coord_table(layout, project, layer, s):
+    """Булангийн цэгийн солбицлын хүснэгт. Олон мөртэй бол хажуу тийш баганаар үргэлжилнэ."""
+    from . import vertices
+    data = vertices.table(project, layer, s)
+    if data["error"] or not data["rows"]:
+        return None
+    font = s["font"]
+    size = float(s.get("coord_font_size") or 7.0)
+    per = max(5, int(s.get("coord_rows") or 30))
+    head = list(data["head"])
+    if data["crs_short"] and len(head) >= 2:
+        # Проекцыг эхний солбицлын баганы гарчигт тэмдэглэнэ: «Өргөрөг (WGS 84)»
+        head[-2] = f"{head[-2]} ({data['crs_short']})"
+    rows = data["rows"]
+    blocks = [rows[i:i + per] for i in range(0, len(rows), per)]
+
+    def cell(text, bold=False, right=False):
+        c = QgsTableCell(text)
+        c.setTextFormat(text_format(font, size, bold))
+        c.setBackgroundColor(QColor("#f2f2f2") if bold else QColor(255, 255, 255))
+        if right:
+            c.setHorizontalAlignment(Qt.AlignmentFlag.AlignRight)
+        return c
+
+    contents = [[cell(h, True) for _b in blocks for h in head]]
+    for r in range(len(blocks[0])):
+        line = []
+        for b in blocks:
+            vals = b[r] if r < len(b) else [""] * len(head)
+            for k, v in enumerate(vals):
+                line.append(cell(v, right=data["metric"] and k >= len(head) - 2))
+        contents.append(line)
+    return _manual_table(layout, contents, "nm_coords", font, size)
 
 
 def _add_info(layout, project, map_item, s):

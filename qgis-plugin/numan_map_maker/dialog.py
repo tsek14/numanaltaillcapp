@@ -65,7 +65,7 @@ from qgis.gui import (
     QgsSymbolSelectorDialog,
 )
 
-from . import basemaps, composer, legend_edit
+from . import basemaps, composer, legend_edit, vertices
 from .analysis_ui import AnalysisMixin
 from .extras import ExtrasMixin
 from .version import plugin_version
@@ -188,6 +188,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
 
         # ---- Зүүн тал: тохиргоо --------------------------------------
         left = QWidget()
+        self._left_panel = left
         lv = QVBoxLayout(left)
         lv.setContentsMargins(0, 0, 0, 0)
         self.tabs = QTabWidget()
@@ -650,34 +651,34 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         return self._prepare_offline(path, out)
 
     def _prepare_offline(self, path, out):
-        """path-ийг out руу хөрвүүлнэ (явцын цонхтой). Амжилттай бол out, эс бөгөөс ''."""
-        from qgis.PyQt.QtWidgets import QProgressDialog
-        from . import osmand
-        prog = QProgressDialog("Офлайн зургийн санг QGIS-д уншигдах хэлбэрт нэг удаа "
-                               "хөрвүүлж байна…", "Зогсоох", 0, 100, self)
-        prog.setWindowModality(Qt.WindowModality.WindowModal)
-        prog.setMinimumDuration(0)
-        prog.setValue(0)
+        """path-ийг out руу арын горимд хөрвүүлнэ. Амжилттай бол out, эс бөгөөс ''."""
+        from . import osmand, tasks
 
-        def step(done, total):
-            prog.setValue(int(done * 100 / max(1, total)))
-            QApplication.processEvents()
-            return not prog.wasCanceled()
+        def work(task):
+            def step(done, total):
+                task.setProgress(100.0 * done / max(1, total))
+                return not task.isCanceled()
+            return osmand.to_mbtiles(path, step, out)
 
         try:
-            ready = osmand.to_mbtiles(path, step, out)
+            ready = tasks.run("Офлайн зураг хөрвүүлж байна", work, parent=self,
+                              block=self._busy_widgets(),
+                              label="Офлайн зургийн санг QGIS-д уншигдах хэлбэрт нэг удаа "
+                                    "хөрвүүлж байна…")
+        except tasks.Cancelled:
+            self.lbl_status.setText("Хөрвүүлэлтийг зогсоолоо.")
+            return ""
         except osmand.OsmandError as e:
-            prog.close()
             QMessageBox.warning(self, "Офлайн зураг", str(e))
             return ""
         except Exception as e:
-            prog.close()
             QMessageBox.warning(
                 self, "Офлайн зураг",
                 f"Хөрвүүлж чадсангүй:\n{e}\n\nХадгалах хавтсанд бичих эрх, дискний "
                 "сул зай байгаа эсэхийг шалгана уу.")
             return ""
-        prog.setValue(100)
+        if not ready:
+            return ""
         self.lbl_status.setText(f"Хөрвүүлж хадгаллаа: {ready}")
         return ready
 
@@ -837,6 +838,8 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
 
     # ---- Таних тэмдэг засварлагч ---------------------------------------
     def _tab_changed(self, idx):
+        if self.tabs.tabText(idx) == "Давхцал":
+            self._multi_fill()
         if self.tabs.tabText(idx) == "Нэмэлт":
             self._cache_refresh()       # хөрвүүлэлтийн дараах хэмжээг шинээр харуулна
         if idx == self._legend_tab:
@@ -1166,6 +1169,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         f.addRow("Бичгийн хэмжээ:", sp)
         v.addWidget(g)
         v.addWidget(self._table_export_button())
+        v.addWidget(self._coord_group())
         note = QLabel("Талбайг төслийн эллипсоид (тохируулаагүй бол WGS84) дээр "
                       "тооцоолно.")
         note.setWordWrap(True)
@@ -1477,6 +1481,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         """Плагин унтрах / дахин ачаалах үед QGIS-ийн дохионоос салгана."""
         self._timer.stop()
         self._legend_timer.stop()
+        self._unwatch_layers()
         for sig, slot in self._conns:
             try:
                 sig.disconnect(slot)
@@ -1532,6 +1537,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
     def _project_cleared(self, *_):
         # Төсөл цэвэрлэгдэхэд давхаргууд устах тул нэр, нөөц загварыг мартана
         # (CRS солигдоход мартахгүй).
+        self._watched = set()
         self._legend_titles = {}
         self._legend_order = []
         self._legend_hidden = []
@@ -1575,16 +1581,36 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         self._changed()
 
     def _watch_layers(self, layers):
+        """Давхаргын загвар өөрчлөгдөхийг ажиглана. Давхарга устахад Qt холбоосыг өөрөө
+        тасалдаг тул эдгээрийг _conns-д хадгалахгүй (устсан объектоос салгах гэж QGIS унана)."""
+        watched = getattr(self, "_watched", None)
+        if watched is None:
+            watched = self._watched = set()
         for lyr in layers or []:
+            if lyr is None or lyr.id() in watched:
+                continue
             for name in ("styleChanged", "repaintRequested"):
                 sig = getattr(lyr, name, None)
                 if sig is None:
                     continue
                 try:
                     sig.connect(self._layer_changed)
-                    self._conns.append((sig, self._layer_changed))
                 except (TypeError, RuntimeError):
                     pass
+            watched.add(lyr.id())
+
+    def _unwatch_layers(self):
+        prj = QgsProject.instance()
+        for lid in list(getattr(self, "_watched", set())):
+            lyr = prj.mapLayer(lid)
+            if lyr is None:
+                continue
+            for name in ("styleChanged", "repaintRequested"):
+                try:
+                    getattr(lyr, name).disconnect(self._layer_changed)
+                except (TypeError, RuntimeError, AttributeError):
+                    pass
+        self._watched = set()
 
     def rebuild(self, force=False):
         if self._building:
@@ -1598,6 +1624,8 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
             self._loading = True
             try:
                 if basemaps.sync(QgsProject.instance(), s):
+                    self._map_dirty = True
+                if vertices.sync_marks(QgsProject.instance(), s):
                     self._map_dirty = True
             finally:
                 self._loading = False
@@ -1684,7 +1712,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
             # Давхарга, фото нь төсөл бүрд өөр тул өмнөх төслөөс зөөхгүй
             for k in ("photos", "extent_layer", "table_layer", "table_field", "legend_titles",
                       "legend_order", "legend_hidden", "inset_layer", "map_hidden_layers",
-                      "map_shown_layers",
+                      "map_shown_layers", "coord_layer",
                       "extent_rect"):
                 s.pop(k, None)
             # Хуучин хувилбарын хадгалсан утга шинэ анхдагч утгыг дарахгүй

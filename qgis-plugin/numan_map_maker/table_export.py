@@ -83,3 +83,47 @@ def write(path, head1, head2, rows, total, decimals=2, with_total=True, percent=
         path = os.path.splitext(path)[0] + ".csv"
     return write_csv(path, head1, head2, rows, total, decimals, with_total, percent,
                      total_label)
+
+
+def write_rows(path, head, rows, sheet="Хүснэгт", note=""):
+    """Дурын бичвэрийн хүснэгтийг xlsx (боломжгүй бол csv) болгон бичнэ.
+
+    note — доод мөрөнд бичих тайлбар (жишээ нь проекц). Бичсэн файлын замыг буцаана.
+    """
+    if path.lower().endswith(".xlsx"):
+        lyr = QgsVectorLayer("None", sheet, "memory")
+        pr = lyr.dataProvider()
+        names, used = [], set()
+        for h in head:
+            n = h or "_"
+            while n in used:
+                n += "_"
+            used.add(n)
+            names.append(n)
+        pr.addAttributes([QgsField(n, QVariant.String) for n in names])
+        lyr.updateFields()
+        feats = []
+        for r in rows + ([[note] + [""] * (len(head) - 1)] if note else []):
+            f = QgsFeature(lyr.fields())
+            f.setAttributes([str(v) for v in r])
+            feats.append(f)
+        pr.addFeatures(feats)
+        if os.path.exists(path):
+            os.remove(path)
+        opts = QgsVectorFileWriter.SaveVectorOptions()
+        opts.driverName = "XLSX"
+        opts.fileEncoding = "UTF-8"
+        opts.layerName = sheet
+        res = QgsVectorFileWriter.writeAsVectorFormatV3(
+            lyr, path, QgsCoordinateTransformContext(), opts)
+        if res[0] == QgsVectorFileWriter.NoError:
+            return path
+        path = os.path.splitext(path)[0] + ".csv"
+    with open(path, "w", encoding="utf-8-sig", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(head)
+        for r in rows:
+            w.writerow(r)
+        if note:
+            w.writerow([note])
+    return path
