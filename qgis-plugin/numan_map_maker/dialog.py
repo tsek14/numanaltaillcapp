@@ -67,6 +67,7 @@ from qgis.gui import (
 
 from . import basemaps, composer, legend_edit, vertices
 from .analysis_ui import AnalysisMixin
+from .flow import FlowLayout
 from .extras import ExtrasMixin
 from .version import plugin_version
 
@@ -211,7 +212,8 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         self.tabs.addTab(self._scroll(self._tab_batch()), "Цуврал")
         tpl_holder.addLayout(self._template_bar())
 
-        row = QHBoxLayout()
+        # Товчны мөрүүд багтахгүй бол дараагийн мөрөнд шилжинэ (цонхыг өргөсгөхгүй)
+        row = FlowLayout()
         self.btn_refresh = QPushButton("Шинэчлэх")
         self.btn_refresh.setToolTip("Тохиргооны дагуу зургийг дахин угсарч, газрын зургийг "
                                     "(суурь зураг, давхаргууд) шинээр зурна")
@@ -225,11 +227,10 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         self.btn_reset_pos.clicked.connect(self.reset_positions)
         row.addWidget(self.btn_refresh)
         row.addWidget(self.chk_auto)
-        row.addStretch(1)
         row.addWidget(self.btn_reset_pos)
         lv.addLayout(row)
 
-        row = QHBoxLayout()
+        row = FlowLayout()
         row.addWidget(QLabel("Тохиргоо:"))
         b = QPushButton("Хадгалах…")
         b.setToolTip("Зургийг бүхэлд нь хадгална: тохиргоо, гараар зөөсөн байрлал, "
@@ -252,7 +253,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         rv = QVBoxLayout(right)
         rv.setContentsMargins(0, 0, 0, 0)
 
-        bar = QHBoxLayout()
+        bar = FlowLayout()
         self.view = QgsLayoutView()
         self.view.setCurrentLayout(self.layout_)
         self.tool_select = QgsLayoutViewToolSelect(self.view)
@@ -293,7 +294,6 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         tb.setToolTip("Сонгосон элементийг устгана (Delete)")
         tb.clicked.connect(self.view.deleteSelectedItems)
         bar.addWidget(tb)
-        bar.addStretch(1)
         b = QPushButton("Тусламж")
         b.setToolTip("Товчлуур, табуудын тайлбар, ажлын дараалал")
         b.clicked.connect(self.show_help)
@@ -309,7 +309,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         sc.activated.connect(self.view.deleteSelectedItems)
         self._set_tool(self.tool_select)
 
-        ex = QHBoxLayout()
+        ex = FlowLayout()
         ex.addWidget(QLabel("Формат:"))
         self.cb_format = _combo(EXPORT_FORMATS)
         for i, (_text, ext_) in enumerate(EXPORT_FORMATS):
@@ -332,7 +332,6 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         self.lbl_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self.lbl_status.linkActivated.connect(
             lambda href: QDesktopServices.openUrl(QUrl(href)))
-        ex.addWidget(self.lbl_status, 1)
         self.btn_export = QPushButton("Экспортлох…")
         self.btn_export.setDefault(True)
         self.btn_export.clicked.connect(self.export)
@@ -342,6 +341,7 @@ class MapMakerDialog(ExtrasMixin, AnalysisMixin, QDialog):
         self.btn_print.clicked.connect(self.print_map)
         ex.addWidget(self.btn_print)
         rv.addLayout(ex)
+        rv.addWidget(self.lbl_status)        # мэдэгдэл тусдаа мөрөнд
         split.addWidget(right)
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)

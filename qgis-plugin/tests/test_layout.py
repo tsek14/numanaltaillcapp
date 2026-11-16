@@ -17,8 +17,17 @@ def main():
     dlg = C.dialog(C.to_project_rect(QgsRectangle(100.5, 49.2, 102.2, 49.9), prj, grow=1.4))
     from numan_map_maker import composer, dialog as D
 
-    C.check("window fits a 1280-px wide screen", dlg.minimumSizeHint().width() <= 1250,
+    # Товчны мөрүүд багтахгүй бол шилждэг тул фонтоос үл хамааран жижиг дэлгэцэнд багтана
+    # (жишээ нь 1366 px дэлгэцийг 125%-иар томруулсан Windows = 1093 px)
+    C.check("window fits a small, scaled laptop screen", dlg.minimumSizeHint().width() <= 800,
             str(dlg.minimumSizeHint()))
+    dlg.resize(700, 560)
+    C.process(0.2)
+    C.check("button rows wrap instead of widening the window",
+            dlg.btn_print.geometry().right() <= dlg.btn_print.parentWidget().width()
+            and dlg.width() <= 760, f"{dlg.width()} {dlg.btn_print.geometry()}")
+    dlg.resize(1280, 720)
+    C.process(0.2)
     C.check("default items", {"nm_map", "nm_legend", "nm_north", "nm_scalebar"}
             <= set(dlg._items), str(sorted(dlg._items)))
     C.check("default north arrow and scale bar",
