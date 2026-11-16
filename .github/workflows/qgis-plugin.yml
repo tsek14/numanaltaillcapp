@@ -1,0 +1,45 @@
+name: QGIS plugin
+
+on:
+  push:
+    paths:
+      - "qgis-plugin/**"
+      - ".github/workflows/qgis-plugin.yml"
+  pull_request:
+    paths:
+      - "qgis-plugin/**"
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests on QGIS 3.34
+    runs-on: ubuntu-latest
+    container: qgis/qgis:release-3_34
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONPATH: /usr/share/qgis/python
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: python3 qgis-plugin/tests/run_tests.py
+      - name: Build zip and plugins.xml
+        run: python3 qgis-plugin/build.py --out dist
+      - name: Committed zip is up to date
+        run: |
+          python3 - <<'PY'
+          import zipfile, sys
+          a = zipfile.ZipFile("qgis-plugin/numan_map_maker.zip")
+          b = zipfile.ZipFile("dist/numan_map_maker.zip")
+          da = {n: a.read(n) for n in a.namelist()}
+          db = {n: b.read(n) for n in b.namelist()}
+          if da != db:
+              print("qgis-plugin/numan_map_maker.zip is out of date: run python3 qgis-plugin/build.py")
+              sys.exit(1)
+          print("zip matches the source")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: numan_map_maker
+          path: dist/
