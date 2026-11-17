@@ -1134,8 +1134,8 @@
   // Edges longer than ~1 km are followed along the great circle (as ArcGIS
   // and QGIS treat edges as geodesics) rather than as a straight line in
   // degrees; short edges, like those of mapped areas, need no extra points.
-  var AREA_DENSIFY_DEG = 0.01;   // edges longer than this get extra points…
-  var AREA_STEP_DEG = 0.002;     // …about this far apart (≈200 m)
+  var AREA_DENSIFY_DEG = 0.002;  // edges longer than this (≈200 m) get extra points…
+  var AREA_STEP_DEG = 0.002;     // …about this far apart
   // Points along the WGS84 geodesic from a to b (Vincenty's formulae, about
   // 0.1 mm accurate), dividing it into k equal parts; nearly antipodal ends,
   // where Vincenty does not converge, fall back to a great circle.
@@ -1229,7 +1229,10 @@
       out.push(a);
       if(j === n - 1 && !closed && n < 3) break;
       if(a[0] !== b[0] && span > AREA_DENSIFY_DEG){
-        var extra = greatCirclePoints(a, b, Math.min(20000, Math.ceil(span / AREA_STEP_DEG)));
+        // Always computed from the same end of the edge, so a ring stored the
+        // other way round (Shapefile vs GeoJSON) gets exactly the same points.
+        var kk = Math.min(20000, Math.ceil(span / AREA_STEP_DEG));
+        var extra = (a[0] < b[0] || (a[0] === b[0] && a[1] < b[1])) ? greatCirclePoints(a, b, kk) : greatCirclePoints(b, a, kk).reverse();
         for(var x=0;x<extra.length;x++) out.push(extra[x]);
       }
     }
@@ -1243,16 +1246,23 @@
     return g;
   }
   // Area (m²) of one ring of [lng, lat] positions, open or closed.
+  // Each (short) edge is integrated as a straight line in longitude/latitude
+  // with Simpson's rule — q at both ends and at the midpoint — which is exact
+  // to far below a square millimetre. Because that is the same line a clipper
+  // cuts along, an edge split at any point on it adds up to exactly the whole
+  // edge, so clipped pieces add up to the original area.
   function ringAreaEllipsoid(ring){
     var pts = densifyRingGeodesic(ring), n = pts.length;
     if(n > 1 && pts[0][0] === pts[n-1][0] && pts[0][1] === pts[n-1][1]) n--;
     if(n < 3) return 0;
-    var sum = 0;
+    var sum = 0, q = new Array(n);
+    for(var i=0;i<n;i++) q[i] = authalicQ(pts[i][1]);
     for(var k=0;k<n;k++){
-      var prev = pts[(k + n - 1) % n][0], next = pts[(k + 1) % n][0];
-      sum += (next - prev) * authalicQ(pts[k][1]);
+      var a = pts[k], b = pts[(k + 1) % n], dl = b[0] - a[0];
+      if(dl === 0) continue; // meridian: adds nothing
+      sum += dl * (q[k] + 4 * authalicQ((a[1] + b[1]) / 2) + q[(k + 1) % n]) / 6;
     }
-    return Math.abs(sum) * (Math.PI / 180) * WGS84_A * WGS84_A / 4;
+    return Math.abs(sum) * (Math.PI / 180) * WGS84_A * WGS84_A / 2;
   }
   // Area (m²) of any GeoJSON Polygon / MultiPolygon / Feature / FeatureCollection;
   // holes are subtracted.
@@ -1408,20 +1418,27 @@
         // Points are stored as one flat [lat,lng,lat,lng,…] array per shape
         // (7 decimals ≈ 1 cm): about half the size of {lat,lng} objects, so
         // large imported files still fit in the browser's storage quota.
-        var packed = shapes.map(function(s){
-          var o = {}, k;
-          for(k in s){ if(k !== 'points' && k !== 'holes' && k.charAt(0) !== '_') o[k] = s[k]; }
-          var pack = function(pts){
-            var flat = new Array(pts.length * 2);
-            pts.forEach(function(p, i){ flat[2*i] = +p.lat.toFixed(7); flat[2*i+1] = +p.lng.toFixed(7); });
-            return flat;
-          };
-          o.p = pack(s.points);
-          if(s.holes && s.holes.length) o.h = s.holes.map(pack);
-          return o;
-        });
+        // Full precision, so a reload gives exactly the same areas; 7 decimals (≈1 cm)
+        // only when the full copy does not fit in the browser's storage.
+        var packAll = function(exact){
+          return shapes.map(function(s){
+            var o = {}, k;
+            for(k in s){ if(k !== 'points' && k !== 'holes' && k.charAt(0) !== '_') o[k] = s[k]; }
+            var pack = function(pts){
+              var flat = new Array(pts.length * 2);
+              pts.forEach(function(p, i){
+                flat[2*i] = exact ? p.lat : +p.lat.toFixed(7); flat[2*i+1] = exact ? p.lng : +p.lng.toFixed(7);
+              });
+              return flat;
+            };
+            o.p = pack(s.points);
+            if(s.holes && s.holes.length) o.h = s.holes.map(pack);
+            return o;
+          });
+        };
         try{
-          localStorage.setItem(SHAPES_KEY, JSON.stringify(packed));
+          try{ localStorage.setItem(SHAPES_KEY, JSON.stringify(packAll(true))); }
+          catch(full){ localStorage.setItem(SHAPES_KEY, JSON.stringify(packAll(false))); }
           persistTooBigWarned = false;
         } catch(err){
           localStorage.removeItem(SHAPES_KEY);

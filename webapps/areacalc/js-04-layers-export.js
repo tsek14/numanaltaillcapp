@@ -834,7 +834,7 @@
   }
 
   function overlapKml(features, docName, isHole){
-    var coords = function(r){ return r.map(function(c){ return c[0].toFixed(7)+','+c[1].toFixed(7)+',0'; }).join(' '); };
+    var coords = function(r){ return r.map(function(c){ return c[0]+','+c[1]+',0'; }).join(' '); };
     var placemarks = features.map(function(f){
       var g = f.geometry, polys = g.type === 'MultiPolygon' ? g.coordinates : [g.coordinates];
       var geomXml = polys.map(function(p){
@@ -1755,7 +1755,9 @@
   }
 
   function toKmlCoords(pts, close){
-    var list = pts.map(function(p){ return p.lng.toFixed(7)+','+p.lat.toFixed(7)+',0'; });
+    // Full precision: rounding to 7 decimals moved each vertex up to ~5 mm,
+    // enough to change a large area by tens of m² after re-import.
+    var list = pts.map(function(p){ return p.lng+','+p.lat+',0'; });
     if(close) list.push(list[0]);
     return list.join(' ');
   }
@@ -1805,7 +1807,7 @@
       var pts = entry.shape.points;
       var name = entry.shape.name || ('Дүрс '+(idx+1));
       if(pts.length === 1){
-        wpts += '<wpt lat="'+pts[0].lat.toFixed(7)+'" lon="'+pts[0].lng.toFixed(7)+'"><name>'+escapeXml(name+' (Цэг)')+'</name></wpt>\n';
+        wpts += '<wpt lat="'+pts[0].lat+'" lon="'+pts[0].lng+'"><name>'+escapeXml(name+' (Цэг)')+'</name></wpt>\n';
       } else {
         var closed = shapeKind(entry.shape) === 'polygon';
         // A polygon's holes follow its outline as further segments of the same track.
@@ -1813,7 +1815,7 @@
           var segPts = ringPts.slice();
           if(closed) segPts.push(ringPts[0]);
           return '<trkseg>\n' + segPts.map(function(p){
-            return '<trkpt lat="'+p.lat.toFixed(7)+'" lon="'+p.lng.toFixed(7)+'"></trkpt>';
+            return '<trkpt lat="'+p.lat+'" lon="'+p.lng+'"></trkpt>';
           }).join('\n') + '\n</trkseg>';
         }).join('');
         var label = closed ? ' (Полигон)' : ' (Шугам)';

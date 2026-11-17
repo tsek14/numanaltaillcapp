@@ -657,7 +657,7 @@
   // separate from the app's own toKmlCoords()/generateKML(), which work
   // from the app's internal {lat,lng} point-array shape rather than GeoJSON.
   function geoJSONCoordsToKml(coords){
-    return coords.map(function(c){ return c[0].toFixed(7)+','+c[1].toFixed(7)+',0'; }).join(' ');
+    return coords.map(function(c){ return c[0]+','+c[1]+',0'; }).join(' ');
   }
   function geoJSONPolygonRingsToKml(rings){
     var outer = '<outerBoundaryIs><LinearRing><coordinates>'+geoJSONCoordsToKml(rings[0])+'</coordinates></LinearRing></outerBoundaryIs>';
@@ -669,7 +669,7 @@
   function geoJSONGeometryToKml(geometry){
     if(!geometry) return '';
     if(geometry.type === 'Point'){
-      return '<Point><coordinates>'+geometry.coordinates[0].toFixed(7)+','+geometry.coordinates[1].toFixed(7)+',0</coordinates></Point>';
+      return '<Point><coordinates>'+geometry.coordinates[0]+','+geometry.coordinates[1]+',0</coordinates></Point>';
     }
     if(geometry.type === 'LineString'){
       return '<LineString><tessellate>1</tessellate><coordinates>'+geoJSONCoordsToKml(geometry.coordinates)+'</coordinates></LineString>';
