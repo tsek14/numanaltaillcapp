@@ -331,6 +331,14 @@
       + '</dl>';
   }
 
+  var mrpamFileName = null;
+  var mrpamLabelsOn = getSetting('mrpamLabelsOn', false);
+  var mrpamNameKey = getSetting('mrpamNameKey', '');
+  function mrpamAutoName(props){
+    var v = props && (props.name || props.code);
+    return v ? String(v).trim() : '';
+  }
+
   function updateMrpamOverlay(){
     mrpamLayerGroup.clearLayers();
     if(!mrpamLoaded || !mrpamVisible){ mrpamHint(''); renderLegend(); return; }
@@ -383,6 +391,12 @@
         layer.bindPopup(mrpamPopupHtml(feat.properties), { className:'mrpam-popup', maxWidth:260 });
       }
     });
+    if(mrpamLabelsOn){
+      placeNameLabels(mrpamLayerGroup, visible.map(function(e){
+        return { feat:e.feat, name:featureLabel(e.feat.properties, mrpamNameKey, mrpamAutoName),
+          color:mrpamColorForType(e.feat.properties), px:LABEL_PX, weight:LABEL_WEIGHT };
+      }));
+    }
     renderLegend();
     updateMrpamExportButton();
   }
@@ -394,7 +408,7 @@
   // auto-load path (loadMrpamText): takes raw GeoJSON text, runs it through
   // the worker (or a main-thread fallback), and applies the result to the
   // map the same way regardless of where the text came from.
-  function loadMrpamText(text, silent, sourceLabel){
+  function loadMrpamText(text, silent, sourceLabel, fileName){
     mrpamBtn.classList.add('loading');
     if(!silent) toast('Файл уншиж байна…');
 
@@ -413,6 +427,9 @@
       renderMrpamTypeColorList();
       mrpamLayerGroup.addTo(map);
       mrpamBtn.classList.add('active');
+      mrpamFileName = fileName || null;
+      setFileRow('mrpamFileInfoRow', 'mrpamFileNameLbl', mrpamFileName);
+      fillNameKeySelect(document.getElementById('msNameKey'), nameKeyCandidates(mrpamFeatures), mrpamNameKey);
       toast(mrpamFeatures.length + ' лиценз ачаалагдлаа' + (sourceLabel ? ' (' + sourceLabel + ')' : ''));
       idbSet(MRPAM_ENABLED_KEY, true).catch(function(){});
       updateMrpamOverlay();
@@ -439,7 +456,7 @@
 
   function loadMrpamFile(file, silent){
     file.text().then(function(text){
-      loadMrpamText(text, silent, silent ? 'өмнөх файлаас' : null);
+      loadMrpamText(text, silent, silent ? 'өмнөх файлаас' : null, file.name);
     }).catch(function(){
       mrpamBtn.classList.remove('loading');
       if(silent){ mrpamAutoLoadFailedHint(); }
@@ -458,7 +475,7 @@
       if(!res.ok) throw new Error('http ' + res.status);
       return res.text();
     }).then(function(text){
-      loadMrpamText(text, true, 'дотоод файлаас');
+      loadMrpamText(text, true, 'дотоод файлаас', MRPAM_BUNDLED_URL);
       return true;
     }).catch(function(){
       return false; // not found / blocked by CORS (e.g. opened via file://) — caller falls back
@@ -577,6 +594,19 @@
         updateMrpamExportButton();
       }
     }
+  });
+
+  // Replace the loaded licence file with another one at any time (the main
+  // button only shows/hides the layer once a file is loaded).
+  document.getElementById('mrpamSwitchFileBtn').addEventListener('click', function(){ pickMrpamFile(); });
+  var msShowLabels = document.getElementById('msShowLabels'), msNameKey = document.getElementById('msNameKey');
+  msShowLabels.checked = mrpamLabelsOn;
+  msShowLabels.addEventListener('change', function(){
+    mrpamLabelsOn = msShowLabels.checked; saveSetting('mrpamLabelsOn', mrpamLabelsOn); updateMrpamOverlay();
+  });
+  fillNameKeySelect(msNameKey, [], mrpamNameKey);
+  msNameKey.addEventListener('change', function(){
+    mrpamNameKey = msNameKey.value; saveSetting('mrpamNameKey', mrpamNameKey); updateMrpamOverlay();
   });
 
   mrpamFileInput.addEventListener('change', function(){
@@ -802,6 +832,46 @@
   // on the boundary layer's settings panel.
   //   cfg.colorOf(type) -> '#rrggbb'      cfg.isHidden(type) -> bool
   //   cfg.onColor(type, '#rrggbb')        cfg.onToggle(type, shownBool)
+  // ---- Name labels: settings shared by the MRPAM, cadastre and GeoJSON layers ----
+  // A "file + Файл солих" row and the "Нэр харуулах" / "Нэрийн талбар" rows.
+  function setFileRow(rowId, lblId, fileName){
+    var row = document.getElementById(rowId), lbl = document.getElementById(lblId);
+    if(!row || !lbl) return;
+    if(fileName){ lbl.textContent = fileName; lbl.title = fileName; row.style.display = 'flex'; }
+    else row.style.display = 'none';
+  }
+  // Properties that can name a feature: text or numbers, seen in the first features.
+  function nameKeyCandidates(features){
+    var seen = {}, keys = [];
+    for(var i=0;i<features.length && i<2000;i++){
+      var p = features[i].properties || {};
+      for(var k in p){
+        if(seen[k] || !Object.prototype.hasOwnProperty.call(p, k)) continue;
+        var v = p[k];
+        if(v === null || v === undefined || typeof v === 'object' || String(v).trim() === '') continue;
+        seen[k] = true; keys.push(k);
+      }
+    }
+    return keys;
+  }
+  function fillNameKeySelect(sel, keys, current){
+    sel.innerHTML = '<option value="">Автомат</option>' + keys.map(function(k){
+      return '<option value="'+escapeXml(k)+'">'+escapeXml(k)+'</option>';
+    }).join('');
+    sel.value = keys.indexOf(current) >= 0 ? current : '';
+  }
+  // The label text: the chosen property, else the layer's own name rules
+  // (autoName returns '' when a feature has no real name — no "Дүрс 12" labels).
+  function featureLabel(props, key, autoName){
+    // A chosen property this file does not have (e.g. after "Файл солих") falls back to automatic.
+    if(key && props && Object.prototype.hasOwnProperty.call(props, key)){
+      var v = props[key];
+      return (v === null || v === undefined || typeof v === 'object') ? '' : String(v).trim();
+    }
+    return autoName(props) || '';
+  }
+  var LABEL_PX = 12, LABEL_WEIGHT = 700;
+
   //   cfg.onMoveUp(type)  (optional) -> shows a ▲ button that moves the type up
   function renderTypeFilterRows(container, types, cfg){
     var html = '';
