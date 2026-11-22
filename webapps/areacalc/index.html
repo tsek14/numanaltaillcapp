@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<script src="../i18n.js?v=2026111701"></script>
-<script src="i18n-en.js?v=2026111701"></script>
+<script src="../i18n.js?v=2026112201"></script>
+<script src="i18n-en.js?v=2026112201"></script>
 <title>Талбай хэмжигч</title>
 <meta name="description" content="Талбай хэмжигч — талбай, зай хэмжиж, солбицлоо хөрвүүлж, лиценз, кадастртай давхцуулж харна.">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2026111701">
+<link rel="stylesheet" href="style.css?v=2026112201">
 </head>
 <body>
 <div id="app">
@@ -223,6 +223,10 @@
               </svg>
             </button>
             <div id="mrpamSettingsPanel">
+              <div class="gs-row" id="mrpamFileInfoRow" style="display:none;">
+                <label style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="mrpamFileNameLbl">—</label>
+                <button type="button" id="mrpamSwitchFileBtn" class="gs-mini-btn" title="Өөр лицензийн GeoJSON файл сонгох">Файл солих</button>
+              </div>
               <div class="gs-row">
                 <label>Сонгож экспортлох</label>
                 <button type="button" id="mrpamSelectModeBtn" class="gs-mini-btn" title="Газрын зураг дээр лиценз дээр товшиж сонгоно">Асаах</button>
@@ -249,6 +253,14 @@
                 <label>Тунгалагшил (дүүргэлт)</label>
                 <input type="range" id="msFillOpacity" min="0" max="100" step="5" value="12">
                 <span class="gs-val" id="msFillOpacityVal">12%</span>
+              </div>
+              <div class="gs-row" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
+                <label>Нэр харуулах</label>
+                <input type="checkbox" id="msShowLabels">
+              </div>
+              <div class="gs-row">
+                <label>Нэрийн талбар</label>
+                <select id="msNameKey" class="gs-select" title="Нэрийг аль талбараас авахыг сонгоно"></select>
               </div>
               <div class="gs-row" id="msResetRow" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
                 <label>Төрлийн өнгө</label>
@@ -280,6 +292,10 @@
               </svg>
             </button>
             <div id="adminSettingsPanel">
+              <div class="gs-row" id="adminFileInfoRow" style="display:none;">
+                <label style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="adminFileNameLbl">—</label>
+                <button type="button" id="adminSwitchFileBtn" class="gs-mini-btn" title="Өөр захиргааны хилийн GeoJSON файл сонгох">Файл солих</button>
+              </div>
               <div id="adminSelectSlot"></div>
               <div class="gs-row" id="alAimagRow" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
                 <label><span class="al-dot" style="background:#5fb3ff"></span> Аймаг</label>
@@ -340,6 +356,14 @@
                 <label>Төрлөөр ялгах</label>
                 <select id="caTypeKeySelect" class="gs-select" title="Аль талбараар нь өөр өөр өнгөөр харуулахыг сонгоно"></select>
               </div>
+              <div class="gs-row" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
+                <label>Нэр харуулах</label>
+                <input type="checkbox" id="caShowLabels">
+              </div>
+              <div class="gs-row">
+                <label>Нэрийн талбар</label>
+                <select id="caNameKey" class="gs-select" title="Нэрийг аль талбараас авахыг сонгоно"></select>
+              </div>
               <div class="gs-row">
                 <label>Өргөн</label>
                 <input type="range" id="caWeight" min="0.5" max="5" step="0.5" value="1.5">
@@ -395,6 +419,14 @@
               <div class="gs-row" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
                 <label>Төрлөөр ялгах</label>
                 <select id="gjTypeKeySelect" class="gs-select" title="Аль талбараар нь өөр өөр өнгөөр харуулахыг сонгоно"></select>
+              </div>
+              <div class="gs-row" style="border-top:1px solid var(--line); margin-top:4px; padding-top:8px;">
+                <label>Нэр харуулах</label>
+                <input type="checkbox" id="gjShowLabels">
+              </div>
+              <div class="gs-row">
+                <label>Нэрийн талбар</label>
+                <select id="gjNameKey" class="gs-select" title="Нэрийг аль талбараас авахыг сонгоно"></select>
               </div>
               <div class="gs-row" id="gjColorRow">
                 <label>Өнгө</label>
@@ -797,15 +829,15 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-<script src="js-01-map-basemap.js?v=2026111701"></script>
-<script src="js-02-mrpam.js?v=2026111701"></script>
-<script src="js-03-admin-graticule-draw.js?v=2026111701"></script>
-<script src="js-04-layers-export.js?v=2026111701"></script>
-<script src="js-05-import.js?v=2026111701"></script>
-<script src="js-06-tools-coords-search.js?v=2026111701"></script>
-<script src="js-07-cadastre.js?v=2026111701"></script>
-<script src="js-08-geojson.js?v=2026111701"></script>
-<script src="js-09-view-tools.js?v=2026111701"></script>
-<script src="js-10-edit.js?v=2026111701"></script>
+<script src="js-01-map-basemap.js?v=2026112201"></script>
+<script src="js-02-mrpam.js?v=2026112201"></script>
+<script src="js-03-admin-graticule-draw.js?v=2026112201"></script>
+<script src="js-04-layers-export.js?v=2026112201"></script>
+<script src="js-05-import.js?v=2026112201"></script>
+<script src="js-06-tools-coords-search.js?v=2026112201"></script>
+<script src="js-07-cadastre.js?v=2026112201"></script>
+<script src="js-08-geojson.js?v=2026112201"></script>
+<script src="js-09-view-tools.js?v=2026112201"></script>
+<script src="js-10-edit.js?v=2026112201"></script>
 </body>
 </html>

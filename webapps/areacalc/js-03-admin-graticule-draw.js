@@ -107,15 +107,6 @@
   // ---------- Name label placement ----------
   // Rendered width of a label (canvas measureText, so Cyrillic is exact rather
   // than guessed from the character count), plus a little padding for the halo.
-  function adminLabelWidth(text, lvl){
-    var f = ADMIN_LABEL_FONT[lvl];
-    if(adminLabelCtx){
-      adminLabelCtx.font = f.weight + ' ' + f.px + 'px "Space Grotesk", sans-serif';
-      return adminLabelCtx.measureText(text).width + 6;
-    }
-    return text.length * f.px * 0.62 + 6;
-  }
-
   // -- tiny planar geometry helpers (lng/lat treated as x/y) --
   // Area-weighted centroid of a ring (shoelace). Centroids are affine-invariant,
   // so no cos(lat) correction is needed here. Coordinates are shifted by the
@@ -256,36 +247,45 @@
     return p ? map.latLngToContainerPoint([p[1], p[0]]) : null;
   }
 
-  function addAdminLabels(visible){
-    if(!adminLabelsOn) return;
+  // ---------- Name labels on any polygon layer ----------
+  // Shared by the boundary, MRPAM, cadastre and GeoJSON layers. Each candidate
+  // is { feat (with bbox + geometry), name, color, px, weight, rank, dirs }:
+  // lower rank claims the centre first, and dirs are the directions a label
+  // may slide to make room (0 = stay put, -1 = up, +1 = down).
+  // Only polygons big enough on screen to hold their own name get one —
+  // tiny ones stay unlabelled until the person zooms in on them.
+  var LABEL_MAX = 250; // the largest on screen first; the rest would not fit anyway
+  function labelTextWidth(text, px, weight){
+    if(adminLabelCtx){
+      adminLabelCtx.font = weight + ' ' + px + 'px "Space Grotesk", sans-serif';
+      return adminLabelCtx.measureText(text).width + 6;
+    }
+    return text.length * px * 0.62 + 6;
+  }
+  function placeNameLabels(group, items){
     var R = adminLabelRect();
     if(R.x1 - R.x0 < 30 || R.y1 - R.y0 < 30) return;
 
-    // 1) Only units big enough on screen to hold their own name get one —
-    //    tiny polygons stay unlabelled until the person zooms in on them.
     var cands = [];
-    visible.forEach(function(e){
-      var name = e.feat.properties && e.feat.properties.NAME;
-      var font = ADMIN_LABEL_FONT[e.lvl];
-      if(!name || !font || !e.feat.bbox) return;
-      var w = adminLabelWidth(String(name), e.lvl), h = font.px + 4, bb = e.feat.bbox;
+    items.forEach(function(it){
+      var bb = it.feat && it.feat.bbox;
+      if(!it.name || !bb) return;
+      var gt = it.feat.geometry && it.feat.geometry.type;
+      if(gt !== 'Polygon' && gt !== 'MultiPolygon') return;
+      var w = labelTextWidth(it.name, it.px, it.weight), h = it.px + 4;
       var tl = map.latLngToContainerPoint([bb[3], bb[0]]), br = map.latLngToContainerPoint([bb[1], bb[2]]);
       var ext = { x0:Math.max(tl.x, R.x0), x1:Math.min(br.x, R.x1), y0:Math.max(tl.y, R.y0), y1:Math.min(br.y, R.y1) };
       if(ext.x1 - ext.x0 < w || ext.y1 - ext.y0 < h*1.5) return;
-      cands.push({ e:e, name:String(name), lvl:e.lvl, w:w, h:h, ext:ext, area:(ext.x1-ext.x0)*(ext.y1-ext.y0) });
+      cands.push({ it:it, e:{ feat:it.feat }, w:w, h:h, ext:ext, area:(ext.x1-ext.x0)*(ext.y1-ext.y0) });
     });
-    cands.sort(function(a, b){ return ADMIN_LABEL_ORDER[a.lvl] - ADMIN_LABEL_ORDER[b.lvl] || b.area - a.area; });
+    cands.sort(function(a, b){ return (a.it.rank || 0) - (b.it.rank || 0) || b.area - a.area; });
+    if(cands.length > LABEL_MAX) cands.length = LABEL_MAX;
 
-    // 2) Place them. When several units share the same middle (a bag, its soum
-    //    and its aimag all fill the screen) the labels stack so they read
-    //    top to bottom as АЙМАГ, СУМ, БАГ: the bag keeps the exact centre (it is
-    //    the smallest polygon, so it can least afford to move), the soum slides
-    //    up just far enough to clear it, and the aimag slides up above both.
-    //    A label that was moved must stay inside its own unit's on-screen
-    //    extent, and one that still cannot be placed is dropped.
+    // When several polygons share the same middle (a bag, its soum and its
+    // aimag all fill the screen) the labels stack instead of overlapping. A
+    // label that was moved must stay inside its own polygon's on-screen
+    // extent, and one that still cannot be placed is dropped.
     var placed = [], GAP = 2;
-    // Preferred slide directions per level: 0 = stay put, -1 = up, +1 = down.
-    var DIRS = { bag:[0, 1, -1], soum:[0, -1, 1], aimag:[0, -1, 1] };
     function firstClash(rc){
       for(var i=0; i<placed.length; i++){
         var q = placed[i];
@@ -311,7 +311,7 @@
       var p = adminLabelAnchor(c, R);
       if(!p) return;
       var base = { x0:p.x - c.w/2, x1:p.x + c.w/2, y0:p.y - c.h/2, y1:p.y + c.h/2 };
-      var dirs = DIRS[c.lvl], rc = null;
+      var dirs = c.it.dirs || [0, 1, -1], rc = null;
       for(var d=0; d<dirs.length && !rc; d++){
         var cand = dirs[d] === 0 ? (firstClash(base) ? null : base) : slide(base, dirs[d]);
         if(!cand || !within(cand, R)) continue;
@@ -320,15 +320,26 @@
       }
       if(!rc) return;
       placed.push(rc);
-      var f = ADMIN_LABEL_FONT[c.lvl], col = ADMIN_LEVEL_COLOR[c.lvl] || '#ffffff';
       L.marker(map.containerPointToLatLng([(rc.x0 + rc.x1)/2, (rc.y0 + rc.y1)/2]), {
         icon: L.divIcon({
           className: 'admin-label', iconSize: [0, 0],
-          html: '<span class="admin-label-txt" style="font-size:'+f.px+'px;font-weight:'+f.weight+';color:'+col+'">'+escapeXml(c.name)+'</span>'
+          html: '<span class="admin-label-txt" style="font-size:'+c.it.px+'px;font-weight:'+c.it.weight+';color:'+(c.it.color || '#ffffff')+'">'+escapeXml(c.it.name)+'</span>'
         }),
         interactive: false, keyboard: false, zIndexOffset: -1000
-      }).addTo(adminLayerGroup);
+      }).addTo(group);
     });
+  }
+
+  // Boundary names: smallest unit first (a bag keeps the exact centre), and
+  // the labels read top to bottom as АЙМАГ, СУМ, БАГ when they share a middle.
+  var ADMIN_LABEL_DIRS = { bag:[0, 1, -1], soum:[0, -1, 1], aimag:[0, -1, 1] };
+  function addAdminLabels(visible){
+    if(!adminLabelsOn) return;
+    placeNameLabels(adminLayerGroup, visible.map(function(e){
+      var f = ADMIN_LABEL_FONT[e.lvl], name = e.feat.properties && e.feat.properties.NAME;
+      return f ? { feat:e.feat, name: name ? String(name) : '', color: ADMIN_LEVEL_COLOR[e.lvl] || '#ffffff',
+        px:f.px, weight:f.weight, rank:ADMIN_LABEL_ORDER[e.lvl], dirs:ADMIN_LABEL_DIRS[e.lvl] } : {};
+    }));
   }
 
   function updateAdminOverlay(){
@@ -425,7 +436,8 @@
     }
   })();
 
-  function loadAdminText(text, silent, sourceLabel){
+  var adminFileName = null;
+  function loadAdminText(text, silent, sourceLabel, fileName){
     adminBtn.classList.add('loading');
     if(!silent) toast('Файл уншиж байна…');
 
@@ -456,6 +468,8 @@
       adminSel.reset(); // indexes belong to the previous file's features
       adminLayerGroup.addTo(map);
       adminBtn.classList.add('active');
+      adminFileName = fileName || null;
+      setFileRow('adminFileInfoRow', 'adminFileNameLbl', adminFileName);
       toast(adminFeatures.length + ' захиргааны хил ачаалагдлаа' + (sourceLabel ? ' (' + sourceLabel + ')' : ''));
       idbSet(ADMIN_ENABLED_KEY, true).catch(function(){});
       updateAdminOverlay();
@@ -473,7 +487,7 @@
 
   function loadAdminFile(file, silent){
     file.text().then(function(text){
-      loadAdminText(text, silent, silent ? 'өмнөх файлаас' : null);
+      loadAdminText(text, silent, silent ? 'өмнөх файлаас' : null, file.name);
     }).catch(function(){
       adminBtn.classList.remove('loading');
       if(silent){ adminAutoLoadFailedHint(); }
@@ -490,7 +504,7 @@
       if(!res.ok) throw new Error('http ' + res.status);
       return res.text();
     }).then(function(text){
-      loadAdminText(text, true, 'дотоод файлаас');
+      loadAdminText(text, true, 'дотоод файлаас', ADMIN_BUNDLED_URL);
       return true;
     }).catch(function(){
       return false; // not found / blocked by CORS (e.g. file://) — caller falls back
@@ -571,6 +585,8 @@
     if(adminVisible){ adminLayerGroup.addTo(map); updateAdminOverlay(); }
     else { map.removeLayer(adminLayerGroup); adminHint(''); renderLegend(); adminSel.reset(); }
   });
+
+  document.getElementById('adminSwitchFileBtn').addEventListener('click', function(){ pickAdminFile(); });
 
   adminFileInput.addEventListener('change', function(){
     var file = this.files && this.files[0];

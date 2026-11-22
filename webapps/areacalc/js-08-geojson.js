@@ -309,13 +309,35 @@
   }
 
   // force: redraw even in small-file mode (style/selection/filter changed).
+  // Names go in their own layer: a small file is drawn once and not redrawn on
+  // pan/zoom, but its names have to be re-placed every time the view moves.
+  var userGjLabelGroup = L.layerGroup();
+  var userGjLabelsOn = getSetting('userGjLabelsOn', false);
+  var userGjNameKey = getSetting('userGjNameKey', '');
+  function userGjAutoName(props){
+    var n = userGjNameOf(props, -1);
+    return n === 'Дүрс 0' ? '' : n; // no real name: no label
+  }
+  function refreshUserGjLabels(){
+    userGjLabelGroup.clearLayers();
+    if(!userGjLoaded || !userGjVisible || !userGjLabelsOn || !userGjDrawnIdx.length){ map.removeLayer(userGjLabelGroup); return; }
+    userGjLabelGroup.addTo(map);
+    var b = map.getBounds(), view = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+    placeNameLabels(userGjLabelGroup, userGjDrawnIdx.filter(function(i){ return bboxIntersects(userGjFeatures[i].bbox, view); }).map(function(i){
+      var f = userGjFeatures[i];
+      return { feat:f, name:featureLabel(f.properties, userGjNameKey, userGjAutoName), color:userGjColorOfProps(f.properties), px:LABEL_PX, weight:LABEL_WEIGHT };
+    }));
+  }
+  var userGjDrawnIdx = [];
+
   function updateUserGjOverlay(force){
     if(!userGjLoaded || !userGjVisible){
-      userGjLayerGroup.clearLayers(); userGjWholeDrawn = false;
+      userGjLayerGroup.clearLayers(); userGjWholeDrawn = false; userGjDrawnIdx = [];
+      refreshUserGjLabels();
       userGjHint(''); renderLegend(); return;
     }
     var whole = userGjFitsWhole();
-    if(whole && userGjWholeDrawn && force !== true) return; // nothing changes on pan/zoom
+    if(whole && userGjWholeDrawn && force !== true){ refreshUserGjLabels(); return; } // shapes stay; names move
 
     var view = null;
     if(!whole){
@@ -334,7 +356,9 @@
 
     userGjLayerGroup.clearLayers();
     userGjWholeDrawn = false;
+    userGjDrawnIdx = [];
     if(picked.length > USERGJ_MAX_RENDER || verts > USERGJ_MAX_VERTS){
+      refreshUserGjLabels();
       userGjHint(picked.length + ' дүрс харагдах хэсэгт байна — ойртуулна уу эсвэл зарим төрлийг унтраана уу');
       renderLegend();
       return;
@@ -362,6 +386,8 @@
     layer.on('click', userGjFeatureClick);
     layer.addTo(userGjLayerGroup);
     userGjWholeDrawn = whole;
+    userGjDrawnIdx = picked;
+    refreshUserGjLabels();
     renderLegend();
     userGjSel.refreshUi();
   }
@@ -403,6 +429,7 @@
       userGjLayerGroup.addTo(map);
       userGjBtn.classList.add('active');
       setUserGjFileLabel(fileName);
+      fillNameKeySelect(document.getElementById('gjNameKey'), nameKeyCandidates(userGjFeatures), userGjNameKey);
       toast(userGjFeatures.length + ' дүрс ачаалагдлаа' + (data.proj ? ' (' + data.proj + ' → градус)' : '') + (sourceLabel ? ' (' + sourceLabel + ')' : ''));
       idbSet(USERGJ_ENABLED_KEY, true).catch(function(){});
       // A file someone just opened may lie anywhere — show it. (Not on the
@@ -516,6 +543,7 @@
 
   function unloadUserGj(){
     userGjLayerGroup.clearLayers();
+    userGjDrawnIdx = []; userGjLabelGroup.clearLayers(); map.removeLayer(userGjLabelGroup);
     map.removeLayer(userGjLayerGroup);
     userGjFeatures = null; userGjExtent = null; userGjTotalVerts = 0;
     userGjLoaded = false; userGjVisible = false; userGjWholeDrawn = false;
@@ -528,6 +556,16 @@
     idbSet(USERGJ_ENABLED_KEY, false).catch(function(){});
     renderLegend();
   }
+
+  var gjShowLabels = document.getElementById('gjShowLabels'), gjNameKey = document.getElementById('gjNameKey');
+  gjShowLabels.checked = userGjLabelsOn;
+  gjShowLabels.addEventListener('change', function(){
+    userGjLabelsOn = gjShowLabels.checked; saveSetting('userGjLabelsOn', userGjLabelsOn); refreshUserGjLabels();
+  });
+  fillNameKeySelect(gjNameKey, [], userGjNameKey);
+  gjNameKey.addEventListener('change', function(){
+    userGjNameKey = gjNameKey.value; saveSetting('userGjNameKey', userGjNameKey); refreshUserGjLabels();
+  });
 
   userGjBtn.addEventListener('click', function(){
     if(!userGjLoaded){ pickUserGjFile(); return; }

@@ -227,6 +227,13 @@
     }
   });
 
+  var cadastreLabelsOn = getSetting('cadastreLabelsOn', false);
+  var cadastreNameKey = getSetting('cadastreNameKey', '');
+  function cadastreAutoName(props){
+    var n = cadastreNameOf(props, -1);
+    return n === 'Нэгж талбар 0' ? '' : n; // no real name: no label
+  }
+
   function updateCadastreOverlay(){
     cadastreLayerGroup.clearLayers();
     if(!cadastreLoaded || !cadastreVisible){ cadastreHint(''); renderLegend(); return; }
@@ -277,6 +284,12 @@
         layer.bindPopup(cadastrePopupHtml(e.feat.properties), { className:'mrpam-popup', maxWidth:260 });
       }
     });
+    if(cadastreLabelsOn){
+      placeNameLabels(cadastreLayerGroup, visible.map(function(e){
+        return { feat:e.feat, name:featureLabel(e.feat.properties, cadastreNameKey, cadastreAutoName),
+          color:cadastreColorOfType(e.type), px:LABEL_PX, weight:LABEL_WEIGHT };
+      }));
+    }
     renderLegend();
     cadastreSel.refreshUi();
   }
@@ -308,6 +321,7 @@
       cadastreLayerGroup.addTo(map);
       cadastreBtn.classList.add('active');
       setCadastreFileLabel(fileName);
+      fillNameKeySelect(document.getElementById('caNameKey'), nameKeyCandidates(cadastreFeatures), cadastreNameKey);
       toast(cadastreFeatures.length + ' нэгж талбар ачаалагдлаа' + (sourceLabel ? ' (' + sourceLabel + ')' : ''));
       idbSet(CADASTRE_ENABLED_KEY, true).catch(function(){});
       updateCadastreOverlay();
@@ -447,6 +461,15 @@
   // only shows/hides the layer), this always reopens the file picker.
   document.getElementById('cadastreSwitchFileBtn').addEventListener('click', function(){
     pickCadastreFile();
+  });
+  var caShowLabels = document.getElementById('caShowLabels'), caNameKey = document.getElementById('caNameKey');
+  caShowLabels.checked = cadastreLabelsOn;
+  caShowLabels.addEventListener('change', function(){
+    cadastreLabelsOn = caShowLabels.checked; saveSetting('cadastreLabelsOn', cadastreLabelsOn); updateCadastreOverlay();
+  });
+  fillNameKeySelect(caNameKey, [], cadastreNameKey);
+  caNameKey.addEventListener('change', function(){
+    cadastreNameKey = caNameKey.value; saveSetting('cadastreNameKey', cadastreNameKey); updateCadastreOverlay();
   });
 
   // ---- Cadastre settings dropdown (line weight, fill opacity) ----
