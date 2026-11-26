@@ -8,50 +8,108 @@
 <title>Цаг агаарын талбайн дундаж</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
-:root{--bg:#fff;--fg:#1d2330;--mut:#667085;--bd:#d9dee7;--pn:#f4f7fa;--ac:#1c7ed6}
-@media(prefers-color-scheme:dark){:root{--bg:#14171d;--fg:#e6e9ef;--mut:#98a2b3;--bd:#2c3340;--pn:#1c2029;--ac:#4dabf7}}
+:root{--bg:#f3f5f8;--sf:#fff;--fg:#1d2330;--mut:#5f6b7d;--bd:#dde2ea;--pn:#f6f8fb;--ac:#1c7ed6;--acs:#e7f1fc;--err:#d6336c;
+  --t:#e8590c;--w:#0c8599;--p:#1971c2;--h:#7048e8;--sh:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08)}
+@media(prefers-color-scheme:dark){:root{--bg:#101318;--sf:#171b22;--fg:#e6e9ef;--mut:#98a2b3;--bd:#2a313d;--pn:#1d222b;--ac:#4dabf7;--acs:#1a2c40;--err:#f06595;
+  --t:#ff922b;--w:#3bc9db;--p:#4dabf7;--h:#9775fa;--sh:none}}
 *{box-sizing:border-box}
-body{margin:0 auto;padding:20px;max-width:1200px;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--fg)}
-header{display:flex;align-items:flex-start;gap:12px}
-header .sp{flex:1}
-h1{font-size:22px;margin:0 0 4px}
-h2{font-size:14px;font-weight:600;margin:16px 0 6px}
-.top{display:grid;grid-template-columns:300px 1fr;gap:16px;margin-top:16px}
-@media(max-width:800px){.top{grid-template-columns:1fr}body{padding:14px}}
-.panel{background:var(--pn);border:1px solid var(--bd);border-radius:10px;padding:14px}
-.panel h2:first-child{margin-top:0}
-#map{height:480px;border:1px solid var(--bd);border-radius:10px}
-@media(max-width:800px){#map{height:60vh}}
-.row{display:flex;gap:6px;flex-wrap:wrap}
-button,input,select{font:inherit;padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg)}
+html,body{margin:0}
+body{font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--fg)}
+[hidden]{display:none!important}
+.hd{display:flex;align-items:center;gap:14px;padding:10px 20px;background:var(--sf);border-bottom:1px solid var(--bd)}
+.hd .logo{width:34px;height:34px;flex:none;border-radius:9px;background:var(--acs);color:var(--ac);display:grid;place-items:center}
+.hd .logo svg{width:20px;height:20px}
+.hd h1{font-size:17px;margin:0;line-height:1.25}
+.hd .sub{color:var(--mut);font-size:12.5px}
+.hd .sp{flex:1}
+.hd .back{color:var(--mut);text-decoration:none;font-size:13px;white-space:nowrap}
+.hd .back:hover{color:var(--ac)}
+.app{display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;padding:16px 20px;max-width:1800px;margin:0 auto}
+.side{position:sticky;top:16px;align-self:start;max-height:calc(100vh - 32px);display:flex;flex-direction:column;background:var(--sf);border:1px solid var(--bd);border-radius:14px;box-shadow:var(--sh);overflow:hidden}
+.side .scroll{overflow:auto;padding:4px 16px 8px}
+.step{padding:14px 0;border-bottom:1px solid var(--bd)}
+.step:last-child{border-bottom:0}
+.sh{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+.sh .n{width:22px;height:22px;border-radius:50%;background:var(--ac);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center;flex:none}
+h2{font-size:14px;font-weight:650;margin:0}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;padding:3px;background:var(--pn);border:1px solid var(--bd);border-radius:9px;margin-bottom:10px}
+.seg button{border:0;background:none;padding:6px 2px;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:7px;color:var(--mut)}
+.seg button.on{background:var(--sf);color:var(--fg);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+button,input,select{font:inherit;padding:7px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--sf);color:var(--fg);min-width:0}
+select,input[type=date]{width:100%}
 button{cursor:pointer}
-input[type=file]{max-width:100%;padding:4px}
-button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
-button:disabled{opacity:.5;cursor:default}
-.primary{background:var(--ac);color:#fff;border-color:var(--ac);width:100%;margin-top:14px;padding:9px}
-.lang-switch{font-weight:700;font-size:13px;padding:5px 11px;border-radius:999px}
-.muted{color:var(--mut);font-size:13px;margin:6px 0 0}
-.err{color:#e03131}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:16px 0 8px}
-.card{background:var(--pn);border:1px solid var(--bd);border-radius:10px;padding:10px 14px}
-.card b{display:block;font-size:22px;font-weight:600}
-.card span{font-size:13px;color:var(--mut)}
-.tab.on{background:var(--ac);color:#fff;border-color:var(--ac)}
-.bar{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:14px}
-#cw{position:relative;height:280px;margin-top:12px}
-#tw{max-height:420px;overflow:auto;margin-top:12px;border:1px solid var(--bd);border-radius:8px}
-table{border-collapse:collapse;width:100%}
-th,td{padding:5px 10px;text-align:right;border-bottom:1px solid var(--bd);white-space:nowrap}
+button:hover:not(:disabled){border-color:var(--ac)}
+button:focus-visible,input:focus-visible,select:focus-visible,.drop:focus-within{outline:2px solid var(--ac);outline-offset:1px}
+button:disabled,select:disabled{opacity:.5;cursor:default}
+.btn-ac{background:var(--acs);color:var(--ac);border-color:transparent;font-weight:600}
+label.f{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
+.drop{display:flex;flex-direction:column;align-items:center;gap:2px;padding:16px 10px;border:1.5px dashed var(--bd);border-radius:10px;text-align:center;cursor:pointer;background:var(--pn)}
+.drop:hover,.drop.over{border-color:var(--ac);background:var(--acs)}
+.drop b{color:var(--ac);font-weight:600}
+.drop input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.chips button{padding:3px 10px;font-size:12px;border-radius:999px;background:var(--pn)}
+.muted{color:var(--mut);font-size:12.5px;margin:8px 0 0}
+#hint{background:var(--pn);border-radius:8px;padding:7px 10px;margin-top:10px}
+#est{margin-top:6px}
+#est.err{color:var(--err)}
+details{margin-top:8px;font-size:12.5px;color:var(--mut)}
+details summary{cursor:pointer;color:var(--ac)}
+details p{margin:6px 0 0}
+.act{padding:12px 16px 14px;border-top:1px solid var(--bd);background:var(--sf)}
+.primary{width:100%;padding:10px;background:#1c7ed6;color:#fff;border-color:#1c7ed6;font-weight:600;font-size:15px}
+.primary:hover:not(:disabled){filter:brightness(1.08)}
+#st{margin:8px 0 0}
+#st:empty{display:none}
+.err{color:var(--err)}
+.app>*,.mainc>*{min-width:0}
+.mainc{min-width:0;display:flex;flex-direction:column;gap:16px}
+.mapw{position:relative;height:calc(100vh - 98px);min-height:460px;border:1px solid var(--bd);border-radius:14px;overflow:hidden;box-shadow:var(--sh)}
+.mapw.fs{position:fixed;inset:0;height:auto;z-index:2000;border-radius:0;border:0}
+#map{position:absolute;inset:0;background:var(--pn)}
+.tip{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:1000;max-width:calc(100% - 140px);padding:7px 14px;border-radius:999px;background:rgba(20,24,31,.85);color:#fff;font-size:13px;text-align:center;pointer-events:none}
+.mapbtn{display:grid;place-items:center;width:34px;height:34px;padding:0;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.mapbtn svg{width:17px;height:17px}
+.card-p{background:var(--sf);border:1px solid var(--bd);border-radius:14px;padding:16px;box-shadow:var(--sh)}
+.rh{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+#info{margin:4px 0 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:10px;margin-top:14px}
+.card{background:var(--pn);border:1px solid var(--bd);border-left:4px solid var(--c,var(--ac));border-radius:10px;padding:9px 12px}
+.card b{display:block;font-size:21px;font-weight:650;font-variant-numeric:tabular-nums}
+.card span{font-size:12px;color:var(--mut)}
+.c-t{--c:var(--t)}.c-w{--c:var(--w)}.c-p{--c:var(--p)}.c-h{--c:var(--h)}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.bar .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+#cv{width:auto;max-width:100%}
+.tabs{display:inline-flex;padding:3px;gap:2px;background:var(--pn);border:1px solid var(--bd);border-radius:9px}
+.tab{border:0;background:none;padding:5px 12px;border-radius:7px;color:var(--mut)}
+.tab.on{background:var(--sf);color:var(--fg);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+#cw{position:relative;height:320px;margin-top:14px}
+#tw{max-height:440px;overflow:auto;margin-top:14px;border:1px solid var(--bd);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--bd);white-space:nowrap}
+tbody tr:hover{background:var(--pn)}
 th:first-child,td:first-child{text-align:left}
-th{position:sticky;top:0;background:var(--pn)}
-footer{margin-top:20px;font-size:12px;color:var(--mut)}
+th{position:sticky;top:0;background:var(--pn);font-weight:600;font-size:12.5px}
+footer{font-size:12px;color:var(--mut);padding:0 4px 8px}
+@media(max-width:900px){
+  .hd{padding:10px 14px}.hd .sub{display:none}
+  .app{grid-template-columns:1fr;padding:12px;gap:12px}
+  .mainc{display:contents}
+  .mapw{order:1;height:62vh;min-height:340px}
+  .side{order:2;position:static;max-height:none}
+  #out{order:3}footer{order:4}
+  .tip{max-width:calc(100% - 100px);font-size:12px}
+  .cards{grid-template-columns:repeat(2,minmax(0,1fr))}.card b{font-size:18px}
+}
 /* Basemap picker (same pattern as the Area calculator's layer menu) */
 .bm{position:relative}
 .bm-btn{display:flex;align-items:center;gap:8px;padding:7px 11px;border-radius:8px;font-size:12px;font-weight:700;letter-spacing:.03em;box-shadow:0 2px 8px rgba(0,0,0,.25)}
 .bm-btn svg{width:15px;height:15px;flex:none}
 .bm-btn .car{font-size:9px;transition:transform .15s}
 .bm.open .bm-btn .car{transform:rotate(180deg)}
-.bm-list{display:none;position:absolute;right:0;top:100%;margin-top:6px;width:230px;max-height:60vh;overflow:auto;background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:5px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.bm-list{display:none;position:absolute;right:0;top:100%;margin-top:6px;width:230px;max-height:60vh;overflow:auto;background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:5px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
 .bm.open .bm-list{display:block}
 .bm-opt{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:0;border-radius:7px;background:none;text-align:left;font-size:13px}
 .bm-opt:hover{background:var(--pn)}
@@ -65,57 +123,102 @@ footer{margin-top:20px;font-size:12px;color:var(--mut)}
 </style>
 </head>
 <body>
-<header>
+<header class="hd">
+  <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"/></svg></span>
   <div>
     <h1>Цаг агаарын талбайн дундаж</h1>
-    <div class="muted">Газрын зураг дээр polygon зурж, сонгосон хугацааны температур, салхи, хур тунадасны дундаж үзүүлэлтийг тооцно.</div>
+    <div class="sub">Газрын зураг дээр polygon зурж, сонгосон хугацааны температур, салхи, хур тунадасны дундаж үзүүлэлтийг тооцно.</div>
   </div>
-  <span class="sp"></span><span data-lang-switch></span>
+  <span class="sp"></span>
+  <a class="back" href="../../apps.html">← Апп-ууд</a>
+  <span data-lang-switch></span>
 </header>
 
-<div class="top">
-  <div class="panel">
-    <h2>Талбай</h2>
-    <div class="row">
-      <button id="bDraw">Зурж эхлэх</button><button id="bUndo">Буцаах</button>
-      <button id="bFin">Дуусгах</button><button id="bClr">Арилгах</button>
+<main class="app">
+  <aside class="side">
+    <div class="scroll">
+      <section class="step">
+        <div class="sh"><span class="n">1</span><h2>Талбай</h2></div>
+        <div class="seg" role="tablist">
+          <button type="button" role="tab" data-src="draw" class="on">Зурах</button>
+          <button type="button" role="tab" data-src="adm">Аймаг, сум</button>
+          <button type="button" role="tab" data-src="file">Файл</button>
+        </div>
+        <div class="src" data-src="draw">
+          <div class="g2">
+            <button id="bDraw" class="btn-ac">Зурж эхлэх</button><button id="bFin">Дуусгах</button>
+            <button id="bUndo">Буцаах</button><button id="bClr">Арилгах</button>
+          </div>
+        </div>
+        <div class="src" data-src="adm" hidden>
+          <button id="bAdm" class="btn-ac" style="width:100%">Хил ачаалах</button>
+          <div class="g2" style="margin-top:6px"><select id="aim" disabled aria-label="Аймаг"><option>Аймаг</option></select><select id="sum" disabled aria-label="Сум"><option>Сум</option></select></div>
+        </div>
+        <div class="src" data-src="file" hidden>
+          <label class="drop" id="drop">
+            <input type="file" id="file" accept=".kml,.kmz,.zip,.geojson,.json">
+            <b>Файл сонгох</b><span class="muted" style="margin:0">эсвэл энд чирч оруулна</span>
+            <span class="muted" style="margin:0">KML, KMZ, GeoJSON, Shapefile (.zip)</span>
+          </label>
+        </div>
+        <p id="hint" class="muted"></p>
+      </section>
+      <section class="step">
+        <div class="sh"><span class="n">2</span><h2>Хугацаа</h2></div>
+        <div class="g2">
+          <div><label class="f" for="d1">Эхлэх огноо</label><input type="date" id="d1"></div>
+          <div><label class="f" for="d2">Дуусах огноо</label><input type="date" id="d2"></div>
+        </div>
+        <div class="chips" id="pre">
+          <button type="button" data-d="7">7 хоног</button><button type="button" data-d="30">30 хоног</button>
+          <button type="button" data-d="90">90 хоног</button><button type="button" data-d="365">1 жил</button>
+          <button type="button" data-d="-7">Ирэх 7 хоног</button>
+        </div>
+      </section>
+      <section class="step">
+        <div class="sh"><span class="n">3</span><h2>Торын алхам</h2></div>
+        <select id="step" aria-label="Торын алхам">
+          <option value="0.5">0.5° (~55 км)</option>
+          <option value="0.25">0.25° (~25 км)</option>
+          <option value="0.1" selected>0.1° (~11 км)</option>
+          <option value="0.05">0.05° (~5.5 км)</option>
+          <option value="0.02">0.02° (~2.2 км)</option>
+          <option value="0.01">0.01° (~1.1 км)</option>
+          <option value="0.005">0.005° (~550 м)</option>
+          <option value="0.002">0.002° (~220 м)</option>
+          <option value="0.001">0.001° (~110 м)</option>
+        </select>
+        <p id="est" class="muted"></p>
+        <details><summary>Нарийвчлалын тухай</summary><p>Цаг агаарын загварын нүд ~9 км (ECMWF IFS). Үүнээс жижиг алхамд температур цэг бүрийн өндрөөр (90 м) засагдаж ялгаатай гарна; салхи, хур тунадас, үүл нэг нүдэнд ижил. Дээд тал нь 400 цэг.</p></details>
+      </section>
     </div>
-    <p id="hint" class="muted"></p>
-    <h2>Засаг захиргааны хил</h2>
-    <div class="row"><select id="aim" disabled><option>Аймаг</option></select><select id="sum" disabled><option>Сум</option></select></div>
-    <button id="bAdm" style="margin-top:6px">Хил ачаалах</button>
-    <h2>Файлаас оруулах</h2>
-    <input type="file" id="file" accept=".kml,.kmz,.zip,.geojson,.json">
-    <p class="muted">KML, KMZ, GeoJSON, Shapefile (.zip)</p>
-    <h2>Хугацаа</h2>
-    <div class="row"><input type="date" id="d1" aria-label="Эхлэх огноо"><input type="date" id="d2" aria-label="Дуусах огноо"></div>
-    <h2>Торын алхам</h2>
-    <select id="step">
-      <option value="0.1">0.1° (~11 км)</option>
-      <option value="0.25">0.25° (~25 км)</option>
-      <option value="0.5">0.5° (~55 км)</option>
-    </select>
-    <button id="go" class="primary">Тооцоолох</button>
-    <p id="st" class="muted" role="status"></p>
-  </div>
-  <div id="map"></div>
-</div>
-
-<section id="out" hidden>
-  <div id="cards" class="cards"></div>
-  <div id="info" class="muted"></div>
-  <div class="bar">
-    <div id="tabs" class="row"></div>
-    <div class="row">
-      <select id="cv" aria-label="Графикийн утга"></select>
-      <button id="csv">CSV татах</button>
+    <div class="act">
+      <button id="go" class="primary">Тооцоолох</button>
+      <p id="st" class="muted" role="status"></p>
     </div>
-  </div>
-  <div id="cw"><canvas id="cc"></canvas></div>
-  <div id="tw"></div>
-</section>
+  </aside>
 
-<footer>Цаг агаарын өгөгдөл: Open-Meteo.com (CC BY 4.0), ERA5 / Copernicus. Засаг захиргааны хил: geoBoundaries (CC BY 4.0). Прогноз: Open-Meteo. Суурь зургийн эх сурвалжийг газрын зургийн буланд харуулна.</footer>
+  <div class="mainc">
+    <div class="mapw" id="mapw"><div id="map"></div><div id="tip" class="tip" hidden></div></div>
+
+    <section id="out" class="card-p" hidden>
+      <div class="rh"><h2 style="font-size:16px">Үр дүн</h2></div>
+      <div id="info" class="muted"></div>
+      <div id="cards" class="cards"></div>
+      <div class="bar" style="margin-top:18px">
+        <div id="tabs" class="tabs"></div>
+        <div class="row">
+          <select id="cv" aria-label="Графикийн утга"></select>
+          <button id="csv">CSV татах</button>
+        </div>
+      </div>
+      <div id="cw"><canvas id="cc"></canvas></div>
+      <div id="tw"></div>
+    </section>
+
+    <footer>Цаг агаарын өгөгдөл: Open-Meteo.com (CC BY 4.0), ERA5 / Copernicus. Засаг захиргааны хил: geoBoundaries (CC BY 4.0). Прогноз: Open-Meteo. Суурь зургийн эх сурвалжийг газрын зургийн буланд харуулна.</footer>
+  </div>
+</main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -138,11 +241,40 @@ const e0 = new Date(Date.now() - 6 * 864e5);
 $('d2').value = ymd(e0); $('d1').value = ymd(new Date(e0 - 6 * 864e5));
 $('d2').max = ymd(new Date(Date.now() + 15 * 864e5));
 if (CFG.step) $('step').value = CFG.step;
-$('step').onchange = () => save('step', $('step').value);
+$('step').onchange = () => { save('step', $('step').value); updEst(); };
+// Quick periods: past N days end where the archive ends (~6 days ago); a negative N is the coming days (forecast)
+$('pre').onclick = e => {
+  const n = +e.target.dataset.d; if (!n) return;
+  const a = n > 0 ? new Date(e0 - (n - 1) * 864e5) : new Date(), b = n > 0 ? e0 : new Date(Date.now() + (-n - 1) * 864e5);
+  $('d1').value = ymd(a); $('d2').value = ymd(b);
+};
+// Area source tabs: draw / administrative unit / file
+document.querySelector('.seg').onclick = e => {
+  const k = e.target.dataset.src; if (!k) return;
+  document.querySelectorAll('.seg button').forEach(b => { const on = b.dataset.src === k; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+  document.querySelectorAll('.src').forEach(d => d.hidden = d.dataset.src !== k);
+};
 
 // ---------- Map ----------
 const map = L.map('map').setView([48.794, 106.817], 8);
 L.control.scale({metric: true, imperial: false}).addTo(map);
+// Full-screen map toggle
+const FsControl = L.Control.extend({
+  options: {position: 'topleft'},
+  onAdd() {
+    const b = L.DomUtil.create('button', 'mapbtn');
+    b.type = 'button'; b.title = 'Бүтэн дэлгэц';
+    const ic = o => b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
+      (o ? '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>' : '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>') + '</svg>';
+    const set = o => { $('mapw').classList.toggle('fs', o); ic(o); map.invalidateSize(); };
+    ic(false);
+    L.DomEvent.disableClickPropagation(b);
+    b.onclick = () => set(!$('mapw').classList.contains('fs'));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('mapw').classList.contains('fs') && !document.querySelector('.bm.open')) set(false); });
+    return b;
+  }
+});
+new FsControl().addTo(map);
 map.createPane('labels').style.cssText = 'z-index:450;pointer-events:none';
 
 const BingLayer = L.TileLayer.extend({
@@ -229,6 +361,8 @@ const areaKm2 = parts => parts.reduce((a, rs) => a + rs.reduce((b, r, i) => b + 
 const km2 = a => a >= 100 ? Math.round(a).toLocaleString('en-US') : a.toFixed(a >= 1 ? 1 : 3);
 
 function hint(t) {
+  $('tip').hidden = !(drawing && !fin);
+  $('tip').textContent = pts.length < 3 ? `Газрын зураг дээр дарж орой нэмнэ (${pts.length})` : `${pts.length} орой · Enter — дуусгах, Backspace — буцаах`;
   $('hint').textContent = t || (fin ? `Polygon бэлэн (${pts.length} орой). Талбай: ${km2(areaKm2([[pts]]))} км²`
     : drawing ? `Газрын зураг дээр дарж орой нэмнэ (${pts.length}). Дор хаяж 3 орой тэмдэглээд «Дуусгах» дарна (Enter — дуусгах, Backspace — буцаах).`
     : '«Зурж эхлэх» дарна уу.');
@@ -237,7 +371,7 @@ function redraw() {
   layer.clearLayers();
   pts.forEach(p => L.circleMarker(p, {radius: 4, color: '#1c7ed6'}).addTo(layer));
   if (pts.length > 1) (fin ? L.polygon : L.polyline)(pts, {color: '#1c7ed6', weight: 2}).addTo(layer);
-  hint();
+  hint(); updEst();
 }
 function reset() { pts = []; fin = false; ext = null; extLayer.clearLayers(); gridLayer.clearLayers(); redraw(); }
 const stopDraw = () => { drawing = false; map.getContainer().style.cursor = ''; };
@@ -268,14 +402,49 @@ function inPoly(lat, lng, P) {
 }
 const inArea = (y, x, parts) => parts.some(rs => rs.reduce((c, P) => c ^ inPoly(y, x, P), 0));
 const lim = (f, a) => a.reduce((m, v) => f(m, v));
-function makeGrid(parts, s) {
+const MAX_POINTS = 400;
+// Area in square degrees (planar), to estimate how many grid points a step gives.
+const ringDeg2 = r => { let a = 0; for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][1] + r[i][1]) * (r[j][0] - r[i][0]); return Math.abs(a / 2); };
+const partsDeg2 = parts => parts.reduce((t, rs) => t + rs.reduce((a, r, i) => a + (i ? -1 : 1) * ringDeg2(r), 0), 0);
+// Grid points (cell centres) inside the area. Returns null as soon as there
+// are more than `max`, so a fine step on a big area cannot freeze the page.
+function makeGrid(parts, s, max) {
   const all = parts.flat(2), la = all.map(p => p[0]), lo = all.map(p => p[1]), g = [];
   const y0 = lim(Math.min, la), y1 = lim(Math.max, la), x0 = lim(Math.min, lo), x1 = lim(Math.max, lo);
-  for (let y = Math.floor(y0 / s) * s + s / 2; y <= y1; y += s)
-    for (let x = Math.floor(x0 / s) * s + s / 2; x <= x1; x += s)
-      if (inArea(y, x, parts)) g.push([+y.toFixed(3), +x.toFixed(3)]);
-  if (!g.length) g.push([+((y0 + y1) / 2).toFixed(3), +((x0 + x1) / 2).toFixed(3)]);
+  if (max && partsDeg2(parts) / (s * s) > max * 1.5) return null;
+  const iy0 = Math.floor(y0 / s), ix0 = Math.floor(x0 / s);
+  // Integer steps (no adding up of s) and 6 decimals (~10 cm), so a 0.001° grid stays exact.
+  for (let iy = iy0; (iy + 0.5) * s <= y1; iy++)
+    for (let ix = ix0; (ix + 0.5) * s <= x1; ix++) {
+      const y = (iy + 0.5) * s, x = (ix + 0.5) * s;
+      if (!inArea(y, x, parts)) continue;
+      g.push([+y.toFixed(6), +x.toFixed(6)]);
+      if (max && g.length > max) return null;
+    }
+  if (!g.length) g.push([+((y0 + y1) / 2).toFixed(6), +((x0 + x1) / 2).toFixed(6)]);
   return g;
+}
+// Live point count (and a preview of the points) for the current area and step.
+const curParts = () => ext || (fin ? [[pts]] : null);
+function updEst() {
+  const parts = curParts(), el = $('est');
+  gridLayer.clearLayers(); el.className = 'muted';
+  if (!parts) { el.textContent = ''; return; }
+  const g = makeGrid(parts, +$('step').value, MAX_POINTS);
+  if (g) {
+    el.textContent = `Цэгийн тоо: ${g.length}`;
+    g.forEach(p => L.circleMarker(p, {radius: 2, color: '#d9480f', weight: 1}).addTo(gridLayer));
+  } else {
+    const fs = finestStep(parts);
+    el.textContent = `Цэгийн тоо: ${MAX_POINTS}+ (хэт олон).` + (fs ? ` Энэ талбайд хамгийн нарийн алхам ${fs}°.` : '');
+    el.className = 'muted err';
+  }
+}
+// The finest listed step that keeps the area within the point limit.
+function finestStep(parts) {
+  const opts = [...$('step').options].map(o => +o.value).sort((a, b) => a - b);
+  for (const s of opts) { const g = makeGrid(parts, s, MAX_POINTS); if (g) return s; }
+  return null;
 }
 
 // ---------- Data download ----------
@@ -361,7 +530,7 @@ function group(rows, keyf, ps) {
 let R, tab = 'daily', ch;
 $('go').onclick = async () => {
   if (busy) return;
-  const parts = ext || (fin ? [[pts]] : null);
+  const parts = curParts();
   if (!parts) return st('Эхлээд polygon зурах, хил сонгох эсвэл файл оруулна уу.', 1);
   const s = $('d1').value, e = $('d2').value;
   const days = Math.round((new Date(e) - new Date(s)) / 864e5) + 1;
@@ -369,8 +538,11 @@ $('go').onclick = async () => {
   if (s < '1940-01-01') return st('ERA5 өгөгдөл 1940 оноос эхэлдэг.', 1);
   if (days > 366) return st('Хугацаа 366 хоногоос ихгүй байх ёстой.', 1);
   if (e > dayOff(15)) return st('Прогноз ирэх 15 хоног хүртэл боломжтой.', 1);
-  const grid = makeGrid(parts, +$('step').value);
-  if (grid.length > 400) return st(`Тор ${grid.length} цэгтэй байна. Торын алхмыг томруулна уу (дээд тал нь 400 цэг).`, 1);
+  const grid = makeGrid(parts, +$('step').value, MAX_POINTS);
+  if (!grid) {
+    const fs = finestStep(parts);
+    return st(`Энэ алхамд ${MAX_POINTS}-аас олон цэг гарна. Торын алхмыг томруулна уу` + (fs ? ` (энэ талбайд хамгийн нарийн нь ${fs}°).` : '.'), 1);
+  }
   gridLayer.clearLayers();
   grid.forEach(p => L.circleMarker(p, {radius: 2, color: '#d9480f', weight: 1}).addTo(gridLayer));
   busy = true; $('go').disabled = true;
@@ -384,9 +556,16 @@ $('go').onclick = async () => {
     const H = build(arr, grid.map(p => Math.cos(p[0] * Math.PI / 180))), l = dayOff(-6);
     R = {hourly: H, daily: group(H, r => r.date, true), diurnal: group(H, r => r.hr + ':00', false), all: group(H, () => 'all', true)[0]};
     R.area = areaKm2(parts); R.n = grid.length; R.range = s + '_' + e;
-    $('info').textContent = `Талбай ${km2(R.area)} км². Тооцоонд ${grid.length} цэг, ${H.length} цагийн өгөгдөл ашиглав.` +
-      (e > l ? ` ${l}-с хойших хэсэг нь прогноз (Open-Meteo), өмнөх нь ERA5.` : '');
+    // Open-Meteo answers each point from the nearest cell of its weather model
+    // (~9 km); finer grid points in one cell differ only by the temperature's
+    // correction to the point's own elevation.
+    const cells = new Set(arr.map(a => a.latitude + ',' + a.longitude)).size;
+    $('info').textContent = `Талбай ${km2(R.area)} км². Тооцоонд ${grid.length} цэг, ${H.length} цагийн өгөгдөл ашиглав. Цэгүүд загварын ${cells} нүдэнд оногдсон.` +
+      (cells < grid.length ? ' Нэг нүдний цэгүүд температураар (өндрөөр) л ялгаатай.' : '') +
+      (e > l ? ` ${l}-с хойших хэсэг нь прогноз (Open-Meteo), өмнөх нь архив (ERA5 / ECMWF IFS).` : '');
     tab = 'daily'; show(); st('Дууслаа.');
+    const o = $('out').getBoundingClientRect();
+    if (o.top > innerHeight - 80) $('out').scrollIntoView({behavior: 'smooth', block: 'start'});
   } catch (err) { st('Алдаа: ' + err.message, 1); }
   finally { busy = false; $('go').disabled = false; }
 };
@@ -400,9 +579,10 @@ const head = x => x.k === 'prec' ? PL[tab] : (tab !== 'hourly' && GN[x.k] || x.n
 function show() {
   const a = R.all, n = R.daily.length;
   $('out').hidden = false;
-  $('cards').innerHTML = [...V.filter(x => x.k !== 'prec').map(x => [GN[x.k] || x.n, fmt(a[x.k], x.d) + ' ' + x.u]),
-    ['Нийт хур тунадас', fmt(a.prec) + ' мм'], ['Өдрийн дундаж хур тунадас', fmt(a.prec == null ? null : a.prec / n, 2) + ' мм']
-  ].map(([l, v]) => `<div class="card"><span>${l}</span><b>${v}</b></div>`).join('');
+  const CC = {temp: 't', tmin: 't', tmax: 't', rh: 'h', cloud: 'h', wind: 'w', gust: 'w', dir: 'w'};
+  $('cards').innerHTML = [...V.filter(x => x.k !== 'prec').map(x => [GN[x.k] || x.n, fmt(a[x.k], x.d) + ' ' + x.u, CC[x.k]]),
+    ['Нийт хур тунадас', fmt(a.prec) + ' мм', 'p'], ['Өдрийн дундаж хур тунадас', fmt(a.prec == null ? null : a.prec / n, 2) + ' мм', 'p']
+  ].map(([l, v, c]) => `<div class="card c-${c}"><span>${l}</span><b>${v}</b></div>`).join('');
   fillCv(); draw();
 }
 function fillCv() {
@@ -466,10 +646,15 @@ function setArea(parts, label) {
   reset(); stopDraw(); ext = parts;
   parts.forEach(p => L.polygon(p, {color: '#1c7ed6', weight: 2}).addTo(extLayer));
   map.fitBounds(L.featureGroup(extLayer.getLayers()).getBounds(), {padding: [20, 20]});
-  hint(`${label} · Талбай: ${km2(areaKm2(parts))} км²`); st('');
+  hint(`${label} · Талбай: ${km2(areaKm2(parts))} км²`); st(''); updEst();
 }
-$('file').onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
+$('file').onchange = async e => { await readFile(e.target.files[0]); e.target.value = ''; };
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, () => drop.classList.remove('over')));
+drop.addEventListener('drop', e => { e.preventDefault(); readFile(e.dataTransfer.files[0]); });
+async function readFile(f) {
+  if (!f) return;
   try {
     const n = f.name.toLowerCase(); let parts;
     if (n.endsWith('.zip')) parts = geoParts(await shp(await f.arrayBuffer()));
@@ -481,8 +666,7 @@ $('file').onchange = async e => {
     else parts = geoParts(JSON.parse(await f.text()));
     setArea(parts, `${f.name}: ${parts.length} polygon оруулав.`);
   } catch (err) { st('Файл уншиж чадсангүй: ' + err.message, 1); }
-  e.target.value = '';
-};
+}
 
 const GB = 'https://www.geoboundaries.org/api/current/gbOpen/MNG/', adm = {};
 async function loadAdm(l) {
