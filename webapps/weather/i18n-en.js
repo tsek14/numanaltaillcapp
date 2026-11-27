@@ -22,7 +22,7 @@ window.I18N_EN = [
 ['энэ талбайд хамгийн нарийн нь', 'the finest for this area is'],
 ['Цэгүүд загварын', 'The points fall in'],
 ['нүдэнд оногдсон.', 'model cells.'],
-['Нэг нүдний цэгүүд температураар (өндрөөр) л ялгаатай.', 'Points in one cell differ only in temperature (by elevation).'],
+['Нэг нүдэнд багтах цэгүүдийн хооронд хамгийн тод ялгарах үзүүлэлт нь газрын өндрөөс хамаарах температур юм.', 'Within one cell, the clearest difference between points is temperature, which changes with ground elevation.'],
 ['м', 'm'],
 ['Апп-ууд', 'Apps'],
 ['Зурах', 'Draw'],

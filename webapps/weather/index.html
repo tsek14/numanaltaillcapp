@@ -615,7 +615,7 @@ $('go').onclick = async () => {
     // correction to the point's own elevation.
     const cells = new Set(arr.map(a => a.latitude + ',' + a.longitude)).size;
     $('info').textContent = `Талбай ${km2(R.area)} км². Тооцоонд ${grid.length} цэг, ${H.length} цагийн өгөгдөл ашиглав. Цэгүүд загварын ${cells} нүдэнд оногдсон.` +
-      (cells < grid.length ? ' Нэг нүдний цэгүүд температураар (өндрөөр) л ялгаатай.' : '') +
+      (cells < grid.length ? ' Нэг нүдэнд багтах цэгүүдийн хооронд хамгийн тод ялгарах үзүүлэлт нь газрын өндрөөс хамаарах температур юм.' : '') +
       (e > l ? ` ${l}-с хойших хэсэг нь прогноз (Open-Meteo), өмнөх нь архив (ERA5 / ECMWF IFS).` : '');
     tab = 'daily'; show(); st('Дууслаа.');
     // The summary sits above the map on wide screens; bring it into view if the page was scrolled away
