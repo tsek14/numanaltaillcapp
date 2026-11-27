@@ -41,6 +41,7 @@ window.I18N_EN = [
 ['Энэ талбайд хамгийн нарийн алхам', 'The finest step for this area is'],
 ['Бүтэн дэлгэц', 'Full screen'],
 ['Үр дүн', 'Results'],
+['Чирж газрын зургийн өндрийг өөрчилнө. Давхар товшвол анхны хэмжээ.', 'Drag to change the map height. Double-click to reset.'],
 ['Тооцоолох', 'Calculate'],
 ['Графикийн утга', 'Chart value'],
 ['CSV татах', 'Download CSV'],
