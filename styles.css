@@ -136,3 +136,11 @@ details summary+p{margin-top:8px}
 .pc .b{margin:14px 0 0;padding:8px 18px;font-size:14px}
 .tag.soon{background:var(--mint)}
 .pc>a:first-child{display:block;border-radius:8px;overflow:hidden}.pc>a:first-child .im{transition:transform .25s}.pc>a:first-child:hover .im{transform:scale(1.03)}
+/* Background patterns: light, cached SVG tiles (topographic contours and a dot grid) layered over the existing colours */
+body{background-image:url(images/pat/topo-blue.svg)}
+.hd{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Ccircle cx='2' cy='2' r='1' fill='%231B4FD8' fill-opacity='.1'/%3E%3C/svg%3E"),linear-gradient(#CBE7F9,#D9EDFA)}
+.alt{background-image:url(images/pat/topo-green.svg);background-position:220px 140px}
+.band{background-image:url(images/pat/topo-white.svg),linear-gradient(120deg,var(--gd),var(--g) 55%,var(--sky));background-position:-160px -90px,0 0}
+.ft{background-image:url(images/pat/topo-white.svg);background-position:300px 40px}
+.card .lb,.card:hover .lb{background-image:url(images/pat/topo-white.svg);background-size:360px}
+.box,.aud{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Ccircle cx='2' cy='2' r='1' fill='%231F8A55' fill-opacity='.12'/%3E%3C/svg%3E")}
