@@ -65,9 +65,16 @@ details p{margin:6px 0 0}
 .err{color:var(--err)}
 .app>*,.mainc>*{min-width:0}
 .mainc{min-width:0;display:flex;flex-direction:column;gap:16px}
-.first{display:flex;flex-direction:column;gap:12px;height:calc(100vh - 98px);min-height:560px}
+.first{display:flex;flex-direction:column;height:calc(100vh - 98px);min-height:560px}
+.first.man{height:auto;min-height:0}
+.first.man .mapw{flex:none}
+.rsz{flex:none;height:14px;margin:1px 0;display:grid;place-items:center;cursor:ns-resize;touch-action:none;border-radius:6px}
+.rsz span{width:56px;height:4px;border-radius:2px;background:var(--bd)}
+.rsz:hover span,.rsz.on span,.rsz:focus-visible span{background:var(--ac)}
+.rsz:focus-visible{outline:2px solid var(--ac);outline-offset:-2px}
+body.rszing{cursor:ns-resize;user-select:none}
 .mapw{position:relative;flex:1;min-height:360px;border:1px solid var(--bd);border-radius:14px;overflow:hidden;box-shadow:var(--sh)}
-.mapw.fs{position:fixed;inset:0;height:auto;z-index:2000;border-radius:0;border:0}
+.mapw.fs{position:fixed;inset:0;height:auto!important;z-index:2000;border-radius:0;border:0}
 #map{position:absolute;inset:0;background:var(--pn)}
 .tip{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:1000;max-width:calc(100% - 140px);padding:7px 14px;border-radius:999px;background:rgba(20,24,31,.85);color:#fff;font-size:13px;text-align:center;pointer-events:none}
 .mapbtn{display:grid;place-items:center;width:34px;height:34px;padding:0;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
@@ -100,7 +107,8 @@ footer{font-size:12px;color:var(--mut);padding:0 4px 8px}
   .hd{padding:10px 14px}.hd .sub{display:none}
   .app{grid-template-columns:1fr;padding:12px;gap:12px}
   .mainc,.first{display:contents}
-  .mapw{order:1;flex:none;height:62vh;min-height:340px}
+  .rsz{display:none}
+  .mapw{order:1;flex:none;height:62vh!important;min-height:340px}
   .side{order:2;position:static;max-height:none}
   #sumbox{order:3}#out{order:4}footer{order:5}
   .tip{max-width:calc(100% - 100px);font-size:12px}
@@ -202,12 +210,13 @@ footer{font-size:12px;color:var(--mut);padding:0 4px 8px}
   </aside>
 
   <div class="mainc">
-    <div class="first">
+    <div class="first" id="first">
+      <div class="mapw" id="mapw"><div id="map"></div><div id="tip" class="tip" hidden></div></div>
+      <div class="rsz" id="rsz" role="separator" aria-orientation="horizontal" tabindex="0" title="Чирж газрын зургийн өндрийг өөрчилнө. Давхар товшвол анхны хэмжээ."><span></span></div>
       <section id="sumbox" class="card-p" hidden>
         <div class="rh"><h2>Үр дүн</h2><span id="info" class="muted"></span></div>
         <div id="cards" class="cards"></div>
       </section>
-      <div class="mapw" id="mapw"><div id="map"></div><div id="tip" class="tip" hidden></div></div>
     </div>
 
     <section id="out" class="card-p" hidden>
@@ -281,6 +290,45 @@ const FsControl = L.Control.extend({
   }
 });
 new FsControl().addTo(map);
+
+// Map height: by default the map fills the screen above the result summary.
+// Dragging the bar under the map (or arrow keys on it) sets a height of its
+// own, kept for next time; a double-click goes back to fitting the screen.
+const MAP_MIN = 260;
+function setMapH(h) {
+  const w = $('mapw');
+  if (h == null) { $('first').classList.remove('man'); w.style.height = ''; save('mapH', null); }
+  else {
+    h = Math.round(Math.max(MAP_MIN, Math.min(h, innerHeight * 2)));
+    $('first').classList.add('man'); w.style.height = h + 'px'; save('mapH', h);
+  }
+  map.invalidateSize();
+}
+if (CFG.mapH) setMapH(CFG.mapH);
+// Keep Leaflet's size in step with its box whatever changes it (summary appearing, dragging, window size)
+if (window.ResizeObserver) new ResizeObserver(() => map.invalidateSize()).observe($('mapw'));
+(() => {
+  const bar = $('rsz'); let y0 = 0, h0 = 0, raf = 0;
+  bar.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    e.preventDefault(); bar.setPointerCapture(e.pointerId);
+    y0 = e.clientY; h0 = $('mapw').getBoundingClientRect().height;
+    bar.classList.add('on'); document.body.classList.add('rszing');
+  });
+  bar.addEventListener('pointermove', e => {
+    if (!bar.hasPointerCapture(e.pointerId)) return;
+    const h = h0 + e.clientY - y0;
+    cancelAnimationFrame(raf); raf = requestAnimationFrame(() => setMapH(h));
+  });
+  const end = e => { if (bar.hasPointerCapture(e.pointerId)) bar.releasePointerCapture(e.pointerId); bar.classList.remove('on'); document.body.classList.remove('rszing'); };
+  bar.addEventListener('pointerup', end); bar.addEventListener('pointercancel', end);
+  bar.addEventListener('dblclick', () => setMapH(null));
+  bar.addEventListener('keydown', e => {
+    const d = e.key === 'ArrowUp' ? -20 : e.key === 'ArrowDown' ? 20 : 0;
+    if (d) { e.preventDefault(); setMapH($('mapw').getBoundingClientRect().height + d); }
+    else if (e.key === 'Home' || e.key === 'Escape') setMapH(null);
+  });
+})();
 map.createPane('labels').style.cssText = 'z-index:450;pointer-events:none';
 
 const BingLayer = L.TileLayer.extend({
@@ -572,7 +620,7 @@ $('go').onclick = async () => {
     tab = 'daily'; show(); st('Дууслаа.');
     // The summary sits above the map on wide screens; bring it into view if the page was scrolled away
     const o = $('sumbox').getBoundingClientRect();
-    if (o.top < 0 || o.bottom > innerHeight) $('sumbox').scrollIntoView({behavior: 'smooth', block: 'start'});
+    if (o.top < 0 || o.bottom > innerHeight) $('sumbox').scrollIntoView({behavior: 'smooth', block: 'nearest'});
   } catch (err) { st('Алдаа: ' + err.message, 1); }
   finally { busy = false; $('go').disabled = false; }
 };
